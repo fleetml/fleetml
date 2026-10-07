@@ -9,10 +9,10 @@ FleetML is an open-source, runtime-agnostic, self-hosted-first platform for mana
 - **Model Registry**: Version, store, and manage model variants (FP32, FP16, INT8, INT4) across frameworks (TFLite, ONNX, CoreML, GGUF)
 - **Intelligent Variant Selection**: Automatically selects the optimal model variant based on device hardware capabilities
 - **Device Fleet Management**: Register, classify, and monitor edge devices with capability scoring (0-100)
-- **Deployment Strategies**: ALL_AT_ONCE, CANARY (staged with health gates + auto-rollback), ROLLING (batched)
-- **A/B Experiments**: Controlled experiments with deterministic cohort assignment, Welch's t-test, Cohen's d
-- **Telemetry**: Async NATS pipeline into TimescaleDB with time-series aggregation
-- **Drift Detection**: PSI-based distribution shift monitoring
+- **Deployment Strategies**: ALL_AT_ONCE and CANARY (staged rollout by consistent hashing) with label targeting. Auto-rollback on error rate happens only when the deployment is created with a `health_gate`; there is no default gate yet. ROLLING is accepted by the API but currently delivers to all targeted devices at once (batching is not implemented yet)
+- **A/B Experiments**: Deterministic, sticky cohort assignment and per-arm results with Welch's t-test and Cohen's d. Not yet end-to-end: devices do not yet receive a download URL for the arm's model
+- **Telemetry**: Device events over gRPC, through NATS into a TimescaleDB hypertable, with summary and time-bucketed series endpoints
+- **Drift Detection**: PSI on latency and confidence distributions per model version (results are stored and logged; no alert delivery yet)
 - **Dashboard**: React UI for monitoring devices, deployments, experiments, telemetry, drift
 - **CLI**: `fleetml push`, `fleetml deploy`, `fleetml experiment`, `fleetml drift`
 - **Android SDK**: Kotlin library: fingerprint, register, heartbeat, download, cache, telemetry
@@ -72,7 +72,7 @@ Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_MINIO_P
 ## Architecture
 
 ```
-Android/iOS: gRPC --> Go Server ──NATS--> TimescaleDB
+Android    : gRPC --> Go Server ──NATS--> TimescaleDB
 Dashboard  : REST --> (REST+gRPC)        MinIO (S3)
 CLI        : REST -->
 ```
