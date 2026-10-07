@@ -1,0 +1,116 @@
+package cli
+
+import (
+	"github.com/spf13/cobra"
+)
+
+var (
+	serverURL string
+	outputFmt string
+	verbose   bool
+	cfg       *Config
+	client    *Client
+)
+
+// NewRootCmd creates the root CLI command.
+func NewRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "fleetml",
+		Short: "FleetML CLI — Edge ML model lifecycle management",
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			cfg = LoadConfig()
+			if f := cmd.Flags().Lookup("server"); f != nil && f.Changed {
+				cfg.Server = serverURL
+			} else if serverURL == "" {
+				serverURL = cfg.Server
+			}
+			if f := cmd.Flags().Lookup("output"); f != nil && f.Changed {
+				cfg.Output = outputFmt
+			} else if outputFmt == "" {
+				outputFmt = cfg.Output
+			}
+			client = NewClient(serverURL)
+		},
+		SilenceUsage: true,
+	}
+
+	root.PersistentFlags().StringVarP(&serverURL, "server", "s", "", "FleetML server URL (env: FLEETML_SERVER)")
+	root.PersistentFlags().StringVarP(&outputFmt, "output", "o", "", "Output format: table or json")
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+
+	root.AddCommand(newVersionCmd())
+	root.AddCommand(newConfigCmd())
+	root.AddCommand(newProjectCmd())
+	root.AddCommand(newModelCmd())
+	root.AddCommand(newVersionMgmtCmd())
+	root.AddCommand(newPushCmd())
+	root.AddCommand(newDeployCmd())
+	root.AddCommand(newDeviceCmd())
+	root.AddCommand(newTelemetryCmd())
+	root.AddCommand(newPreviewCmd())
+	root.AddCommand(newExperimentCmd())
+	root.AddCommand(newDriftCmd())
+
+	return root
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print FleetML CLI version",
+		Run: func(_ *cobra.Command, _ []string) {
+			PrintSuccess("fleetml v0.1.0")
+		},
+	}
+}
+
+func newConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage CLI configuration",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Show current configuration",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			PrintConfig(cfg)
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "set [key] [value]",
+		Short: "Set a configuration value",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			switch args[0] {
+			case "server":
+				cfg.Server = args[1]
+			case "output":
+				cfg.Output = args[1]
+			case "project":
+				cfg.Project = args[1]
+			default:
+				return ErrUnknownConfigKey(args[0])
+			}
+			if err := SaveConfig(cfg); err != nil {
+				return err
+			}
+			PrintSuccess("config updated")
+			return nil
+		},
+	})
+	return cmd
+}
+
+// ErrUnknownConfigKey returns an error for unknown config keys.
+func ErrUnknownConfigKey(key string) error {
+	return &configError{key: key}
+}
+
+type configError struct {
+	key string
+}
+
+func (e *configError) Error() string {
+	return "unknown config key: " + e.key
+}

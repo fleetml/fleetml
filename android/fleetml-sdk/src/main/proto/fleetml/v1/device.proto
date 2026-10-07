@@ -1,0 +1,87 @@
+syntax = "proto3";
+package fleetml.device.v1;
+
+option go_package = "github.com/fleetml/fleetml/gen/fleetml/v1;fleetmlv1";
+
+service DeviceService {
+  // Device registers itself on first boot
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Periodic heartbeat — server responds with pending actions
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message RegisterRequest {
+  string fingerprint = 1;
+  string os = 2;
+  string os_version = 3;
+  string chipset = 4;
+  uint32 ram_mb = 5;
+  bool has_npu = 6;
+  bool has_gpu = 7;
+  float npu_tflops = 8;
+  string agent_version = 9;
+  map<string, string> labels = 10;
+}
+
+message RegisterResponse {
+  string device_id = 1;
+  string auth_token = 2;
+  DeviceConfig config = 3;
+}
+
+message DeviceConfig {
+  uint32 heartbeat_interval_seconds = 1;
+  uint32 telemetry_batch_size = 2;
+  uint32 max_cache_size_mb = 3;
+}
+
+message HeartbeatRequest {
+  string device_id = 1;
+  repeated ModelStatus loaded_models = 2;
+  DeviceHealth health = 3;
+}
+
+message ModelStatus {
+  string model_id = 1;
+  string version = 2;
+  string variant_id = 3;
+  string status = 4;
+}
+
+message DeviceHealth {
+  uint32 available_ram_mb = 1;
+  float battery_percent = 2;
+  float cpu_usage_percent = 3;
+  uint64 available_storage_bytes = 4;
+}
+
+message HeartbeatResponse {
+  repeated ModelAssignment assignments = 1;
+  repeated ExperimentAssignment experiments = 2;
+  uint32 next_heartbeat_seconds = 3;
+}
+
+message ModelAssignment {
+  string model_id = 1;
+  string model_name = 2;
+  string version = 3;
+  string variant_id = 4;
+  string download_url = 5;
+  uint64 blob_size_bytes = 6;
+  string blob_sha256 = 7;
+  Action action = 8;
+
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    LOAD = 1;
+    UPDATE = 2;
+    UNLOAD = 3;
+  }
+}
+
+message ExperimentAssignment {
+  string experiment_id = 1;
+  string arm_name = 2;
+  string model_version_id = 3;
+}

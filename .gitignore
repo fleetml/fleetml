@@ -1,0 +1,47 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+*.out
+*.prof
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor
+vendor/
+
+# Environment
+.env
+
+# Node / dashboard build output
+node_modules/
+dist/
+
+# Android / Gradle
+android/**/build/
+android/.gradle/
+**/local.properties
+.gradle/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary
+tmp/
+*.tmp
+*.log
