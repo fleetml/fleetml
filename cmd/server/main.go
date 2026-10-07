@@ -119,7 +119,9 @@ func run() error {
 	telemetryPub := telemetry.NewPublisher(nc, logger)
 	telemetrySvc := telemetry.NewService(telemetryRepo, telemetryPub, logger)
 	telemetryConsumer := telemetry.NewConsumer(nc, telemetryRepo, logger)
+	consumerDone := make(chan struct{})
 	go func() {
+		defer close(consumerDone)
 		if err := telemetryConsumer.Start(ctx); err != nil {
 			slog.Error("telemetry consumer error", "error", err)
 		}
@@ -169,6 +171,13 @@ func run() error {
 		}
 	case <-ctx.Done():
 		slog.Info("shutdown signal received")
+	}
+
+	// Let the telemetry consumer drain its buffer before the DB pool closes.
+	select {
+	case <-consumerDone:
+	case <-time.After(15 * time.Second):
+		slog.Warn("telemetry consumer did not stop in time")
 	}
 
 	slog.Info("FleetML server stopped")

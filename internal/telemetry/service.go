@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,13 @@ type Service struct {
 	repo      *Repository
 	publisher *Publisher
 	logger    *slog.Logger
+	dropped   atomic.Int64
+}
+
+// Dropped returns the number of events rejected at ingest because their
+// model_version_id was missing or unknown.
+func (s *Service) Dropped() int64 {
+	return s.dropped.Load()
 }
 
 // NewService creates a new telemetry service.
@@ -38,6 +46,12 @@ func (s *Service) IngestEvents(ctx context.Context, deviceID uuid.UUID, events [
 			rejected++
 			continue
 		}
+		if e.ModelVersionID == uuid.Nil {
+			rejected++
+			s.dropped.Add(1)
+			s.warn("dropping telemetry event without model_version_id", "device_id", deviceID, "dropped_total", s.dropped.Load())
+			continue
+		}
 		if e.Confidence < 0 {
 			e.Confidence = 0
 		}
@@ -51,6 +65,9 @@ func (s *Service) IngestEvents(ctx context.Context, deviceID uuid.UUID, events [
 		e.DeviceID = deviceID
 		valid = append(valid, e)
 	}
+
+	valid, unknown := s.dropUnknownVersions(ctx, deviceID, valid)
+	rejected += unknown
 
 	if len(valid) == 0 {
 		return 0, rejected, nil
@@ -76,6 +93,49 @@ func (s *Service) IngestEvents(ctx context.Context, deviceID uuid.UUID, events [
 	}
 	s.logger.Info("ingested telemetry events (direct)", "device_id", deviceID, "count", count)
 	return count, rejected, nil
+}
+
+// dropUnknownVersions removes events whose model_version_id does not exist,
+// so they never reach the batch insert (where one bad row aborts the batch).
+// If the lookup itself fails, events pass through and the consumer's
+// row-by-row fallback discards any offenders.
+func (s *Service) dropUnknownVersions(ctx context.Context, deviceID uuid.UUID, events []Event) (kept []Event, dropped int) {
+	if s.repo == nil || len(events) == 0 {
+		return events, 0
+	}
+	seen := make(map[uuid.UUID]bool)
+	var ids []uuid.UUID
+	for _, e := range events {
+		if !seen[e.ModelVersionID] {
+			seen[e.ModelVersionID] = true
+			ids = append(ids, e.ModelVersionID)
+		}
+	}
+	known, err := s.repo.KnownModelVersions(ctx, ids)
+	if err != nil {
+		s.warn("telemetry: model version lookup failed, deferring validation to consumer", "error", err)
+		return events, 0
+	}
+	kept = events[:0]
+	for _, e := range events {
+		if !known[e.ModelVersionID] {
+			dropped++
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if dropped > 0 {
+		s.dropped.Add(int64(dropped))
+		s.warn("dropping telemetry events with unknown model_version_id",
+			"device_id", deviceID, "count", dropped, "dropped_total", s.dropped.Load())
+	}
+	return kept, dropped
+}
+
+func (s *Service) warn(msg string, args ...any) {
+	if s.logger != nil {
+		s.logger.Warn(msg, args...)
+	}
 }
 
 // QueryEvents returns filtered telemetry events.

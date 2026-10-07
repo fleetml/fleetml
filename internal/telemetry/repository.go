@@ -48,6 +48,45 @@ func (r *Repository) InsertEvents(ctx context.Context, events []Event) (int, err
 	return int(count), nil
 }
 
+// InsertEvent inserts a single telemetry event. Used as a fallback when a
+// batch CopyFrom fails, so that one bad row does not block the others.
+func (r *Repository) InsertEvent(ctx context.Context, e Event) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO telemetry_events (device_id, model_version_id, event_type,
+			latency_ms, confidence_score, prediction_label,
+			memory_usage_mb, battery_impact_pct, error_message, recorded_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		e.DeviceID, e.ModelVersionID, e.EventType,
+		e.LatencyMs, e.Confidence, e.PredictionLabel,
+		e.MemoryUsageMB, e.BatteryPercent, e.ErrorMessage, e.RecordedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("telemetry.InsertEvent: %w", err)
+	}
+	return nil
+}
+
+// KnownModelVersions returns the subset of ids that exist in model_versions.
+func (r *Repository) KnownModelVersions(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
+	known := make(map[uuid.UUID]bool, len(ids))
+	if len(ids) == 0 {
+		return known, nil
+	}
+	rows, err := r.pool.Query(ctx, `SELECT id FROM model_versions WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("telemetry.KnownModelVersions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("telemetry.KnownModelVersions: scanning: %w", err)
+		}
+		known[id] = true
+	}
+	return known, rows.Err()
+}
+
 // QueryEvents returns filtered telemetry events.
 func (r *Repository) QueryEvents(ctx context.Context, filter EventFilter) ([]Event, int, error) {
 	query := `SELECT device_id, model_version_id, event_type, COALESCE(latency_ms,0),

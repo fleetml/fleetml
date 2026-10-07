@@ -74,7 +74,7 @@ func TestIngestEvents_Validation(t *testing.T) {
 		{
 			name: "mixed valid and invalid",
 			events: []Event{
-				{LatencyMs: 10, RecordedAt: time.Now()},
+				{ModelVersionID: uuid.New(), LatencyMs: 10, RecordedAt: time.Now()},
 				{LatencyMs: -5, RecordedAt: time.Now()},
 				{LatencyMs: 20, RecordedAt: time.Now().Add(10 * time.Minute)},
 			},
@@ -95,9 +95,10 @@ func TestIngestEvents_SetsDeviceID(t *testing.T) {
 	deviceID := uuid.New()
 
 	events := []Event{{
-		EventType:  "INFERENCE",
-		LatencyMs:  10,
-		RecordedAt: time.Now(),
+		ModelVersionID: uuid.New(),
+		EventType:      "INFERENCE",
+		LatencyMs:      10,
+		RecordedAt:     time.Now(),
 	}}
 
 	// No publisher/repo, so IngestEvents will validate and try to publish
