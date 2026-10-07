@@ -70,6 +70,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("creating s3 client: %w", err)
 	}
+	if err := s3Client.EnsureBucket(ctx); err != nil {
+		return fmt.Errorf("preparing s3 bucket: %w", err)
+	}
 
 	nc, err := nats.Connect(cfg.NatsURL)
 	if err != nil {

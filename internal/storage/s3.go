@@ -39,6 +39,27 @@ func NewS3Client(cfg S3Config) (*S3Client, error) {
 	}, nil
 }
 
+// EnsureBucket creates the configured bucket if it does not exist yet, so the
+// server works against a fresh S3-compatible store without an init container.
+func (s *S3Client) EnsureBucket(ctx context.Context) error {
+	exists, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("checking bucket %q: %w", s.bucket, err)
+	}
+	if exists {
+		return nil
+	}
+	if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{}); err != nil {
+		// Another replica may have created it in the meantime.
+		if code := minio.ToErrorResponse(err).Code; code == "BucketAlreadyOwnedByYou" || code == "BucketAlreadyExists" {
+			return nil
+		}
+		return fmt.Errorf("creating bucket %q: %w", s.bucket, err)
+	}
+	slog.Info("created s3 bucket", "bucket", s.bucket)
+	return nil
+}
+
 func (s *S3Client) HealthCheck(ctx context.Context) error {
 	exists, err := s.client.BucketExists(ctx, s.bucket)
 	if err != nil {

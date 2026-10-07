@@ -31,7 +31,7 @@ FleetML is an open-source, runtime-agnostic, self-hosted-first platform for mana
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-make dev    # creates .env from .env.example if missing, starts Postgres/TimescaleDB, MinIO, NATS, Redis,
+make dev    # creates .env from .env.example if missing, starts Postgres/TimescaleDB, S3 storage (SeaweedFS), NATS, Redis,
             # applies DB migrations, then runs the server on REST :18080 and gRPC :19090
 ```
 
@@ -52,8 +52,8 @@ The server reads its configuration from environment variables (`.env.example` ha
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_URL` | *(required)* | Postgres/TimescaleDB DSN, e.g. `postgres://fleetml:fleetml_dev@localhost:15432/fleetml?sslmode=disable` |
-| `S3_ENDPOINT` | `localhost:19000` | MinIO/S3 endpoint as `host:port` (no scheme) |
-| `S3_BUCKET` | `fleetml-models` | Bucket for model blobs |
+| `S3_ENDPOINT` | `localhost:19000` | S3-compatible endpoint as `host:port` (no scheme); the dev stack runs SeaweedFS |
+| `S3_BUCKET` | `fleetml-models` | Bucket for model blobs (created on server start if missing) |
 | `S3_ACCESS_KEY` | *(required)* | S3 access key |
 | `S3_SECRET_KEY` | *(required)* | S3 secret key |
 | `S3_USE_SSL` | `false` | Use HTTPS to reach S3 |
@@ -67,13 +67,13 @@ The server reads its configuration from environment variables (`.env.example` ha
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins for the REST API |
 | `MIGRATE_ON_START` | `false` | Apply the embedded DB migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
 
-Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_MINIO_PORT=19000`, `FLEETML_MINIO_CONSOLE_PORT=19001`, `FLEETML_NATS_PORT=14222`, `FLEETML_NATS_MONITOR_PORT=18222`, `FLEETML_REDIS_PORT=16379`.
+Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_S3_PORT=19000`, `FLEETML_NATS_PORT=14222`, `FLEETML_NATS_MONITOR_PORT=18222`, `FLEETML_REDIS_PORT=16379`.
 
 ## Architecture
 
 ```
 Android    : gRPC --> Go Server ──NATS--> TimescaleDB
-Dashboard  : REST --> (REST+gRPC)        MinIO (S3)
+Dashboard  : REST --> (REST+gRPC)        S3 (SeaweedFS)
 CLI        : REST -->
 ```
 
