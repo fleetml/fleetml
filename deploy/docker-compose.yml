@@ -44,6 +44,16 @@ services:
       echo 'Bucket created';
       "
 
+  migrate:
+    image: migrate/migrate:v4.19.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../internal/db/migrations:/migrations:ro
+    command: ["-path=/migrations", "-database=postgres://fleetml:fleetml_dev@postgres:5432/fleetml?sslmode=disable", "up"]
+    restart: "no"
+
   nats:
     image: nats:latest
     ports:

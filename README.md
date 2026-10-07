@@ -46,6 +46,7 @@ The server reads its configuration from environment variables (`.env.example` ha
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins for the REST API |
+| `MIGRATE_ON_START` | `false` | Apply the embedded DB migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
 
 Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_MINIO_PORT=19000`, `FLEETML_MINIO_CONSOLE_PORT=19001`, `FLEETML_NATS_PORT=14222`, `FLEETML_NATS_MONITOR_PORT=18222`, `FLEETML_REDIS_PORT=16379`.
 

@@ -48,6 +48,12 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	if cfg.MigrateOnStart {
+		if err := db.Migrate(cfg.DatabaseURL); err != nil {
+			return fmt.Errorf("running migrations: %w", err)
+		}
+	}
+
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("connecting to database: %w", err)

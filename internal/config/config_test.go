@@ -41,6 +41,7 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, 18080, cfg.RESTPort)
 	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Equal(t, "json", cfg.LogFormat)
+	assert.False(t, cfg.MigrateOnStart)
 }
 
 func TestLoad_MissingRequired(t *testing.T) {

@@ -21,6 +21,8 @@ type Config struct {
 	LogLevel    string `envconfig:"LOG_LEVEL" default:"info"`
 	LogFormat   string `envconfig:"LOG_FORMAT" default:"json"`
 	CORSOrigins string `envconfig:"CORS_ORIGINS" default:"*"`
+	// MigrateOnStart applies embedded DB migrations before the server starts.
+	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
 }
 
 func (c Config) GRPCAddr() string {
