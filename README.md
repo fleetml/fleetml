@@ -19,12 +19,31 @@ FleetML is an open-source, runtime-agnostic, self-hosted-first platform for mana
 
 ## Quick Start
 
+**Prerequisites**
+
+- [Docker](https://docs.docker.com/get-docker/) with Compose v2.20+ (running)
+- [Go 1.24+](https://go.dev/dl/)
+- [golang-migrate](https://github.com/golang-migrate/migrate) CLI, for manual `make migrate-up` / `make migrate-down` (the quickstart runs migrations in Compose)
+- [grpcurl](https://github.com/fullstorydev/grpcurl), to talk to the device gRPC API from a terminal
+- [Node.js 20+](https://nodejs.org/), only for the dashboard dev server
+
+**Run**
+
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-docker compose -f deploy/docker-compose.yml up -d
-make migrate-up
-make dev
+make dev    # creates .env from .env.example if missing, starts Postgres/TimescaleDB, MinIO, NATS, Redis,
+            # applies DB migrations, then runs the server on REST :18080 and gRPC :19090
 ```
+
+In a second terminal:
+
+```bash
+curl localhost:18080/healthz                 # {"db":"connected","nats":"connected","s3":"connected","status":"ok"}
+grpcurl -plaintext localhost:19090 list      # fleetml.device.v1.DeviceService, fleetml.telemetry.v1.TelemetryService
+make dashboard-dev                           # dashboard on http://localhost:5173 (proxies the API on :18080)
+```
+
+To run everything in containers instead (server + dashboard): `docker compose -f deploy/docker-compose.prod.yml up -d --build`, then the API is on `:18080` and the dashboard on `:80`.
 
 ## Configuration
 

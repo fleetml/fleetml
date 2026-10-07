@@ -1,4 +1,4 @@
-.PHONY: build build-server build-cli install-cli test lint proto migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
+.PHONY: env-file build build-server build-cli install-cli test lint proto migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
 
 -include .env
 
@@ -55,12 +55,17 @@ dashboard-build:
 	cd dashboard && npm ci && npm run build
 
 dashboard-dev:
-	cd dashboard && npm run dev
+	cd dashboard && { [ -d node_modules ] || npm ci; } && npm run dev
 
-dev: docker-up
-	@echo "Waiting for services to be ready..."
-	@sleep 5
-	$(MAKE) migrate-up
+env-file:
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "Created .env from .env.example (REST :18080, gRPC :19090, infra on 15xxx host ports)"; \
+	fi
+
+dev: env-file docker-up
+	@echo "Waiting for database migrations (compose 'migrate' service)..."
+	docker compose -f deploy/docker-compose.yml wait migrate
 	env $$(grep -v '^\#' .env | xargs) go run ./cmd/server
 
 clean:
