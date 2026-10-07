@@ -1,3 +1,5 @@
+name: fleetml-prod
+
 services:
   postgres:
     image: timescale/timescaledb:latest-pg16
