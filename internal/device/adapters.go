@@ -28,7 +28,7 @@ func (a *DeploymentAdapter) ListActiveForDevice(ctx context.Context, deviceLabel
 	query := `SELECT id, model_version_id, strategy, COALESCE(canary_percentage, 0), status
 		FROM deployments
 		WHERE status IN ('PENDING', 'ROLLING_OUT', 'COMPLETE')
-		AND target_selector @> $1::jsonb`
+		AND $1::jsonb @> target_selector` // device labels must contain every selector label
 
 	rows, err := a.pool.Query(ctx, query, labelsJSON)
 	if err != nil {

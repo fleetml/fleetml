@@ -85,9 +85,12 @@ func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]De
 			&selectorJSON, &d.Strategy, &d.CanaryPercent, &stagesJSON, &currentStage); err != nil {
 			return nil, fmt.Errorf("deploymentRepoAdapter.ListActive: scanning: %w", err)
 		}
-		if selectorJSON != nil {
-			_ = json.Unmarshal(selectorJSON, &d.TargetSelector)
+		selector, err := ParseTargetSelector(selectorJSON)
+		if err != nil {
+			// Fail closed: an unreadable selector must not fall back to "all devices".
+			continue
 		}
+		d.TargetSelector = selector
 		// Compute effective canary percent from stages
 		if d.Strategy == "CANARY" && len(stagesJSON) > 2 { // not empty "[]"
 			var stages []struct {

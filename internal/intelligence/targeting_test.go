@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testProfile(class, os string, score int, runtimes []string) *DeviceProfile {
@@ -87,4 +88,31 @@ func TestTargetSelector_LabelsANDLogic(t *testing.T) {
 	assert.True(t, ts.Matches(testProfile("any", "ANDROID", 50, nil), map[string]string{"a": "1", "b": "2"}))
 	assert.False(t, ts.Matches(testProfile("any", "ANDROID", 50, nil), map[string]string{"a": "1", "b": "3"}))
 	assert.False(t, ts.Matches(testProfile("any", "ANDROID", 50, nil), map[string]string{"a": "1"}))
+}
+
+func TestParseTargetSelector(t *testing.T) {
+	t.Run("flat map becomes labels", func(t *testing.T) {
+		ts, err := ParseTargetSelector([]byte(`{"region":"eu","tier":"beta"}`))
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{"region": "eu", "tier": "beta"}, ts.Labels)
+		assert.Empty(t, ts.DeviceClasses)
+	})
+	t.Run("empty and null select all", func(t *testing.T) {
+		for _, raw := range []string{``, `null`, `{}`} {
+			ts, err := ParseTargetSelector([]byte(raw))
+			require.NoError(t, err, raw)
+			assert.Empty(t, ts.Labels, raw)
+		}
+	})
+	t.Run("structured selector", func(t *testing.T) {
+		ts, err := ParseTargetSelector([]byte(`{"labels":{"region":"eu"},"min_score":40,"os":["ANDROID"]}`))
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{"region": "eu"}, ts.Labels)
+		assert.Equal(t, 40, ts.MinScore)
+		assert.Equal(t, []string{"ANDROID"}, ts.OS)
+	})
+	t.Run("invalid json errors", func(t *testing.T) {
+		_, err := ParseTargetSelector([]byte(`[1,2]`))
+		assert.Error(t, err)
+	})
 }

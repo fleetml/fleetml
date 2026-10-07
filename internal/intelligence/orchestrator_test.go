@@ -229,3 +229,29 @@ func TestComputeAssignments_Update(t *testing.T) {
 
 // Silence linter about unused imports
 var _ = fmt.Sprintf
+
+// Regression: a deployment created with target_selector {"region":"eu"} was
+// delivered to every device because the flat map was decoded into the
+// structured selector and silently became empty.
+func TestComputeAssignments_LabelTargetingFromStoredSelector(t *testing.T) {
+	versionID := uuid.New()
+	orch := newTestOrchestrator(map[uuid.UUID][]VariantData{
+		versionID: {{ID: uuid.New(), VersionID: versionID, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "int8.bin", BlobSize: 1024, BlobSHA256: "sha"}},
+	})
+
+	selector, err := ParseTargetSelector([]byte(`{"region":"eu"}`))
+	require.NoError(t, err)
+	deployments := []DeploymentData{{ID: uuid.New(), ModelVersionID: versionID, Strategy: "ALL_AT_ONCE", TargetSelector: selector}}
+
+	euDevice := &device.Device{ID: uuid.New(), OS: "ANDROID", RAMMB: 8192, HasGPU: true, Labels: map[string]string{"region": "eu"}}
+	usDevice := &device.Device{ID: uuid.New(), OS: "ANDROID", RAMMB: 8192, HasGPU: true, Labels: map[string]string{"region": "us"}}
+
+	euAssignments, err := orch.ComputeAssignments(context.Background(), euDevice, nil, deployments, nil)
+	require.NoError(t, err)
+	require.Len(t, euAssignments, 1)
+	assert.Equal(t, "LOAD", euAssignments[0].Action)
+
+	usAssignments, err := orch.ComputeAssignments(context.Background(), usDevice, nil, deployments, nil)
+	require.NoError(t, err)
+	assert.Empty(t, usAssignments, "region=us device must not receive a region=eu deployment")
+}

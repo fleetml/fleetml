@@ -1,5 +1,10 @@
 package intelligence
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // TargetSelector defines which devices a deployment targets.
 type TargetSelector struct {
 	DeviceClasses []string          `json:"device_classes,omitempty"`
@@ -7,6 +12,29 @@ type TargetSelector struct {
 	MinScore      int               `json:"min_score,omitempty"`
 	OS            []string          `json:"os,omitempty"`
 	Runtimes      []string          `json:"runtimes,omitempty"`
+}
+
+// ParseTargetSelector decodes a stored deployment target_selector.
+//
+// Deployments are created with a flat label map such as {"region":"eu"};
+// those keys are device labels. An object whose values are not all strings is
+// decoded as a structured selector (device_classes, labels, min_score, ...).
+func ParseTargetSelector(raw []byte) (TargetSelector, error) {
+	var ts TargetSelector
+	if len(raw) == 0 || string(raw) == "null" {
+		return ts, nil
+	}
+	var flat map[string]string
+	if err := json.Unmarshal(raw, &flat); err == nil {
+		if len(flat) > 0 {
+			ts.Labels = flat
+		}
+		return ts, nil
+	}
+	if err := json.Unmarshal(raw, &ts); err != nil {
+		return TargetSelector{}, fmt.Errorf("parsing target_selector: %w", err)
+	}
+	return ts, nil
 }
 
 // Matches checks if a device profile matches this target selector.
