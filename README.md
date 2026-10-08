@@ -6,13 +6,15 @@ FleetML is an open-source, runtime-agnostic, self-hosted-first platform for mana
 
 ## Features
 
-- **Model Registry**: Version, store, and manage model variants (FP32, FP16, INT8, INT4) across frameworks (TFLite, ONNX, CoreML, GGUF)
+- **Model Registry**: Version, store, and manage model variants (FP32, FP16, INT8, INT4) across frameworks (TFLite, ONNX, CoreML, GGUF); uploads are verified against their declared sha256 before a variant can be deployed
 - **Intelligent Variant Selection**: Automatically selects the optimal model variant based on device hardware capabilities
 - **Device Fleet Management**: Register, classify, and monitor edge devices with capability scoring (0-100)
-- **Deployment Strategies**: ALL_AT_ONCE and CANARY (staged rollout by consistent hashing) with label targeting. Auto-rollback on error rate happens only when the deployment is created with a `health_gate`; there is no default gate yet. ROLLING is accepted by the API but currently delivers to all targeted devices at once (batching is not implemented yet)
-- **A/B Experiments**: Deterministic, sticky cohort assignment and per-arm results with Welch's t-test and Cohen's d. Not yet end-to-end: devices do not yet receive a download URL for the arm's model
+- **Deployment Strategies**: ALL_AT_ONCE, CANARY (staged, consistent hashing) and ROLLING (batches on the same hash ring, `max_unavailable`) with label targeting. Each device runs one version per model: the newest deployment that reaches it. See [docs/ROLLOUTS.md](docs/ROLLOUTS.md)
+- **Health gate and rollback**: on by default for canary and rolling (error rate over the current cohort's stage window, optional p95 latency regression against the previous version); a failing gate rolls back automatically. Manual rollback works after completion too and returns devices to the previous version; deployments can be cancelled
+- **A/B Experiments**: sticky cohorts, each arm's model delivered with a verified download, telemetry attributed per arm, and a fixed-horizon Welch t-test (no peeking) with `max_duration`
 - **Telemetry**: Device events over gRPC, through NATS into a TimescaleDB hypertable, with summary and time-bucketed series endpoints
-- **Drift Detection**: PSI on latency and confidence distributions per model version (results are stored and logged; no alert delivery yet)
+- **Drift Detection**: PSI on latency and confidence distributions per model version; a change into CRITICAL sends an alert
+- **Alerts**: rollback and drift alerts on NATS (`fleetml.alerts.*`) and an HMAC-signed, retried webhook
 - **Dashboard**: React UI for monitoring devices, deployments, experiments, telemetry, drift
 - **CLI**: `fleetml push`, `fleetml deploy`, `fleetml experiment`, `fleetml drift`
 - **Android SDK**: Kotlin library: fingerprint, register with an enrollment key, heartbeat, token refresh, download with sha256 check, cache, telemetry
@@ -109,6 +111,11 @@ The server reads its configuration from environment variables (`.env.example` ha
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
+| `ALERT_WEBHOOK_URL` | *(unset)* | Receives rollback and drift alerts as JSON POSTs (see [docs/ROLLOUTS.md](docs/ROLLOUTS.md#alerts)) |
+| `ALERT_WEBHOOK_SECRET` | *(unset)* | Signs webhook bodies: `X-FleetML-Signature: sha256=<HMAC-SHA256>` |
+| `DEPLOY_TICK_INTERVAL` | `30s` | How often rollouts are evaluated and advanced |
+| `EXPERIMENT_TICK_INTERVAL` | `60s` | How often running experiments are evaluated |
+| `DRIFT_TICK_INTERVAL` | `5m` | How often ACTIVE model versions are checked for drift |
 | `MIGRATE_ON_START` | `false` | Apply the embedded DB migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
 
 Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_S3_PORT=19000`, `FLEETML_NATS_PORT=14222`, `FLEETML_NATS_MONITOR_PORT=18222`, `FLEETML_REDIS_PORT=16379`.
