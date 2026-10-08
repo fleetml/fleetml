@@ -26,6 +26,10 @@ type Config struct {
 	CORSOrigins    string        `envconfig:"CORS_ORIGINS" default:"http://localhost:5173,http://localhost:18080"`
 	// AdminKey is stored as the "bootstrap" admin API key if no key exists yet.
 	AdminKey string `envconfig:"FLEETML_ADMIN_KEY"`
+	// AlertWebhookURL receives rollback and drift alerts as signed JSON POSTs (optional).
+	AlertWebhookURL string `envconfig:"ALERT_WEBHOOK_URL"`
+	// AlertWebhookSecret signs webhook bodies: X-FleetML-Signature: sha256=<HMAC-SHA256>.
+	AlertWebhookSecret string `envconfig:"ALERT_WEBHOOK_SECRET"`
 	// Background loop intervals. Short values are for tests and demos.
 	DeployTickInterval     time.Duration `envconfig:"DEPLOY_TICK_INTERVAL" default:"30s"`
 	ExperimentTickInterval time.Duration `envconfig:"EXPERIMENT_TICK_INTERVAL" default:"60s"`

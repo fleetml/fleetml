@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/fleetml/fleetml/internal/alert"
 )
 
 // DriftResult holds the output of a drift check.
@@ -37,13 +39,69 @@ type ResultStore interface {
 	SaveDriftResult(ctx context.Context, result *DriftResult) error
 	GetLatestResults(ctx context.Context, modelVersionID uuid.UUID) ([]DriftResult, error)
 	GetHistory(ctx context.Context, modelVersionID uuid.UUID, limit int) ([]DriftResult, error)
+	// LatestResult returns the newest result for a version and metric, or nil.
+	LatestResult(ctx context.Context, modelVersionID uuid.UUID, metric string) (*DriftResult, error)
+	// RefreshDriftResult overwrites a stored result's values and checked_at.
+	RefreshDriftResult(ctx context.Context, id uuid.UUID, result *DriftResult) error
+}
+
+// AlertSender delivers alerts (implemented by *alert.Notifier).
+type AlertSender interface {
+	Send(a alert.Alert)
 }
 
 // Detector checks for model drift.
 type Detector struct {
 	repo   TelemetryRepository
 	store  ResultStore
+	alerts AlertSender
 	logger *slog.Logger
+}
+
+// SetAlertSender makes transitions into CRITICAL send a drift alert.
+func (d *Detector) SetAlertSender(a AlertSender) {
+	d.alerts = a
+}
+
+// record stores a result without repeating unchanged states: if the newest
+// stored result for the same version and metric has the same severity it is
+// refreshed in place (new PSI, samples, checked_at); a new row is written
+// only when the severity changes. A change into CRITICAL sends one alert.
+func (d *Detector) record(ctx context.Context, r *DriftResult) {
+	if d.store == nil {
+		return
+	}
+	latest, err := d.store.LatestResult(ctx, r.ModelVersionID, r.Metric)
+	if err != nil {
+		if d.logger != nil {
+			d.logger.Warn("drift: loading latest result failed", "version_id", r.ModelVersionID, "error", err)
+		}
+		return
+	}
+	if latest != nil && latest.Severity == r.Severity {
+		r.ID = latest.ID
+		if err := d.store.RefreshDriftResult(ctx, latest.ID, r); err != nil && d.logger != nil {
+			d.logger.Warn("drift: refreshing result failed", "error", err)
+		}
+		return
+	}
+	if err := d.store.SaveDriftResult(ctx, r); err != nil {
+		if d.logger != nil {
+			d.logger.Warn("drift: saving result failed", "error", err)
+		}
+		return
+	}
+	if r.Severity == "CRITICAL" && d.alerts != nil {
+		previous := "NONE"
+		if latest != nil {
+			previous = latest.Severity
+		}
+		d.alerts.Send(alert.Alert{Type: alert.TypeDrift, Drift: &alert.Drift{
+			ModelVersionID: r.ModelVersionID.String(), Metric: r.Metric, PSI: r.PSIValue,
+			Severity: r.Severity, PreviousSeverity: previous,
+			BaselineSample: r.BaselineSample, CurrentSample: r.CurrentSample, Message: r.Message,
+		}})
+	}
 }
 
 // NewDetector creates a new Detector.
@@ -82,10 +140,8 @@ func (d *Detector) CheckDrift(ctx context.Context, modelVersionID uuid.UUID, bas
 			BaselineSample: len(baselineLat), CurrentSample: len(currentLat),
 			Message: fmt.Sprintf("Latency PSI=%.4f (%s)", psi, sev), CheckedAt: now,
 		}
+		d.record(ctx, &r)
 		results = append(results, r)
-		if d.store != nil {
-			_ = d.store.SaveDriftResult(ctx, &r)
-		}
 	}
 
 	// Check confidence drift
@@ -107,10 +163,8 @@ func (d *Detector) CheckDrift(ctx context.Context, modelVersionID uuid.UUID, bas
 			BaselineSample: len(baselineConf), CurrentSample: len(currentConf),
 			Message: fmt.Sprintf("Confidence PSI=%.4f (%s)", psi, sev), CheckedAt: now,
 		}
+		d.record(ctx, &r)
 		results = append(results, r)
-		if d.store != nil {
-			_ = d.store.SaveDriftResult(ctx, &r)
-		}
 	}
 
 	return results, nil

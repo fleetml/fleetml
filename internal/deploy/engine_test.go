@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fleetml/fleetml/internal/alert"
 	"github.com/fleetml/fleetml/internal/rollout"
 )
 
@@ -584,4 +585,43 @@ func TestEngine_RollbackWithoutPreviousVersion(t *testing.T) {
 	_, err = engine.RollbackDeployment(context.Background(), dep.ID, "no previous")
 	require.NoError(t, err)
 	assert.Len(t, repo.deployments, 1, "no revert without a previous version")
+}
+
+type fakeAlerts struct{ sent []alert.Alert }
+
+func (f *fakeAlerts) Send(a alert.Alert) { f.sent = append(f.sent, a) }
+
+func TestEngine_RollbackSendsOneAlert(t *testing.T) {
+	repo := newMockRepo()
+	tel := &mockTelemetry{stats: &DeploymentStats{TotalEvents: 50, ErrorCount: 50, ErrorRate: 1}}
+	engine := NewEngine(repo, tel, newMockFleet(10), nil)
+	alerts := &fakeAlerts{}
+	engine.SetAlertSender(alerts)
+
+	auto := createPendingDep(repo, "CANARY", quickStages(), nil)
+	prev := uuid.New()
+	auto.PreviousVersionID = &prev
+	_, err := engine.StartDeployment(context.Background(), auto.ID)
+	require.NoError(t, err)
+	_, err = engine.ProgressDeployment(context.Background(), auto.ID)
+	require.NoError(t, err)
+	require.Len(t, alerts.sent, 1)
+	a := alerts.sent[0]
+	assert.Equal(t, alert.TypeRollback, a.Type)
+	assert.Equal(t, "health_gate", a.Rollback.Trigger)
+	assert.Equal(t, auto.ID.String(), a.Rollback.DeploymentID)
+	assert.Equal(t, prev.String(), a.Rollback.PreviousVersionID)
+	assert.Contains(t, a.Rollback.Reason, "error rate")
+
+	// Further ticks on a rolled-back deployment send nothing.
+	_, _ = engine.ProgressDeployment(context.Background(), auto.ID)
+	assert.Len(t, alerts.sent, 1)
+
+	tel.stats = &DeploymentStats{}
+	manual := createPendingDep(repo, "ALL_AT_ONCE", nil, nil)
+	_, _ = engine.StartDeployment(context.Background(), manual.ID)
+	_, err = engine.RollbackDeployment(context.Background(), manual.ID, "operator")
+	require.NoError(t, err)
+	require.Len(t, alerts.sent, 2)
+	assert.Equal(t, "manual", alerts.sent[1].Rollback.Trigger)
 }

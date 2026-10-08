@@ -58,13 +58,43 @@ func (a *Adapter) GetConfidenceValues(ctx context.Context, modelVersionID uuid.U
 }
 
 func (a *Adapter) SaveDriftResult(ctx context.Context, r *DriftResult) error {
-	_, err := a.pool.Exec(ctx,
+	err := a.pool.QueryRow(ctx,
 		`INSERT INTO drift_results (model_version_id,metric,psi_value,severity,baseline_from,baseline_to,current_from,current_to,baseline_sample,current_sample,message,checked_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
 		r.ModelVersionID, r.Metric, r.PSIValue, r.Severity,
 		r.BaselineFrom, r.BaselineTo, r.CurrentFrom, r.CurrentTo,
+		r.BaselineSample, r.CurrentSample, r.Message, r.CheckedAt).Scan(&r.ID)
+	if err != nil {
+		return fmt.Errorf("drift.SaveDriftResult: %w", err)
+	}
+	return nil
+}
+
+func (a *Adapter) LatestResult(ctx context.Context, modelVersionID uuid.UUID, metric string) (*DriftResult, error) {
+	rows, err := a.pool.Query(ctx,
+		`SELECT id,model_version_id,metric,psi_value,severity,baseline_from,baseline_to,current_from,current_to,baseline_sample,current_sample,message,checked_at
+		FROM drift_results WHERE model_version_id=$1 AND metric=$2 ORDER BY checked_at DESC LIMIT 1`, modelVersionID, metric)
+	if err != nil {
+		return nil, fmt.Errorf("drift.LatestResult: %w", err)
+	}
+	defer rows.Close()
+	results, err := scanDriftResults(rows)
+	if err != nil || len(results) == 0 {
+		return nil, err
+	}
+	return &results[0], nil
+}
+
+func (a *Adapter) RefreshDriftResult(ctx context.Context, id uuid.UUID, r *DriftResult) error {
+	_, err := a.pool.Exec(ctx,
+		`UPDATE drift_results SET psi_value=$2, baseline_from=$3, baseline_to=$4, current_from=$5, current_to=$6,
+			baseline_sample=$7, current_sample=$8, message=$9, checked_at=$10 WHERE id=$1`,
+		id, r.PSIValue, r.BaselineFrom, r.BaselineTo, r.CurrentFrom, r.CurrentTo,
 		r.BaselineSample, r.CurrentSample, r.Message, r.CheckedAt)
-	return err
+	if err != nil {
+		return fmt.Errorf("drift.RefreshDriftResult: %w", err)
+	}
+	return nil
 }
 
 func (a *Adapter) GetLatestResults(ctx context.Context, modelVersionID uuid.UUID) ([]DriftResult, error) {

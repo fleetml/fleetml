@@ -14,6 +14,7 @@ import (
 	grpclib "google.golang.org/grpc"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
+	"github.com/fleetml/fleetml/internal/alert"
 	grpcapi "github.com/fleetml/fleetml/internal/api/grpc"
 	"github.com/fleetml/fleetml/internal/api/rest"
 	"github.com/fleetml/fleetml/internal/audit"
@@ -111,6 +112,11 @@ func run() error {
 	deviceCountAdapter := deploy.NewDeviceCountAdapter(pool)
 	deployEngine := deploy.NewEngine(deployRepo, telemetryAdapter, deviceCountAdapter, logger)
 	deploySvc.SetEngine(deployEngine)
+	alerts := alert.NewNotifier(nc, cfg.AlertWebhookURL, cfg.AlertWebhookSecret, logger)
+	if cfg.AlertWebhookURL != "" && cfg.AlertWebhookSecret == "" {
+		slog.Warn("ALERT_WEBHOOK_URL is set without ALERT_WEBHOOK_SECRET: webhook bodies will not be signed")
+	}
+	deployEngine.SetAlertSender(alerts)
 	versionChecker := deploy.NewVersionAdapter(pool)
 	deploySvc.SetVersionChecker(versionChecker)
 	deployTicker := deploy.NewTicker(deployEngine, deployRepo, cfg.DeployTickInterval, logger)
@@ -162,6 +168,7 @@ func run() error {
 	// Drift detection
 	driftAdapter := drift.NewAdapter(pool)
 	driftDetector := drift.NewDetector(driftAdapter, driftAdapter, logger)
+	driftDetector.SetAlertSender(alerts)
 	driftTicker := drift.NewTicker(driftDetector, driftAdapter, cfg.DriftTickInterval, logger)
 	go driftTicker.Start(ctx)
 
@@ -204,6 +211,15 @@ func run() error {
 	case <-consumerDone:
 	case <-time.After(15 * time.Second):
 		slog.Warn("telemetry consumer did not stop in time")
+	}
+
+	// Give in-flight webhook deliveries (with retries) a chance to finish.
+	alertsDone := make(chan struct{})
+	go func() { alerts.Wait(); close(alertsDone) }()
+	select {
+	case <-alertsDone:
+	case <-time.After(10 * time.Second):
+		slog.Warn("alert deliveries still pending at shutdown")
 	}
 
 	slog.Info("FleetML server stopped")

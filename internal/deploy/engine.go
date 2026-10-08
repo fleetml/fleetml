@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fleetml/fleetml/internal/alert"
 	"github.com/fleetml/fleetml/internal/rollout"
 )
 
@@ -56,12 +57,23 @@ var validTransitions = map[string]map[string]bool{
 // an offline device must not hold a rollout forever.
 const unavailableSeenWithin = 5 * time.Minute
 
+// AlertSender delivers alerts (implemented by *alert.Notifier).
+type AlertSender interface {
+	Send(a alert.Alert)
+}
+
 // Engine manages the lifecycle of deployments.
 type Engine struct {
 	repo          Repository
 	telemetryRepo TelemetryQuerier
 	devices       DeviceDirectory
+	alerts        AlertSender
 	logger        *slog.Logger
+}
+
+// SetAlertSender makes every rollback send a rollback alert.
+func (e *Engine) SetAlertSender(a AlertSender) {
+	e.alerts = a
 }
 
 // NewEngine creates a new deployment engine.
@@ -144,7 +156,7 @@ func (e *Engine) ProgressDeployment(ctx context.Context, deploymentID uuid.UUID)
 		if effectiveGate(dep).OnFailure == "PAUSE" {
 			return e.doPause(ctx, dep)
 		}
-		return e.doRollback(ctx, dep, gate.Reason)
+		return e.doRollback(ctx, dep, gate.Reason, "health_gate")
 	}
 
 	switch dep.Strategy {
@@ -341,14 +353,14 @@ func (e *Engine) RollbackDeployment(ctx context.Context, deploymentID uuid.UUID,
 	if err != nil {
 		return nil, err
 	}
-	return e.doRollback(ctx, dep, reason)
+	return e.doRollback(ctx, dep, reason, "manual")
 }
 
 // doRollback marks the deployment ROLLED_BACK. If the previous version is
 // known, a COMPLETE revert deployment of it is created so every targeted
 // device gets an explicit LOAD/UPDATE back to that version; otherwise devices
 // fall back to the next older active deployment of the same model.
-func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason string) (*Deployment, error) {
+func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason, trigger string) (*Deployment, error) {
 	if err := e.validateTransition(dep.Status, "ROLLED_BACK"); err != nil {
 		return nil, err
 	}
@@ -389,7 +401,17 @@ func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason string)
 	}
 
 	if e.logger != nil {
-		e.logger.Info("deployment rolled back", "id", dep.ID, "reason", reason)
+		e.logger.Info("deployment rolled back", "id", dep.ID, "reason", reason, "trigger", trigger)
+	}
+	if e.alerts != nil {
+		rb := &alert.Rollback{
+			DeploymentID: dep.ID.String(), ProjectID: dep.ProjectID.String(), ModelVersionID: dep.ModelVersionID.String(),
+			Strategy: dep.Strategy, Stage: dep.CurrentStage, Trigger: trigger, Reason: reason,
+		}
+		if dep.PreviousVersionID != nil {
+			rb.PreviousVersionID = dep.PreviousVersionID.String()
+		}
+		e.alerts.Send(alert.Alert{Type: alert.TypeRollback, Rollback: rb})
 	}
 	return dep, nil
 }
