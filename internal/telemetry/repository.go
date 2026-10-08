@@ -45,7 +45,29 @@ func (r *Repository) InsertEvents(ctx context.Context, events []Event) (int, err
 	if err != nil {
 		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
 	}
+	if err := r.insertFeatures(ctx, events); err != nil {
+		return 0, err
+	}
 	return int(count), nil
+}
+
+// insertFeatures stores the events' input histograms for feature-level drift.
+func (r *Repository) insertFeatures(ctx context.Context, events []Event) error {
+	var rows [][]interface{}
+	for _, e := range events {
+		for name, counts := range e.Features {
+			rows = append(rows, []interface{}{e.RecordedAt, e.ModelVersionID, name, counts})
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	_, err := r.pool.CopyFrom(ctx, pgx.Identifier{"feature_histograms"},
+		[]string{"recorded_at", "model_version_id", "feature", "counts"}, pgx.CopyFromRows(rows))
+	if err != nil {
+		return fmt.Errorf("telemetry.insertFeatures: %w", err)
+	}
+	return nil
 }
 
 // InsertEvent inserts a single telemetry event. Used as a fallback when a
@@ -63,7 +85,7 @@ func (r *Repository) InsertEvent(ctx context.Context, e Event) error {
 	if err != nil {
 		return fmt.Errorf("telemetry.InsertEvent: %w", err)
 	}
-	return nil
+	return r.insertFeatures(ctx, []Event{e})
 }
 
 // KnownModelVersions returns the subset of ids that are model versions in the

@@ -7,8 +7,6 @@ and documentation, and the README only claims it once it runs.
 ## Next
 
 - **Sigstore** as an alternative to the built-in artifact signing keys.
-- **Feature-level drift.** Input histograms from devices and PSI per feature,
-  next to today's latency and confidence drift.
 - **At-least-once telemetry.** NATS JetStream with acknowledgement after the
   database insert, and Grafana dashboards for the Prometheus metrics.
 - **Delta updates** for large models.

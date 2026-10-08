@@ -23,6 +23,7 @@ import (
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 	"github.com/fleetml/fleetml/internal/artifact"
+	"github.com/fleetml/fleetml/internal/features"
 )
 
 // AgentVersion is the agent's version, reported at registration.
@@ -49,6 +50,10 @@ type Agent struct {
 	flushEvery time.Duration
 	policy     fleetmlv1.DownloadPolicy
 	arms       map[string]string // version ID -> experiment arm ID
+	// reconfigured wakes the telemetry loop when the server changes its interval.
+	reconfigured chan struct{}
+	// featureBins are the bin edges of each model's features (model ID -> feature -> edges).
+	featureBins map[string]map[string][]float64
 }
 
 // New opens the agent's state and connects to the server (lazily).
@@ -82,7 +87,7 @@ func New(cfg *Config, log *slog.Logger) (*Agent, error) {
 	return &Agent{
 		cfg: cfg, store: store, queue: queue, log: log, http: &http.Client{Timeout: 30 * time.Minute},
 		conn: conn, devices: fleetmlv1.NewDeviceServiceClient(conn), tel: fleetmlv1.NewTelemetryServiceClient(conn),
-		now: time.Now, interval: cfg.HeartbeatInterval, batchSize: 100, flushEvery: 30 * time.Second, arms: map[string]string{},
+		now: time.Now, interval: cfg.HeartbeatInterval, batchSize: 100, flushEvery: 30 * time.Second, arms: map[string]string{}, reconfigured: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -253,12 +258,38 @@ func (a *Agent) applyConfig(c *fleetmlv1.DeviceConfig) {
 	if c.TelemetryBatchSize > 0 {
 		a.batchSize = int(c.TelemetryBatchSize)
 	}
-	if c.TelemetryFlushIntervalSeconds > 0 {
-		a.flushEvery = time.Duration(c.TelemetryFlushIntervalSeconds) * time.Second
+	if d := time.Duration(c.TelemetryFlushIntervalSeconds) * time.Second; d > 0 && d != a.flushEvery {
+		a.flushEvery = d
+		select {
+		case a.reconfigured <- struct{}{}:
+		default:
+		}
 	}
 	if c.DownloadPolicy != fleetmlv1.DownloadPolicy_DOWNLOAD_POLICY_UNSPECIFIED {
 		a.policy = c.DownloadPolicy
 	}
+	a.featureBins = map[string]map[string][]float64{}
+	for _, b := range c.FeatureBins {
+		if a.featureBins[b.ModelId] == nil {
+			a.featureBins[b.ModelId] = map[string][]float64{}
+		}
+		a.featureBins[b.ModelId][b.Feature] = b.Edges
+	}
+}
+
+// histograms bins an inference's feature values with the model's configured
+// edges; features the server did not configure are left out.
+func (a *Agent) histograms(modelID string, values map[string][]float64) []*fleetmlv1.FeatureHistogram {
+	a.mu.Lock()
+	bins := a.featureBins[modelID]
+	a.mu.Unlock()
+	var out []*fleetmlv1.FeatureHistogram
+	for name, v := range values {
+		if edges, ok := bins[name]; ok {
+			out = append(out, &fleetmlv1.FeatureHistogram{Name: name, Counts: features.Bin(edges, v)})
+		}
+	}
+	return out
 }
 
 // models returns the models with an active version, by model ID.
@@ -478,13 +509,15 @@ func pruneVersions(modelDir string, keep []string) {
 }
 
 // report queues a telemetry event; experiment arms are tagged automatically.
-func (a *Agent) report(versionID string, typ fleetmlv1.TelemetryEvent_EventType, latencyMs uint32, confidence float32, label, errMsg string) {
+func (a *Agent) report(versionID string, typ fleetmlv1.TelemetryEvent_EventType, latencyMs uint32, confidence float32, label, errMsg string,
+	hist ...*fleetmlv1.FeatureHistogram) {
 	a.mu.Lock()
 	arm := a.arms[versionID]
 	a.mu.Unlock()
 	err := a.queue.Add(&fleetmlv1.TelemetryEvent{
 		ModelVersionId: versionID, ExperimentArmId: arm, Type: typ, LatencyMs: latencyMs,
 		ConfidenceScore: confidence, PredictionLabel: label, ErrorMessage: errMsg, TimestampUnixMs: a.now().UnixMilli(),
+		Features: hist,
 	})
 	if err != nil {
 		a.log.Warn("queueing telemetry failed", "error", err)
@@ -503,6 +536,8 @@ func (a *Agent) telemetryLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-a.reconfigured:
+			continue // a new flush interval applies now, not after the old one
 		case <-time.After(wait):
 		}
 		if a.flush(ctx) {

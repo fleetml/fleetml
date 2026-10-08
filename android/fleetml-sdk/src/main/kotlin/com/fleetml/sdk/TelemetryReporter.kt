@@ -2,6 +2,7 @@ package com.fleetml.sdk
 
 import com.fleetml.sdk.internal.Logger
 import com.fleetml.sdk.internal.TelemetryQueue
+import fleetml.telemetry.v1.Telemetry.FeatureHistogram
 import fleetml.telemetry.v1.Telemetry.TelemetryEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -53,14 +54,21 @@ class TelemetryReporter internal constructor(
     /** Number of events waiting to be sent. */
     val pendingCount: Int get() = queue.size
 
-    /** Report one inference by the given active model. */
+    /**
+     * Report one inference by the given active model. [features] are the
+     * model's input values by feature name: each configured feature (set on the
+     * server, `PUT /models/{id}/features`) is binned into a histogram for
+     * feature-level drift; other names are ignored.
+     */
     fun reportInference(
         model: ActiveModel,
         latencyMs: Int,
         confidence: Float = 0f,
         predictionLabel: String = "",
         errorMessage: String = "",
-    ) = reportInference(model.versionId, latencyMs, confidence, predictionLabel, errorMessage = errorMessage)
+        features: Map<String, FloatArray> = emptyMap(),
+    ) = reportInference(model.versionId, latencyMs, confidence, predictionLabel, errorMessage = errorMessage,
+        histograms = histograms(model.modelId, features))
 
     /** Report one inference for a model version ID. */
     fun reportInference(
@@ -71,6 +79,17 @@ class TelemetryReporter internal constructor(
         memoryUsageMb: Int? = null,
         batteryPercent: Float? = null,
         errorMessage: String = "",
+    ) = reportInference(modelVersionId, latencyMs, confidence, predictionLabel, memoryUsageMb, batteryPercent, errorMessage, emptyList())
+
+    private fun reportInference(
+        modelVersionId: String,
+        latencyMs: Int,
+        confidence: Float,
+        predictionLabel: String,
+        memoryUsageMb: Int? = null,
+        batteryPercent: Float? = null,
+        errorMessage: String,
+        histograms: List<FeatureHistogram>,
     ) {
         enqueue(
             event(modelVersionId, TelemetryEvent.EventType.INFERENCE, latencyMs, errorMessage)
@@ -78,8 +97,24 @@ class TelemetryReporter internal constructor(
                 .setPredictionLabel(predictionLabel)
                 .setMemoryUsageMb(memoryUsageMb ?: availableMemoryMb())
                 .setBatteryPercent(batteryPercent ?: batteryPercent())
+                .addAllFeatures(histograms)
                 .build()
         )
+    }
+
+    /** Bin edges per model ID and feature name, from the server's DeviceConfig. */
+    @Volatile private var featureBins: Map<String, Map<String, DoubleArray>> = emptyMap()
+
+    internal fun setFeatureBins(bins: List<fleetml.device.v1.Device.FeatureBins>) {
+        featureBins = bins.groupBy { it.modelId }.mapValues { (_, l) -> l.associate { it.feature to it.edgesList.toDoubleArray() } }
+    }
+
+    internal fun histograms(modelId: String, features: Map<String, FloatArray>): List<FeatureHistogram> {
+        val bins = featureBins[modelId] ?: return emptyList()
+        return features.mapNotNull { (name, values) ->
+            val edges = bins[name] ?: return@mapNotNull null
+            FeatureHistogram.newBuilder().setName(name).addAllCounts(bin(edges, values)).build()
+        }
     }
 
     /** Report a model lifecycle event (MODEL_LOAD, MODEL_LOAD_FAILED, OOM, ERROR). */
@@ -169,4 +204,16 @@ class TelemetryReporter internal constructor(
         internal fun backoffMs(failures: Int): Long =
             (BASE_BACKOFF_MS shl (failures - 1).coerceIn(0, 10)).coerceAtMost(MAX_BACKOFF_MS)
     }
+}
+
+/** Counts values into edges.size + 1 bins (below the first edge, between edges, at or above the last); NaN is skipped. */
+internal fun bin(edges: DoubleArray, values: FloatArray): List<Int> {
+    val counts = IntArray(edges.size + 1)
+    for (v in values) {
+        if (v.isNaN()) continue
+        var i = 0
+        while (i < edges.size && edges[i] <= v) i++
+        counts[i]++
+    }
+    return counts.toList()
 }

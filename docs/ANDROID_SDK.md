@@ -186,6 +186,8 @@ reports reachability.
 ```kotlin
 val model = FleetML.activeModel("iris")!!
 FleetML.getTelemetryReporter().reportInference(model, latencyMs = 3, confidence = 0.97f, predictionLabel = "virginica")
+// with input values, for feature-level drift (only features configured on the server are kept):
+FleetML.getTelemetryReporter().reportInference(model, latencyMs = 3, features = mapOf("petal_length" to floatArrayOf(5.1f)))
 ```
 
 Events go into a persistent queue (bounded to 10,000; oldest dropped first):
@@ -193,7 +195,10 @@ they survive process death and are kept while offline or before registration.
 They are sent in batches every flush interval, with exponential backoff (5 s up
 to 5 min) after a failure and an immediate flush when the connection returns.
 For a model in an A/B experiment the event carries the device's arm ID
-automatically, so results are attributed per arm.
+automatically, so results are attributed per arm. Feature values are binned
+on the device with the edges from the server
+([feature-level drift](ROLLOUTS.md#feature-level-drift)); only the counts
+are sent.
 
 ## Emulator runbook
 

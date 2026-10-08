@@ -24,6 +24,9 @@ type InferenceEvent struct {
 	Label      string  `json:"label"`
 	// Error marks the inference as failed (counts against the health gate).
 	Error string `json:"error"`
+	// Features are the input values by feature name, for feature-level
+	// drift; only features configured for the model are reported.
+	Features map[string][]float64 `json:"features,omitempty"`
 }
 
 // serveLocal starts the local telemetry endpoint: POST /v1/events with one
@@ -77,17 +80,18 @@ func (a *Agent) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		events = []InferenceEvent{e}
 	}
-	byName := map[string]string{}
-	for _, m := range a.ActiveModels() {
-		byName[m.Name] = m.Active.VersionID
+	type active struct{ modelID, versionID string }
+	byName := map[string]active{}
+	for id, m := range a.models() {
+		byName[m.Name] = active{id, m.Active.VersionID}
 	}
 	accepted := 0
 	for _, e := range events {
-		versionID, ok := byName[e.Model]
+		m, ok := byName[e.Model]
 		if !ok {
 			continue
 		}
-		a.report(versionID, fleetmlv1.TelemetryEvent_INFERENCE, e.LatencyMs, e.Confidence, e.Label, e.Error)
+		a.report(m.versionID, fleetmlv1.TelemetryEvent_INFERENCE, e.LatencyMs, e.Confidence, e.Label, e.Error, a.histograms(m.modelID, e.Features)...)
 		accepted++
 	}
 	w.Header().Set("Content-Type", "application/json")

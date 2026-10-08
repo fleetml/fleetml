@@ -24,6 +24,10 @@ message TelemetryEvent {
   float battery_percent = 8;
   string error_message = 9;
   int64 timestamp_unix_ms = 10;
+  // Optional input histograms for feature-level drift: for each configured
+  // feature of the model (DeviceConfig.feature_bins), how many of this
+  // inference's values fell into each bin.
+  repeated FeatureHistogram features = 11;
 
   enum EventType {
     EVENT_TYPE_UNSPECIFIED = 0;
@@ -36,6 +40,13 @@ message TelemetryEvent {
     // A downloaded model's signature did not verify; it was not activated.
     SIGNATURE_INVALID = 7;
   }
+}
+
+// Counts per bin for one feature; len(counts) == len(edges) + 1 (values below
+// the first edge, between each pair of edges, at or above the last edge).
+message FeatureHistogram {
+  string name = 1;
+  repeated uint32 counts = 2;
 }
 
 message TelemetryAck {

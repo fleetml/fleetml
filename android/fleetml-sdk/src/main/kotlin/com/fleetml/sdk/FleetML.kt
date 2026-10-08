@@ -291,6 +291,7 @@ internal class FleetMLInstance(
     private fun applyConfig(c: fleetml.device.v1.Device.DeviceConfig) {
         if (c.heartbeatIntervalSeconds > 0) heartbeat.setInterval(c.heartbeatIntervalSeconds.toLong())
         telemetryReporter.configure(c.telemetryBatchSize.toInt(), c.telemetryFlushIntervalSeconds.toLong())
+        telemetryReporter.setFeatureBins(c.featureBinsList)
         downloadPolicy = BatteryPolicy.fromProto(c.downloadPolicy, downloadPolicy)
         if (c.backgroundHeartbeatIntervalSeconds > 0) backgroundIntervalSeconds = c.backgroundHeartbeatIntervalSeconds.toLong()
     }

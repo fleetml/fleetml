@@ -269,7 +269,32 @@ ok = hmac.compare_digest(expected, request.headers["X-FleetML-Signature"])
 Drift is checked every `DRIFT_TICK_INTERVAL` (default 5m) for ACTIVE versions
 (PSI of the last 24h against the 7 days before, at least 50 samples each) and on
 `POST /drift/{model_version_id}/check`. An unchanged severity updates the latest
-result in place; only a change of severity adds a row.
+result in place; only a change of severity adds a row, and only a change into
+CRITICAL sends an alert. Every check also records its PSI
+(`GET /drift/{model_version_id}/points?days=7`), which the dashboard's Drift
+page draws as PSI over time.
+
+### Feature-level drift
+
+Latency and confidence say that something changed; input features say what.
+Declare a model's features and their bin edges:
+
+```bash
+api PUT /api/v1/models/$M/features \
+  '{"features":[{"name":"petal_length","edges":[3,3.5,4,4.5,5,5.5,6]},{"name":"sepal_width","edges":[2.5,2.75,3,3.25,3.5]}]}'
+```
+
+Devices receive the edges in `DeviceConfig.feature_bins`. The app passes each
+inference's input values by feature name (Android
+`reportInference(model, ..., features = mapOf("petal_length" to floatArrayOf(5.1f)))`,
+iOS `reportInference(model:..., features: ["petal_length": [5.1]])`, or
+`"features"` on the Linux agent's local endpoint); the SDK bins them and sends
+counts per bin, never the values themselves. Edges are strictly increasing
+(1 to 50); `n` edges make `n + 1` bins, from below the first edge to at or
+above the last. The drift check compares each feature's histogram of the last
+24 hours with the 7 days before (at least 50 values each) and records it as
+metric `feature:<name>`, with the same severities, deduplication and alerts
+as latency and confidence.
 
 ## Runbook
 

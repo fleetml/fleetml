@@ -240,3 +240,27 @@ func TestInstallRejectsBadSignature(t *testing.T) {
 	require.Len(t, a.ActiveModels(), 1)
 	assert.Equal(t, 1, downloads)
 }
+
+// Feature values posted by the inference process are binned with the edges
+// the server configured for the model; unconfigured features are dropped.
+func TestLocalEventsBinFeatures(t *testing.T) {
+	body := []byte("model")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer srv.Close()
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: t.TempDir()}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1",
+		VariantId: "var-1", DownloadUrl: srv.URL, BlobSha256: shaHex(body), Action: fleetmlv1.ModelAssignment_LOAD}})
+	a.applyConfig(&fleetmlv1.DeviceConfig{FeatureBins: []*fleetmlv1.FeatureBins{{ModelId: "m1", Feature: "petal_length", Edges: []float64{1, 2}}}})
+
+	rec := httptest.NewRecorder()
+	a.handleEvents(rec, httptest.NewRequest(http.MethodPost, "/v1/events",
+		strings.NewReader(`{"model":"iris","latency_ms":3,"features":{"petal_length":[0.5,1.5,1.7,9],"unknown":[1]}}`)))
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	events := a.queue.Peek(100)
+	last := events[len(events)-1]
+	require.Len(t, last.Features, 1)
+	assert.Equal(t, "petal_length", last.Features[0].Name)
+	assert.Equal(t, []uint32{1, 2, 1}, last.Features[0].Counts)
+}

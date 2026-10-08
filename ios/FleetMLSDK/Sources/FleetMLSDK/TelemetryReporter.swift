@@ -41,8 +41,17 @@ public final class TelemetryReporter {
     public var pendingCount: Int { queue.count }
 
     /// Report one inference by an active model.
-    public func reportInference(model: ActiveModel, latencyMs: Int, confidence: Float = 0, label: String = "", error: String = "") {
-        reportInference(versionID: model.versionID, latencyMs: latencyMs, confidence: confidence, label: label, error: error)
+    ///
+    /// `features` are the model's input values by feature name: each feature configured on the
+    /// server (`PUT /models/{id}/features`) is binned into a histogram for feature-level drift;
+    /// other names are ignored.
+    public func reportInference(model: ActiveModel, latencyMs: Int, confidence: Float = 0, label: String = "", error: String = "",
+                                features: [String: [Float]] = [:]) {
+        var e = event(versionID: model.versionID, type: .inference, latencyMs: latencyMs, error: error)
+        e.confidenceScore = confidence
+        e.predictionLabel = label
+        e.features = histograms(modelID: model.modelID, features: features)
+        enqueue(e)
     }
 
     /// Report one inference for a model version ID.
@@ -51,6 +60,34 @@ public final class TelemetryReporter {
         e.confidenceScore = confidence
         e.predictionLabel = label
         enqueue(e)
+    }
+
+    /// Bin edges per model ID and feature name, from the server's DeviceConfig.
+    private var featureBins: [String: [String: [Double]]] = [:]
+
+    func setFeatureBins(_ bins: [Fleetml_Device_V1_FeatureBins]) {
+        let grouped = Dictionary(grouping: bins, by: \.modelID).mapValues { Dictionary($0.map { ($0.feature, $0.edges) }, uniquingKeysWith: { a, _ in a }) }
+        lock.withLock { featureBins = grouped }
+    }
+
+    func histograms(modelID: String, features: [String: [Float]]) -> [Fleetml_Telemetry_V1_FeatureHistogram] {
+        guard let bins = lock.withLock({ featureBins[modelID] }) else { return [] }
+        return features.sorted { $0.key < $1.key }.compactMap { name, values in
+            guard let edges = bins[name] else { return nil }
+            var h = Fleetml_Telemetry_V1_FeatureHistogram()
+            h.name = name
+            h.counts = Self.bin(edges: edges, values: values)
+            return h
+        }
+    }
+
+    /// Counts values into edges.count + 1 bins (below the first edge, between edges, at or above the last); NaN is skipped.
+    static func bin(edges: [Double], values: [Float]) -> [UInt32] {
+        var counts = [UInt32](repeating: 0, count: edges.count + 1)
+        for v in values where !v.isNaN {
+            counts[edges.firstIndex { $0 > Double(v) } ?? edges.count] += 1
+        }
+        return counts
     }
 
     /// Report a model lifecycle event.

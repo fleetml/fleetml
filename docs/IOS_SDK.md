@@ -183,6 +183,8 @@ ten seconds.
 ```swift
 if let model = FleetML.activeModel(named: "iris") {
     FleetML.telemetry?.reportInference(model: model, latencyMs: 3, confidence: 0.97, label: "virginica")
+    // with input values, for feature-level drift (only features configured on the server are kept):
+    FleetML.telemetry?.reportInference(model: model, latencyMs: 3, features: ["petal_length": [5.1]])
 }
 ```
 
@@ -191,7 +193,9 @@ they survive app termination and are kept while offline or before
 registration. They are sent in batches every flush interval, with exponential
 backoff (5 s up to 5 min) after a failure and an immediate flush when the
 connection returns. For a model in an A/B experiment the event carries the
-device's arm ID automatically.
+device's arm ID automatically. Feature values are binned on the device with
+the edges from the server ([feature-level drift](ROLLOUTS.md#feature-level-drift));
+only the counts are sent.
 
 ## Tests
 

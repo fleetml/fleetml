@@ -15,6 +15,7 @@ import (
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 	"github.com/fleetml/fleetml/internal/device"
+	"github.com/fleetml/fleetml/internal/drift"
 	"github.com/fleetml/fleetml/internal/signing"
 )
 
@@ -28,9 +29,35 @@ const (
 // DeviceServiceServer implements the fleetmlv1.DeviceServiceServer interface.
 type DeviceServiceServer struct {
 	fleetmlv1.UnimplementedDeviceServiceServer
-	service *device.Service
-	signing SigningSource
-	logger  *slog.Logger
+	service  *device.Service
+	signing  SigningSource
+	features FeatureSource
+	logger   *slog.Logger
+}
+
+// FeatureSource lists the features a device's models report (implemented
+// by *drift.Adapter).
+type FeatureSource interface {
+	DeviceFeatureBins(ctx context.Context, deviceID string) ([]drift.DeviceFeature, error)
+}
+
+// SetFeatures sends each device the bin edges of its models' features.
+func (s *DeviceServiceServer) SetFeatures(src FeatureSource) { s.features = src }
+
+// deviceConfig is the device's DeviceConfig, with its feature bins.
+func (s *DeviceServiceServer) deviceConfig(ctx context.Context, c device.Config, deviceID string) (*fleetmlv1.DeviceConfig, error) {
+	out := deviceConfigProto(c)
+	if s.features == nil {
+		return out, nil
+	}
+	bins, err := s.features.DeviceFeatureBins(ctx, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range bins {
+		out.FeatureBins = append(out.FeatureBins, &fleetmlv1.FeatureBins{ModelId: b.ModelID, Feature: b.Name, Edges: b.Edges})
+	}
+	return out, nil
 }
 
 // SigningSource provides the project keys and variant signatures devices
@@ -96,15 +123,19 @@ func (s *DeviceServiceServer) Register(ctx context.Context, req *fleetmlv1.Regis
 	}
 
 	keys, err := s.signingKeys(ctx, resp.DeviceID)
+	var cfg *fleetmlv1.DeviceConfig
+	if err == nil {
+		cfg, err = s.deviceConfig(ctx, resp.Config, resp.DeviceID)
+	}
 	if err != nil {
-		s.logger.Error("loading signing keys failed", "device_id", resp.DeviceID, "error", err)
+		s.logger.Error("loading signing keys or features failed", "device_id", resp.DeviceID, "error", err)
 		return nil, status.Error(codes.Internal, "registration failed")
 	}
 	return &fleetmlv1.RegisterResponse{
 		DeviceId:       resp.DeviceID,
 		AuthToken:      resp.AuthToken,
 		TokenExpiresAt: resp.TokenExpiresAt.Unix(),
-		Config:         deviceConfigProto(resp.Config),
+		Config:         cfg,
 		SigningKeys:    keys,
 	}, nil
 }
@@ -191,6 +222,10 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 	if err == nil && s.signing != nil {
 		err = s.attachSignatures(ctx, protoAssignments)
 	}
+	var cfg *fleetmlv1.DeviceConfig
+	if err == nil {
+		cfg, err = s.deviceConfig(ctx, resp.Config, deviceID.String())
+	}
 	if err != nil {
 		s.logger.Error("loading signatures failed", "device_id", deviceID, "error", err)
 		return nil, status.Error(codes.Internal, "heartbeat failed")
@@ -210,7 +245,7 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		Assignments:          protoAssignments,
 		Experiments:          protoExperiments,
 		NextHeartbeatSeconds: resp.NextHeartbeatSeconds,
-		Config:               deviceConfigProto(resp.Config),
+		Config:               cfg,
 		SigningKeys:          keys,
 	}, nil
 }

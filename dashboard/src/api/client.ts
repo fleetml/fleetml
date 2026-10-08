@@ -1,4 +1,4 @@
-import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, AlertSink, AlertDelivery, Session, SessionInfo } from '../types/api';
+import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, DriftPoint, AlertSink, AlertDelivery, Session, SessionInfo } from '../types/api';
 import { getCsrfToken, notifyUnauthorized, UnauthorizedError } from './auth';
 
 interface ApiResponse<T> { data: T; error?: { code: string; message: string }; pagination?: { total: number; limit: number; offset: number } }
@@ -59,6 +59,7 @@ export const getTelemetryTimeSeries = (id: string, interval: string) => apiGet<T
 export const getDriftStatus = (id: string) => apiGet<DriftResult[]>(`/api/v1/drift/${id}`);
 export const getDriftHistory = (id: string) => apiGet<DriftResult[]>(`/api/v1/drift/${id}/history`);
 export const checkDrift = (id: string) => apiPost<DriftResult[]>(`/api/v1/drift/${id}/check`);
+export const getDriftPoints = (id: string, days = 7) => apiGet<DriftPoint[]>(`/api/v1/drift/${id}/points?days=${days}`);
 export const getDeviceProfile = (id: string) => apiGet<DeviceProfile>(`/api/v1/devices/${id}/profile`);
 export const getExperimentResults = (id: string) => apiGet<ExperimentResult>(`/api/v1/experiments/${id}/results`);
 export const startDeployment = (id: string) => apiPost<Deployment>(`/api/v1/deployments/${id}/start`);

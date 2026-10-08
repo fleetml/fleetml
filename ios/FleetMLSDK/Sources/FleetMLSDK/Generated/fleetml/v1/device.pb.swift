@@ -210,6 +210,27 @@ nonisolated struct Fleetml_Device_V1_DeviceConfig: Sendable {
   /// Which networks non-urgent model downloads may use.
   var downloadPolicy: Fleetml_Device_V1_DownloadPolicy = .unspecified
 
+  /// Bin edges of the features to report with inferences, per model.
+  var featureBins: [Fleetml_Device_V1_FeatureBins] = []
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
+/// How to bin one input feature of a model for feature-level drift.
+nonisolated struct Fleetml_Device_V1_FeatureBins: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var modelID: String = String()
+
+  var feature: String = String()
+
+  /// Strictly increasing; a value v falls into bin i where edges[i-1] <= v < edges[i].
+  var edges: [Double] = []
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
@@ -650,7 +671,7 @@ nonisolated extension Fleetml_Device_V1_RefreshTokenResponse: SwiftProtobuf.Mess
 
 nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".DeviceConfig"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}heartbeat_interval_seconds\0\u{3}telemetry_batch_size\0\u{3}max_cache_size_mb\0\u{3}telemetry_flush_interval_seconds\0\u{3}background_heartbeat_interval_seconds\0\u{3}download_policy\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}heartbeat_interval_seconds\0\u{3}telemetry_batch_size\0\u{3}max_cache_size_mb\0\u{3}telemetry_flush_interval_seconds\0\u{3}background_heartbeat_interval_seconds\0\u{3}download_policy\0\u{3}feature_bins\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -664,6 +685,7 @@ nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, Swi
       case 4: try { try decoder.decodeSingularUInt32Field(value: &self.telemetryFlushIntervalSeconds) }()
       case 5: try { try decoder.decodeSingularUInt32Field(value: &self.backgroundHeartbeatIntervalSeconds) }()
       case 6: try { try decoder.decodeSingularEnumField(value: &self.downloadPolicy) }()
+      case 7: try { try decoder.decodeRepeatedMessageField(value: &self.featureBins) }()
       default: break
       }
     }
@@ -688,6 +710,9 @@ nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, Swi
     if self.downloadPolicy != .unspecified {
       try visitor.visitSingularEnumField(value: self.downloadPolicy, fieldNumber: 6)
     }
+    if !self.featureBins.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.featureBins, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -698,6 +723,47 @@ nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, Swi
     if lhs.telemetryFlushIntervalSeconds != rhs.telemetryFlushIntervalSeconds {return false}
     if lhs.backgroundHeartbeatIntervalSeconds != rhs.backgroundHeartbeatIntervalSeconds {return false}
     if lhs.downloadPolicy != rhs.downloadPolicy {return false}
+    if lhs.featureBins != rhs.featureBins {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Fleetml_Device_V1_FeatureBins: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".FeatureBins"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{1}feature\0\u{1}edges\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.modelID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.feature) }()
+      case 3: try { try decoder.decodeRepeatedDoubleField(value: &self.edges) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.modelID.isEmpty {
+      try visitor.visitSingularStringField(value: self.modelID, fieldNumber: 1)
+    }
+    if !self.feature.isEmpty {
+      try visitor.visitSingularStringField(value: self.feature, fieldNumber: 2)
+    }
+    if !self.edges.isEmpty {
+      try visitor.visitPackedDoubleField(value: self.edges, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Fleetml_Device_V1_FeatureBins, rhs: Fleetml_Device_V1_FeatureBins) -> Bool {
+    if lhs.modelID != rhs.modelID {return false}
+    if lhs.feature != rhs.feature {return false}
+    if lhs.edges != rhs.edges {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -212,3 +212,10 @@ export interface SessionInfo {
   session: Session;
   csrf_token: string;
 }
+
+export interface DriftPoint {
+  metric: string;
+  psi: number;
+  severity: string;
+  checked_at: string;
+}

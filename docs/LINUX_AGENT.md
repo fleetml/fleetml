@@ -123,7 +123,10 @@ curl -s localhost:9601/v1/models     # the active models and their paths
 ```
 
 `POST /v1/events` takes one event or an array; set `"error"` to a message for
-a failed inference (it counts against the health gate). Events are attributed
+a failed inference (it counts against the health gate), and `"features"` to
+the input values by feature name (`{"petal_length": [5.1]}`) for
+[feature-level drift](ROLLOUTS.md#feature-level-drift): the agent bins them
+with the edges the server sent and reports only the counts. Events are attributed
 to the model's active version and experiment arm, queued on disk (up to 10,000;
 oldest dropped first) and sent in batches. Keep the endpoint on `127.0.0.1`.
 

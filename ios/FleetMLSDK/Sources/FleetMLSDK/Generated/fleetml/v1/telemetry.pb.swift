@@ -59,6 +59,11 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
 
   var timestampUnixMs: Int64 = 0
 
+  /// Optional input histograms for feature-level drift: for each configured
+  /// feature of the model (DeviceConfig.feature_bins), how many of this
+  /// inference's values fell into each bin.
+  var features: [Fleetml_Telemetry_V1_FeatureHistogram] = []
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   nonisolated enum EventType: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -124,6 +129,22 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
   init() {}
 }
 
+/// Counts per bin for one feature; len(counts) == len(edges) + 1 (values below
+/// the first edge, between each pair of edges, at or above the last edge).
+nonisolated struct Fleetml_Telemetry_V1_FeatureHistogram: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var name: String = String()
+
+  var counts: [UInt32] = []
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
 nonisolated struct Fleetml_Telemetry_V1_TelemetryAck: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -179,7 +200,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryBatch: SwiftProtobuf.Message
 
 nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".TelemetryEvent"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_version_id\0\u{3}experiment_arm_id\0\u{1}type\0\u{3}latency_ms\0\u{3}confidence_score\0\u{3}prediction_label\0\u{3}memory_usage_mb\0\u{3}battery_percent\0\u{3}error_message\0\u{3}timestamp_unix_ms\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_version_id\0\u{3}experiment_arm_id\0\u{1}type\0\u{3}latency_ms\0\u{3}confidence_score\0\u{3}prediction_label\0\u{3}memory_usage_mb\0\u{3}battery_percent\0\u{3}error_message\0\u{3}timestamp_unix_ms\0\u{1}features\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -197,6 +218,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
       case 8: try { try decoder.decodeSingularFloatField(value: &self.batteryPercent) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self.errorMessage) }()
       case 10: try { try decoder.decodeSingularInt64Field(value: &self.timestampUnixMs) }()
+      case 11: try { try decoder.decodeRepeatedMessageField(value: &self.features) }()
       default: break
       }
     }
@@ -233,6 +255,9 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
     if self.timestampUnixMs != 0 {
       try visitor.visitSingularInt64Field(value: self.timestampUnixMs, fieldNumber: 10)
     }
+    if !self.features.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.features, fieldNumber: 11)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -247,6 +272,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
     if lhs.batteryPercent != rhs.batteryPercent {return false}
     if lhs.errorMessage != rhs.errorMessage {return false}
     if lhs.timestampUnixMs != rhs.timestampUnixMs {return false}
+    if lhs.features != rhs.features {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -254,6 +280,41 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
 
 nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent.EventType: SwiftProtobuf._ProtoNameProviding {
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_TYPE_UNSPECIFIED\0\u{1}INFERENCE\0\u{1}MODEL_LOAD\0\u{1}MODEL_LOAD_FAILED\0\u{1}OOM\0\u{1}PREDICTION_DRIFT\0\u{1}ERROR\0\u{1}SIGNATURE_INVALID\0")
+}
+
+nonisolated extension Fleetml_Telemetry_V1_FeatureHistogram: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".FeatureHistogram"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}counts\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeRepeatedUInt32Field(value: &self.counts) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if !self.counts.isEmpty {
+      try visitor.visitPackedUInt32Field(value: self.counts, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Fleetml_Telemetry_V1_FeatureHistogram, rhs: Fleetml_Telemetry_V1_FeatureHistogram) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.counts != rhs.counts {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
 }
 
 nonisolated extension Fleetml_Telemetry_V1_TelemetryAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

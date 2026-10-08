@@ -236,6 +236,7 @@ func run() error {
 	}, 10*time.Second)
 	deviceGRPC := grpcapi.NewDeviceServiceServer(deviceSvc, logger)
 	deviceGRPC.SetSigning(keyring)
+	deviceGRPC.SetFeatures(drift.NewAdapter(pool))
 	fleetmlv1.RegisterDeviceServiceServer(grpcServer.GRPCServer(), deviceGRPC)
 	telemetryGRPC := grpcapi.NewTelemetryServiceServer(telemetrySvc, logger)
 	fleetmlv1.RegisterTelemetryServiceServer(grpcServer.GRPCServer(), telemetryGRPC)
@@ -254,6 +255,7 @@ func run() error {
 	driftAdapter := drift.NewAdapter(pool)
 	driftDetector := drift.NewDetector(driftAdapter, driftAdapter, logger)
 	driftDetector.SetAlertSender(alerts)
+	driftDetector.SetFeatureRepository(driftAdapter)
 	driftTicker := drift.NewTicker(driftDetector, driftAdapter, cfg.DriftTickInterval, logger)
 	go driftTicker.Start(ctx)
 

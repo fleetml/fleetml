@@ -190,6 +190,7 @@ final class Instance {
     private func apply(_ c: Fleetml_Device_V1_DeviceConfig) {
         if c.heartbeatIntervalSeconds > 0 { heartbeat.setInterval(TimeInterval(c.heartbeatIntervalSeconds)) }
         telemetry.configure(batchSize: Int(c.telemetryBatchSize), flushInterval: TimeInterval(c.telemetryFlushIntervalSeconds))
+        telemetry.setFeatureBins(c.featureBins)
         lock.withLock {
             downloadPolicy = BatteryPolicy.fromProto(c.downloadPolicy, fallback: downloadPolicy)
             if c.backgroundHeartbeatIntervalSeconds > 0 { backgroundInterval = TimeInterval(c.backgroundHeartbeatIntervalSeconds) }

@@ -75,6 +75,16 @@ message DeviceConfig {
   uint32 background_heartbeat_interval_seconds = 5;
   // Which networks non-urgent model downloads may use.
   DownloadPolicy download_policy = 6;
+  // Bin edges of the features to report with inferences, per model.
+  repeated FeatureBins feature_bins = 7;
+}
+
+// How to bin one input feature of a model for feature-level drift.
+message FeatureBins {
+  string model_id = 1;
+  string feature = 2;
+  // Strictly increasing; a value v falls into bin i where edges[i-1] <= v < edges[i].
+  repeated double edges = 3;
 }
 
 // When a device may download a model that is not marked urgent. Urgent

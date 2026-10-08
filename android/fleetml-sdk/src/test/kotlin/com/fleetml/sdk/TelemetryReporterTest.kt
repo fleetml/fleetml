@@ -110,4 +110,19 @@ class TelemetryReporterTest {
         assertEquals(50, config.telemetryBatchSize)
         assertEquals(30L, config.telemetryFlushIntervalSeconds)
     }
+
+    @Test
+    fun `feature values are binned with the configured edges`() = runTest {
+        val r = reporter(batchSize = 10)
+        r.setFeatureBins(listOf(fleetml.device.v1.Device.FeatureBins.newBuilder().setModelId("m1").setFeature("petal_length")
+            .addAllEdges(listOf(1.0, 2.0)).build()))
+        val model = ActiveModel("m1", "iris", "1.0.0", "v1", "var1", "sha", File(dir, "x"))
+        r.reportInference(model, latencyMs = 3, features = mapOf("petal_length" to floatArrayOf(0.5f, 1.5f, 1.7f, 9f), "unknown" to floatArrayOf(1f)))
+        creds = DeviceCredentials("dev", "tok")
+        assertTrue(r.flushNow())
+        val features = sent.flatten().single().featuresList
+        assertEquals(1, features.size)
+        assertEquals("petal_length", features[0].name)
+        assertEquals(listOf(1, 2, 1), features[0].countsList)
+    }
 }

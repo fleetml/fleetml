@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
+	"github.com/fleetml/fleetml/internal/features"
 	"github.com/fleetml/fleetml/internal/telemetry"
 )
 
@@ -81,6 +82,7 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 			BatteryPercent:  float64(pe.GetBatteryPercent()),
 			ErrorMessage:    pe.GetErrorMessage(),
 			RecordedAt:      recordedAt,
+			Features:        featureCounts(pe.GetFeatures()),
 		})
 	}
 
@@ -96,4 +98,26 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 		AcceptedCount: uint32(accepted),
 		RejectedCount: uint32(rejected),
 	}, nil
+}
+
+// featureCounts keeps well-formed histograms (valid name, at most
+// features.MaxEdges+1 bins); drift ignores those that do not match the
+// model's configured bins.
+func featureCounts(in []*fleetmlv1.FeatureHistogram) map[string][]int32 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]int32, len(in))
+	for _, h := range in {
+		c := h.GetCounts()
+		if features.Validate(h.GetName(), []float64{0}) != nil || len(c) == 0 || len(c) > features.MaxEdges+1 {
+			continue
+		}
+		counts := make([]int32, len(c))
+		for i, v := range c {
+			counts[i] = int32(min(v, 1<<30))
+		}
+		out[h.GetName()] = counts
+	}
+	return out
 }

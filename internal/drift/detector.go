@@ -45,6 +45,17 @@ type ResultStore interface {
 	RefreshDriftResult(ctx context.Context, id uuid.UUID, result *DriftResult) error
 }
 
+// FeatureRepository loads feature specs and histograms (implemented by *Adapter).
+type FeatureRepository interface {
+	FeatureSpecsForVersion(ctx context.Context, versionID uuid.UUID) ([]FeatureSpec, error)
+	FeatureCounts(ctx context.Context, versionID uuid.UUID, feature string, bins int, from, to time.Time) ([]float64, error)
+}
+
+// PointStore records every check's PSI (implemented by *Adapter).
+type PointStore interface {
+	AddPoint(ctx context.Context, r *DriftResult) error
+}
+
 // AlertSender delivers alerts (implemented by *alert.Notifier).
 type AlertSender interface {
 	Send(a alert.Alert)
@@ -52,10 +63,16 @@ type AlertSender interface {
 
 // Detector checks for model drift.
 type Detector struct {
-	repo   TelemetryRepository
-	store  ResultStore
-	alerts AlertSender
-	logger *slog.Logger
+	repo     TelemetryRepository
+	store    ResultStore
+	features FeatureRepository
+	alerts   AlertSender
+	logger   *slog.Logger
+}
+
+// SetFeatureRepository enables feature-level drift.
+func (d *Detector) SetFeatureRepository(f FeatureRepository) {
+	d.features = f
 }
 
 // SetAlertSender makes transitions into CRITICAL send a drift alert.
@@ -70,6 +87,11 @@ func (d *Detector) SetAlertSender(a AlertSender) {
 func (d *Detector) record(ctx context.Context, r *DriftResult) {
 	if d.store == nil {
 		return
+	}
+	if ps, ok := d.store.(PointStore); ok {
+		if err := ps.AddPoint(ctx, r); err != nil && d.logger != nil {
+			d.logger.Warn("drift: recording the PSI point failed", "error", err)
+		}
 	}
 	latest, err := d.store.LatestResult(ctx, r.ModelVersionID, r.Metric)
 	if err != nil {
@@ -167,7 +189,66 @@ func (d *Detector) CheckDrift(ctx context.Context, modelVersionID uuid.UUID, bas
 		results = append(results, r)
 	}
 
+	featureResults, err := d.checkFeatures(ctx, modelVersionID, baselineFrom, baselineTo, currentFrom, currentTo, now)
+	if err != nil {
+		return nil, err
+	}
+	return append(results, featureResults...), nil
+}
+
+// checkFeatures compares each configured feature's histogram of the current
+// window with the baseline's (PSI over the configured bins).
+func (d *Detector) checkFeatures(ctx context.Context, versionID uuid.UUID, baselineFrom, baselineTo, currentFrom, currentTo, now time.Time) ([]DriftResult, error) {
+	if d.features == nil {
+		return nil, nil
+	}
+	specs, err := d.features.FeatureSpecsForVersion(ctx, versionID)
+	if err != nil {
+		return nil, fmt.Errorf("loading feature specs: %w", err)
+	}
+	var results []DriftResult
+	for _, f := range specs {
+		bins := len(f.Edges) + 1
+		base, err := d.features.FeatureCounts(ctx, versionID, f.Name, bins, baselineFrom, baselineTo)
+		if err != nil {
+			return nil, err
+		}
+		cur, err := d.features.FeatureCounts(ctx, versionID, f.Name, bins, currentFrom, currentTo)
+		if err != nil {
+			return nil, err
+		}
+		nBase, nCur := sum(base), sum(cur)
+		if nBase < minSamples || nCur < minSamples {
+			continue
+		}
+		psi := PSI(normalize(base, nBase), normalize(cur, nCur))
+		sev := classifySeverity(psi)
+		r := DriftResult{
+			ModelVersionID: versionID, Metric: FeatureMetricPrefix + f.Name, PSIValue: psi, Severity: sev,
+			BaselineFrom: baselineFrom, BaselineTo: baselineTo, CurrentFrom: currentFrom, CurrentTo: currentTo,
+			BaselineSample: int(nBase), CurrentSample: int(nCur),
+			Message: fmt.Sprintf("Feature %s PSI=%.4f (%s)", f.Name, psi, sev), CheckedAt: now,
+		}
+		d.record(ctx, &r)
+		results = append(results, r)
+	}
 	return results, nil
+}
+
+func sum(v []float64) float64 {
+	var s float64
+	for _, x := range v {
+		s += x
+	}
+	return s
+}
+
+func normalize(v []float64, total float64) []float64 {
+	out := make([]float64, len(v))
+	for i, x := range v {
+		out[i] = x / total
+	}
+	return out
 }
 
 func classifySeverity(psi float64) string {

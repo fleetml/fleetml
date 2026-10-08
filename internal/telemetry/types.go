@@ -21,6 +21,8 @@ type Event struct {
 	BatteryPercent  float64    `json:"battery_percent"`
 	ErrorMessage    string     `json:"error_message"`
 	RecordedAt      time.Time  `json:"recorded_at"`
+	// Features are input histograms (counts per bin) by feature name.
+	Features map[string][]int32 `json:"features,omitempty"`
 }
 
 // Summary provides aggregated telemetry stats over a time range.

@@ -150,8 +150,12 @@ type TelemetryEvent struct {
 	BatteryPercent  float32                  `protobuf:"fixed32,8,opt,name=battery_percent,json=batteryPercent,proto3" json:"battery_percent,omitempty"`
 	ErrorMessage    string                   `protobuf:"bytes,9,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	TimestampUnixMs int64                    `protobuf:"varint,10,opt,name=timestamp_unix_ms,json=timestampUnixMs,proto3" json:"timestamp_unix_ms,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Optional input histograms for feature-level drift: for each configured
+	// feature of the model (DeviceConfig.feature_bins), how many of this
+	// inference's values fell into each bin.
+	Features      []*FeatureHistogram `protobuf:"bytes,11,rep,name=features,proto3" json:"features,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TelemetryEvent) Reset() {
@@ -254,6 +258,67 @@ func (x *TelemetryEvent) GetTimestampUnixMs() int64 {
 	return 0
 }
 
+func (x *TelemetryEvent) GetFeatures() []*FeatureHistogram {
+	if x != nil {
+		return x.Features
+	}
+	return nil
+}
+
+// Counts per bin for one feature; len(counts) == len(edges) + 1 (values below
+// the first edge, between each pair of edges, at or above the last edge).
+type FeatureHistogram struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Counts        []uint32               `protobuf:"varint,2,rep,packed,name=counts,proto3" json:"counts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FeatureHistogram) Reset() {
+	*x = FeatureHistogram{}
+	mi := &file_fleetml_v1_telemetry_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeatureHistogram) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeatureHistogram) ProtoMessage() {}
+
+func (x *FeatureHistogram) ProtoReflect() protoreflect.Message {
+	mi := &file_fleetml_v1_telemetry_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeatureHistogram.ProtoReflect.Descriptor instead.
+func (*FeatureHistogram) Descriptor() ([]byte, []int) {
+	return file_fleetml_v1_telemetry_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FeatureHistogram) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FeatureHistogram) GetCounts() []uint32 {
+	if x != nil {
+		return x.Counts
+	}
+	return nil
+}
+
 type TelemetryAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AcceptedCount uint32                 `protobuf:"varint,1,opt,name=accepted_count,json=acceptedCount,proto3" json:"accepted_count,omitempty"`
@@ -264,7 +329,7 @@ type TelemetryAck struct {
 
 func (x *TelemetryAck) Reset() {
 	*x = TelemetryAck{}
-	mi := &file_fleetml_v1_telemetry_proto_msgTypes[2]
+	mi := &file_fleetml_v1_telemetry_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -276,7 +341,7 @@ func (x *TelemetryAck) String() string {
 func (*TelemetryAck) ProtoMessage() {}
 
 func (x *TelemetryAck) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_telemetry_proto_msgTypes[2]
+	mi := &file_fleetml_v1_telemetry_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -289,7 +354,7 @@ func (x *TelemetryAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetryAck.ProtoReflect.Descriptor instead.
 func (*TelemetryAck) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_telemetry_proto_rawDescGZIP(), []int{2}
+	return file_fleetml_v1_telemetry_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TelemetryAck) GetAcceptedCount() uint32 {
@@ -313,7 +378,7 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x1afleetml/v1/telemetry.proto\x12\x14fleetml.telemetry.v1\"k\n" +
 	"\x0eTelemetryBatch\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12<\n" +
-	"\x06events\x18\x02 \x03(\v2$.fleetml.telemetry.v1.TelemetryEventR\x06events\"\xe2\x04\n" +
+	"\x06events\x18\x02 \x03(\v2$.fleetml.telemetry.v1.TelemetryEventR\x06events\"\xa6\x05\n" +
 	"\x0eTelemetryEvent\x12(\n" +
 	"\x10model_version_id\x18\x01 \x01(\tR\x0emodelVersionId\x12*\n" +
 	"\x11experiment_arm_id\x18\x02 \x01(\tR\x0fexperimentArmId\x12B\n" +
@@ -326,7 +391,8 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x0fbattery_percent\x18\b \x01(\x02R\x0ebatteryPercent\x12#\n" +
 	"\rerror_message\x18\t \x01(\tR\ferrorMessage\x12*\n" +
 	"\x11timestamp_unix_ms\x18\n" +
-	" \x01(\x03R\x0ftimestampUnixMs\"\x9e\x01\n" +
+	" \x01(\x03R\x0ftimestampUnixMs\x12B\n" +
+	"\bfeatures\x18\v \x03(\v2&.fleetml.telemetry.v1.FeatureHistogramR\bfeatures\"\x9e\x01\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tINFERENCE\x10\x01\x12\x0e\n" +
@@ -336,7 +402,10 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x03OOM\x10\x04\x12\x14\n" +
 	"\x10PREDICTION_DRIFT\x10\x05\x12\t\n" +
 	"\x05ERROR\x10\x06\x12\x15\n" +
-	"\x11SIGNATURE_INVALID\x10\a\"\\\n" +
+	"\x11SIGNATURE_INVALID\x10\a\">\n" +
+	"\x10FeatureHistogram\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06counts\x18\x02 \x03(\rR\x06counts\"\\\n" +
 	"\fTelemetryAck\x12%\n" +
 	"\x0eaccepted_count\x18\x01 \x01(\rR\racceptedCount\x12%\n" +
 	"\x0erejected_count\x18\x02 \x01(\rR\rrejectedCount2k\n" +
@@ -356,23 +425,25 @@ func file_fleetml_v1_telemetry_proto_rawDescGZIP() []byte {
 }
 
 var file_fleetml_v1_telemetry_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_fleetml_v1_telemetry_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_fleetml_v1_telemetry_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_fleetml_v1_telemetry_proto_goTypes = []any{
 	(TelemetryEvent_EventType)(0), // 0: fleetml.telemetry.v1.TelemetryEvent.EventType
 	(*TelemetryBatch)(nil),        // 1: fleetml.telemetry.v1.TelemetryBatch
 	(*TelemetryEvent)(nil),        // 2: fleetml.telemetry.v1.TelemetryEvent
-	(*TelemetryAck)(nil),          // 3: fleetml.telemetry.v1.TelemetryAck
+	(*FeatureHistogram)(nil),      // 3: fleetml.telemetry.v1.FeatureHistogram
+	(*TelemetryAck)(nil),          // 4: fleetml.telemetry.v1.TelemetryAck
 }
 var file_fleetml_v1_telemetry_proto_depIdxs = []int32{
 	2, // 0: fleetml.telemetry.v1.TelemetryBatch.events:type_name -> fleetml.telemetry.v1.TelemetryEvent
 	0, // 1: fleetml.telemetry.v1.TelemetryEvent.type:type_name -> fleetml.telemetry.v1.TelemetryEvent.EventType
-	1, // 2: fleetml.telemetry.v1.TelemetryService.ReportBatch:input_type -> fleetml.telemetry.v1.TelemetryBatch
-	3, // 3: fleetml.telemetry.v1.TelemetryService.ReportBatch:output_type -> fleetml.telemetry.v1.TelemetryAck
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 2: fleetml.telemetry.v1.TelemetryEvent.features:type_name -> fleetml.telemetry.v1.FeatureHistogram
+	1, // 3: fleetml.telemetry.v1.TelemetryService.ReportBatch:input_type -> fleetml.telemetry.v1.TelemetryBatch
+	4, // 4: fleetml.telemetry.v1.TelemetryService.ReportBatch:output_type -> fleetml.telemetry.v1.TelemetryAck
+	4, // [4:5] is the sub-list for method output_type
+	3, // [3:4] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_fleetml_v1_telemetry_proto_init() }
@@ -386,7 +457,7 @@ func file_fleetml_v1_telemetry_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fleetml_v1_telemetry_proto_rawDesc), len(file_fleetml_v1_telemetry_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

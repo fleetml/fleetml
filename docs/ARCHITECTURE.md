@@ -283,7 +283,9 @@ device agent) must too:
   (old): keep the old one until the new one is active.
 - **Telemetry.** Queue events persistently, send them in batches (never one
   request per event), tag events of a model in an experiment with its
-  `arm_id`, and back off after failures.
+  `arm_id`, and back off after failures. Bin input feature values with the
+  model's `DeviceConfig.feature_bins` (a value `v` falls into bin `i` where
+  `edges[i-1] <= v < edges[i]`) and send only the counts.
 
 Deployments and the model lifecycle on a device:
 

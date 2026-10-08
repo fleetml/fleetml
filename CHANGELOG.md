@@ -17,9 +17,18 @@ change APIs).
   `SIGNATURE_INVALID` event, which counts against the health gate.
   `POST /projects/{id}/signing-key` and `.../rotate` (with a grace period).
   `scripts/signing-e2e.sh` checks a client against the dev stack.
+- Feature-level drift: `PUT /models/{id}/features` sets each feature's bin
+  edges, devices get them in `DeviceConfig.feature_bins`, and the SDKs
+  (`reportInference(..., features)`) and the agent's local endpoint
+  (`"features"`) send per-feature histograms. The drift check computes PSI per
+  feature (metric `feature:<name>`) with the usual deduplication and alerts.
+  Every check's PSI is kept (`GET /drift/{id}/points`) and the Drift page draws
+  it over time.
 
 ### Changed
 
+- The Linux agent applies a telemetry flush interval from the server at once
+  instead of after its first 30-second wait.
 - `SIGNING_MASTER_KEY` is required; `make env-file` adds one to an existing
   `.env`.
 - The quickstart's dashboard hint mentions the login (it still pointed to

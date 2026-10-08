@@ -98,3 +98,21 @@ final class TelemetryReporterTests: XCTestCase {
         XCTAssertEqual([1, 2, 3, 6, 7, 20].map(TelemetryReporter.backoff), [5, 10, 20, 160, 300, 300])
     }
 }
+
+final class FeatureHistogramTests: XCTestCase {
+    func testFeatureValuesAreBinnedWithTheConfiguredEdges() {
+        let reporter = TelemetryReporter(queue: TelemetryQueue(url: tempDir().appendingPathComponent("q")), sender: FakeSender(),
+                                         credentials: { nil }, batchSize: 100, flushInterval: 3600)
+        var bins = Fleetml_Device_V1_FeatureBins()
+        bins.modelID = "m1"
+        bins.feature = "petal_length"
+        bins.edges = [1, 2]
+        reporter.setFeatureBins([bins])
+        let h = reporter.histograms(modelID: "m1", features: ["petal_length": [0.5, 1.5, 1.7, 9], "unknown": [1]])
+        XCTAssertEqual(h.map(\.name), ["petal_length"])
+        XCTAssertEqual(h.first?.counts, [1, 2, 1], "a value on an edge falls into the bin above it")
+        XCTAssertTrue(reporter.histograms(modelID: "other", features: ["petal_length": [1]]).isEmpty)
+        XCTAssertEqual(TelemetryReporter.bin(edges: [0], values: [.nan, -1, 0]), [1, 1])
+    }
+}
+

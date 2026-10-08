@@ -57,7 +57,7 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **Rolling rollouts.** Batches by device count or percentage at an interval, with the same gate | DONE | e2e `TestE2E_RollingBatches` |
 | **Rollback, cancel, one version per model.** Manual rollback (also after completion) returns devices to the previous version; the newest deployment that reaches a device wins | DONE | e2e `TestE2E_RollbackFromComplete` |
 | **A/B experiments.** Sticky cohorts, each arm's model delivered and verified, telemetry attributed per arm, a fixed-horizon Welch t-test and a maximum duration | DONE | [Tour §4](docs/QUICKSTART.md#4-an-ab-experiment), e2e `TestE2E_ABExperiment` |
-| **Drift detection.** PSI on inference latency and confidence, last 24 hours against the 7 days before, with history; a change into CRITICAL raises an alert | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
+| **Drift detection.** PSI on inference latency, confidence and input features (histograms binned on the device), last 24 hours against the 7 days before, with history and PSI over time; a change into CRITICAL raises one alert | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
 | **Alerts.** Rollback and drift alerts on NATS and to per-project sinks: HMAC-signed webhooks, Slack (Block Kit) and email, with a test button, five attempts and a delivery log with dead letters | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
 | **Android SDK.** Kotlin, minSdk 26: resumable verified downloads, validation before activation, last-known-good, offline start, persistent telemetry | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
 | **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md) |
@@ -68,7 +68,6 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
 | **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1` | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
 | **Artifact signing.** Per-project ed25519 keys sign each model when it is published; the Android and iOS SDKs and the Linux agent verify the signature before downloading, and keys rotate with a grace period | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
-| **Feature-level drift** from device-side input histograms | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
 
 The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
