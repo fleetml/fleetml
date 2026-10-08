@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in FleetML does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please do not report security problems here; see the security policy instead.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [Server (REST/gRPC), Dashboard, CLI, Android SDK, iOS SDK, Deployment (Docker Compose), Documentation]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands, API calls or configuration that show the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, device or emulator, SDK versions, as relevant.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant server or SDK log lines (remove keys and tokens). For a 500, include the request_id.
+      render: text
