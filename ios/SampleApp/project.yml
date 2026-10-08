@@ -1,0 +1,29 @@
+# Generate the Xcode project with `xcodegen generate` (https://github.com/yonaskolb/XcodeGen).
+name: FleetMLSample
+options:
+  bundleIdPrefix: com.fleetml
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  FleetMLSDK:
+    path: ../FleetMLSDK
+targets:
+  FleetMLSample:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: ../../models/iris/iris_v1.mlmodel
+    dependencies:
+      - package: FleetMLSDK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fleetml.sample
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: FleetML Sample
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"

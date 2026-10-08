@@ -12,7 +12,11 @@ final class FleetMLRPC: DeviceAPI, TelemetrySender {
         let security: GRPCChannelPool.Configuration.TransportSecurity =
             config.useTLS ? .tls(.makeClientConfigurationBackedByNIOSSL()) : .plaintext
         channel = try GRPCChannelPool.with(target: .host(config.serverHost, port: config.serverPort),
-                                           transportSecurity: security, eventLoopGroup: group)
+                                           transportSecurity: security, eventLoopGroup: group) {
+            // A call waits at most this long for a connection, so an unreachable
+            // server is reported (and the cached models used) within seconds.
+            $0.connectionPool.maxWaitTime = .seconds(10)
+        }
     }
 
     private func options(token: String?) -> CallOptions {

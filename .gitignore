@@ -54,4 +54,5 @@ ios/**/.build/
 ios/**/.swiftpm/
 ios/**/*.xcodeproj/
 ios/**/DerivedData/
+ios/**/build/
 xcuserdata/
