@@ -1,0 +1,53 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "fleetml.fullname" . }}-postgres
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "fleetml.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels: {{- include "fleetml.selector" (dict "root" . "component" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "fleetml.selector" (dict "root" . "component" "postgres") | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - {name: POSTGRES_DB, value: fleetml}
+            - {name: POSTGRES_USER, value: fleetml}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "fleetml.secretName" . }}, key: POSTGRES_PASSWORD}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "fleetml"]
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {{- include "fleetml.labels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fleetml.fullname" . }}-postgres
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "fleetml.selector" (dict "root" . "component" "postgres") | nindent 4 }}
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+{{- end }}

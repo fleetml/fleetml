@@ -93,6 +93,13 @@ through the dashboard or REST, not in the environment; see
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 
+## Kubernetes
+
+The Helm chart in [`deploy/helm/fleetml`](https://github.com/fleetml/fleetml/tree/main/deploy/helm/fleetml)
+installs the server and dashboard with optional bundled Postgres, NATS and
+SeaweedFS; its README lists the values. Server settings go into
+`server.env`.
+
 ## Docker Compose
 
 `deploy/docker-compose.yml` (the dev stack: Postgres/TimescaleDB, SeaweedFS,

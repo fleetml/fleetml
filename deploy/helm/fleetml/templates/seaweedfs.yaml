@@ -1,0 +1,58 @@
+{{- if .Values.seaweedfs.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "fleetml.fullname" . }}-s3
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "fleetml.fullname" . }}-s3
+  replicas: 1
+  selector:
+    matchLabels: {{- include "fleetml.selector" (dict "root" . "component" "s3") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "fleetml.selector" (dict "root" . "component" "s3") | nindent 8 }}
+    spec:
+      containers:
+        - name: seaweedfs
+          image: {{ .Values.seaweedfs.image }}
+          # SeaweedFS (Apache-2.0) as the S3-compatible model store, with the
+          # credentials from the Secret.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cat > /tmp/s3.json <<EOF
+              {"identities":[{"name":"fleetml","credentials":[{"accessKey":"${S3_ACCESS_KEY}","secretKey":"${S3_SECRET_KEY}"}],"actions":["Admin","Read","List","Tagging","Write"]}]}
+              EOF
+              exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json -master.volumeSizeLimitMB=1024
+          envFrom:
+            - secretRef:
+                name: {{ include "fleetml.secretName" . }}
+          ports:
+            - {name: s3, containerPort: 8333}
+          readinessProbe:
+            httpGet: {path: /healthz, port: s3}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {{- include "fleetml.labels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.seaweedfs.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fleetml.fullname" . }}-s3
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.seaweedfs.service.type }}
+  selector: {{- include "fleetml.selector" (dict "root" . "component" "s3") | nindent 4 }}
+  ports:
+    - {name: s3, port: 8333, targetPort: s3}
+{{- end }}

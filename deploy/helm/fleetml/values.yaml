@@ -1,0 +1,76 @@
+# FleetML Helm chart values. The bundled Postgres (TimescaleDB), NATS and
+# SeaweedFS are single-replica and meant for evaluation and small fleets;
+# for production, turn them off and point the server at managed services.
+
+server:
+  image:
+    repository: ghcr.io/fleetml/fleetml-server
+    tag: ""            # defaults to the chart's appVersion
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # Extra environment for the server (see docs/CONFIG.md), e.g.
+  #   DEPLOY_TICK_INTERVAL: 30s
+  #   DASHBOARD_URL: https://fleet.example.com
+  env: {}
+  resources: {}
+  service:
+    type: ClusterIP
+    restPort: 18080
+    grpcPort: 19090
+
+dashboard:
+  enabled: true
+  image:
+    repository: ghcr.io/fleetml/fleetml-dashboard
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+
+# Secrets. Either name an existing Secret with the keys JWT_SECRET,
+# SIGNING_MASTER_KEY, FLEETML_ADMIN_KEY (optional), S3_ACCESS_KEY,
+# S3_SECRET_KEY and POSTGRES_PASSWORD, or set the values here (helm install
+# --set secrets.jwtSecret=$(openssl rand -base64 32) ...).
+secrets:
+  existingSecret: ""
+  jwtSecret: ""            # required, at least 32 characters
+  signingMasterKey: ""     # required, at least 32 characters, not the jwtSecret; keep it
+  adminKey: ""             # optional: the first admin API key (else generated and logged once)
+  s3AccessKey: fleetml
+  s3SecretKey: ""          # required with the bundled SeaweedFS
+  postgresPassword: ""     # required with the bundled Postgres
+
+s3:
+  bucket: fleetml-models
+  # host:port where devices and clients reach the object store; presigned
+  # URLs are signed for it. Required: expose the store (Ingress, LoadBalancer).
+  publicEndpoint: ""
+  useSSL: false
+  # With seaweedfs.enabled=false: the external store's host:port.
+  endpoint: ""
+
+postgres:
+  enabled: true
+  image: timescale/timescaledb:2.30.2-pg16
+  storage: 10Gi
+  # With postgres.enabled=false: the database URL (or put DATABASE_URL in the existing Secret).
+  url: ""
+
+nats:
+  enabled: true
+  image: nats:2.12.1
+  storage: 2Gi
+  # With nats.enabled=false: the NATS URL; JetStream must be enabled there.
+  url: ""
+
+seaweedfs:
+  enabled: true
+  image: chrislusf/seaweedfs:4.48
+  storage: 10Gi
+  service:
+    type: ClusterIP
+
+# helm test checks /readyz from inside the cluster with this image.
+tests:
+  image: busybox:1.37

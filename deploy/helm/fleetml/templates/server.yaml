@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fleetml.fullname" . }}-server
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels: {{- include "fleetml.selector" (dict "root" . "component" "server") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "fleetml.selector" (dict "root" . "component" "server") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: server
+          image: {{ include "fleetml.image" (dict "root" . "image" .Values.server.image) }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - {name: rest, containerPort: 18080}
+            - {name: grpc, containerPort: 19090}
+          envFrom:
+            - secretRef:
+                name: {{ include "fleetml.secretName" . }}
+          env:
+            - {name: DATABASE_URL, value: {{ include "fleetml.databaseURL" . | quote }}}
+            - {name: NATS_URL, value: {{ include "fleetml.natsURL" . | quote }}}
+            - {name: S3_ENDPOINT, value: {{ include "fleetml.s3Endpoint" . | quote }}}
+            - {name: S3_PUBLIC_ENDPOINT, value: {{ required "s3.publicEndpoint is required: the host:port devices download models from" .Values.s3.publicEndpoint | quote }}}
+            - {name: S3_BUCKET, value: {{ .Values.s3.bucket | quote }}}
+            - {name: S3_USE_SSL, value: {{ .Values.s3.useSSL | quote }}}
+            - {name: REST_PORT, value: "18080"}
+            - {name: GRPC_PORT, value: "19090"}
+            - {name: MIGRATE_ON_START, value: "true"}
+            {{- range $k, $v := .Values.server.env }}
+            - {name: {{ $k }}, value: {{ $v | quote }}}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /readyz, port: rest}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /livez, port: rest}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          {{- with .Values.server.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fleetml.fullname" . }}-server
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.server.service.type }}
+  selector: {{- include "fleetml.selector" (dict "root" . "component" "server") | nindent 4 }}
+  ports:
+    - {name: rest, port: {{ .Values.server.service.restPort }}, targetPort: rest}
+    - {name: grpc, port: {{ .Values.server.service.grpcPort }}, targetPort: grpc, appProtocol: grpc}

@@ -1,0 +1,16 @@
+FleetML {{ .Chart.AppVersion }} is installed.
+
+REST API and gRPC: service {{ include "fleetml.fullname" . }}-server, ports {{ .Values.server.service.restPort }} and {{ .Values.server.service.grpcPort }}.
+{{- if .Values.dashboard.enabled }}
+Dashboard: service {{ include "fleetml.fullname" . }}-dashboard, port {{ .Values.dashboard.service.port }}.
+{{- end }}
+Devices download models from {{ .Values.s3.publicEndpoint }}; make sure they can reach it.
+
+Try it from your machine:
+  kubectl port-forward svc/{{ include "fleetml.fullname" . }}-server {{ .Values.server.service.restPort }}
+  curl -s localhost:{{ .Values.server.service.restPort }}/readyz
+{{- if not .Values.secrets.adminKey }}
+
+No admin API key was set: the server generated one on first start and logged it once:
+  kubectl logs deploy/{{ include "fleetml.fullname" . }}-server | grep admin_api_key
+{{- end }}

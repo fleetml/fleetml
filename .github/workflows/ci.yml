@@ -109,3 +109,23 @@ jobs:
         with:
           name: docs-site
           path: site/
+
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Lint
+        run: |
+          helm lint deploy/helm/fleetml --strict \
+            --set secrets.jwtSecret=x,secrets.signingMasterKey=y,secrets.s3SecretKey=z,secrets.postgresPassword=p,s3.publicEndpoint=models.example.com:443
+      - name: Template (bundled services, and external ones)
+        run: |
+          helm template t deploy/helm/fleetml -f deploy/helm/fleetml/ci/kind-values.yaml \
+            --set secrets.jwtSecret=x,secrets.signingMasterKey=y,secrets.s3SecretKey=z,secrets.postgresPassword=p > /dev/null
+          helm template t deploy/helm/fleetml --set secrets.existingSecret=fleetml,s3.publicEndpoint=s3.example.com:443 \
+            --set postgres.enabled=false,postgres.url=postgres://db/fleetml,nats.enabled=false,nats.url=nats://nats:4222 \
+            --set seaweedfs.enabled=false,s3.endpoint=s3.example.com:443 > /dev/null

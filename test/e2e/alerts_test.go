@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -44,12 +46,23 @@ type recorder struct {
 
 func newRecorder(t *testing.T) *recorder {
 	r := &recorder{}
-	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	r.srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		b, _ := io.ReadAll(req.Body)
 		r.mu.Lock()
 		r.bodies, r.sigs = append(r.bodies, b), append(r.sigs, req.Header.Get(alert.HeaderSignature))
 		r.mu.Unlock()
 	}))
+	// A server in a cluster (scripts/helm-e2e.sh) reaches this machine by another name.
+	host := os.Getenv("FLEETML_E2E_CALLBACK_HOST")
+	if host != "" {
+		l, err := net.Listen("tcp", "0.0.0.0:0")
+		require.NoError(t, err)
+		r.srv.Listener = l
+	}
+	r.srv.Start()
+	if host != "" {
+		r.srv.URL = "http://" + net.JoinHostPort(host, strconv.Itoa(r.srv.Listener.Addr().(*net.TCPAddr).Port))
+	}
 	t.Cleanup(r.srv.Close)
 	return r
 }

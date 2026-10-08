@@ -28,3 +28,21 @@ jobs:
       - name: Stop the dev stack
         if: always()
         run: docker compose -f deploy/docker-compose.yml down -v
+
+  helm:
+    name: Helm chart on kind
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Install kind
+        run: |
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+          chmod +x kind && sudo mv kind /usr/local/bin/kind
+      - name: Install the chart, run helm test and the E2E suite, uninstall
+        run: ./scripts/helm-e2e.sh -v

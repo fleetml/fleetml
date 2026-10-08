@@ -1,0 +1,47 @@
+{{- if .Values.nats.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "fleetml.fullname" . }}-nats
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "fleetml.fullname" . }}-nats
+  replicas: 1
+  selector:
+    matchLabels: {{- include "fleetml.selector" (dict "root" . "component" "nats") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "fleetml.selector" (dict "root" . "component" "nats") | nindent 8 }}
+    spec:
+      containers:
+        - name: nats
+          image: {{ .Values.nats.image }}
+          # JetStream keeps accepted telemetry until it is in the database.
+          args: ["--jetstream", "--store_dir", "/data", "--http_port", "8222"]
+          ports:
+            - {name: client, containerPort: 4222}
+            - {name: monitor, containerPort: 8222}
+          readinessProbe:
+            httpGet: {path: /healthz, port: monitor}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {{- include "fleetml.labels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.nats.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fleetml.fullname" . }}-nats
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "fleetml.selector" (dict "root" . "component" "nats") | nindent 4 }}
+  ports:
+    - {name: client, port: 4222, targetPort: client}
+{{- end }}

@@ -1,0 +1,61 @@
+{{- if .Values.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fleetml.fullname" . }}-dashboard
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+        listen 80;
+        root /usr/share/nginx/html;
+        index index.html;
+        location /api/ {
+            proxy_pass http://{{ include "fleetml.fullname" . }}-server:{{ .Values.server.service.restPort }};
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        }
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fleetml.fullname" . }}-dashboard
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "fleetml.selector" (dict "root" . "component" "dashboard") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "fleetml.selector" (dict "root" . "component" "dashboard") | nindent 8 }}
+    spec:
+      containers:
+        - name: dashboard
+          image: {{ include "fleetml.image" (dict "root" . "image" .Values.dashboard.image) }}
+          imagePullPolicy: {{ .Values.dashboard.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 80}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+          volumeMounts:
+            - {name: nginx, mountPath: /etc/nginx/conf.d}
+      volumes:
+        - name: nginx
+          configMap:
+            name: {{ include "fleetml.fullname" . }}-dashboard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fleetml.fullname" . }}-dashboard
+  labels: {{- include "fleetml.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.dashboard.service.type }}
+  selector: {{- include "fleetml.selector" (dict "root" . "component" "dashboard") | nindent 4 }}
+  ports:
+    - {name: http, port: {{ .Values.dashboard.service.port }}, targetPort: http}
+{{- end }}

@@ -68,6 +68,7 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
 | **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1`; a Grafana dashboard (compose profile `observability`); telemetry delivered at least once through NATS JetStream and stored once per event ID | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
 | **Roles and audit log.** Users with a viewer, operator or admin role per project and global admins, enforced by a permission matrix that covers every route; every change and every refused request in an audit log, filterable and exportable as CSV, with a dashboard page | DONE | [ARCHITECTURE.md](docs/ARCHITECTURE.md#users-roles-and-the-audit-log) |
+| **Helm chart.** Server, dashboard and optional bundled Postgres, NATS and SeaweedFS; linted and rendered in CI, and the end-to-end suite runs against it in kind | DONE | [deploy/helm/fleetml](deploy/helm/fleetml) |
 | **Delta updates.** A new version is diffed against the previous one when it is published; devices that have the previous version download only the delta (a 20 MB model with a retrained head: 440 KB) and check the result's sha256 | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#delta-updates) |
 | **Artifact signing.** Per-project ed25519 keys sign each model when it is published; the Android and iOS SDKs and the Linux agent verify the signature before downloading, and keys rotate with a grace period | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
 
@@ -98,6 +99,8 @@ Next:
   publishing, rollouts, a canary rollback, an A/B test, drift and the
   dashboard against these containers.
 - **Connect an app:** [Android](docs/ANDROID_SDK.md) or [iOS](docs/IOS_SDK.md).
+- **Run it on Kubernetes:** the Helm chart in
+  [deploy/helm/fleetml](deploy/helm/fleetml) (`helm test` included).
 - **Develop:** `make dev` runs the server from source against the dev stack;
   see [CONTRIBUTING.md](CONTRIBUTING.md).
 

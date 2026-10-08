@@ -1,0 +1,10 @@
+apiVersion: v2
+name: fleetml
+description: FleetML server, dashboard and (optionally) its Postgres, NATS and S3-compatible store
+type: application
+version: 0.3.0
+appVersion: "0.3.0"
+home: https://github.com/fleetml/fleetml
+sources:
+  - https://github.com/fleetml/fleetml
+keywords: [ml, edge, ota, rollouts, mlops]

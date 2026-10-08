@@ -1,0 +1,20 @@
+# Values for scripts/helm-e2e.sh: locally built images loaded into kind, the
+# object store port-forwarded to the test machine, and fast background loops
+# for the end-to-end suite. Secrets are passed with --set.
+server:
+  image: {repository: fleetml-server, tag: kind, pullPolicy: Never}
+  env:
+    DEPLOY_TICK_INTERVAL: 1s
+    EXPERIMENT_TICK_INTERVAL: 2s
+    LOG_LEVEL: warn
+    CORS_ORIGINS: ""
+dashboard:
+  image: {repository: fleetml-dashboard, tag: kind, pullPolicy: Never}
+s3:
+  publicEndpoint: localhost:19500
+postgres:
+  storage: 1Gi
+nats:
+  storage: 1Gi
+seaweedfs:
+  storage: 1Gi

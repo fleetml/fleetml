@@ -24,6 +24,11 @@ change APIs).
   feature (metric `feature:<name>`) with the usual deduplication and alerts.
   Every check's PSI is kept (`GET /drift/{id}/points`) and the Drift page draws
   it over time.
+- Helm chart (`deploy/helm/fleetml`): the server, the dashboard and optional
+  bundled Postgres (TimescaleDB), NATS (JetStream) and SeaweedFS, secrets from
+  values or an existing Secret, and a `helm test` hook. CI lints and renders
+  it; `scripts/helm-e2e.sh` installs it into kind and runs the end-to-end suite
+  against it (weekly in the E2E workflow).
 - Users and roles: every API key belongs to a user; users are global admins
   or have a viewer, operator or admin role per project
   (`POST /users`, `POST /users/{id}/api-keys`, `PUT /projects/{id}/members`).
