@@ -80,6 +80,8 @@ services:
       LOG_LEVEL: info
       CORS_ORIGINS: "http://localhost:80,http://localhost:3000"
       MIGRATE_ON_START: "true"
+      # Optional: if unset, the server generates an admin key on first start and logs it once.
+      FLEETML_ADMIN_KEY: ${FLEETML_ADMIN_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

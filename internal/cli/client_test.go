@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,4 +67,48 @@ func TestClient_Post_Success(t *testing.T) {
 	err := c.Post("/test", map[string]string{"name": "new"}, &result)
 	require.NoError(t, err)
 	assert.Equal(t, "123", result["id"])
+}
+
+func TestClient_SendsAPIKey(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]string{}})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	c.SetAPIKey("k123")
+	require.NoError(t, c.Get("/a", nil))
+	require.NoError(t, c.Post("/b", map[string]string{}, nil))
+	_, err := c.GetRaw("/c")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Bearer k123", "Bearer k123", "Bearer k123"}, got)
+}
+
+func TestClient_PutRawNeverSendsAPIKey(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Authorization")
+	}))
+	defer srv.Close()
+
+	c := NewClient("http://unused")
+	c.SetAPIKey("k123")
+	require.NoError(t, c.PutRaw(srv.URL+"/presigned", strings.NewReader("blob"), 4))
+	assert.Empty(t, got, "the admin key must not leak to the storage endpoint")
+}
+
+func TestClient_UnauthorizedHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]string{"code": "UNAUTHORIZED", "message": "missing API key"},
+		})
+	}))
+	defer srv.Close()
+
+	err := NewClient(srv.URL).Get("/x", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fleetml config set-key")
 }

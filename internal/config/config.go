@@ -21,6 +21,8 @@ type Config struct {
 	LogLevel    string `envconfig:"LOG_LEVEL" default:"info"`
 	LogFormat   string `envconfig:"LOG_FORMAT" default:"json"`
 	CORSOrigins string `envconfig:"CORS_ORIGINS" default:"*"`
+	// AdminKey is stored as the "bootstrap" admin API key if no key exists yet.
+	AdminKey string `envconfig:"FLEETML_ADMIN_KEY"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/deploy"
 	"github.com/fleetml/fleetml/internal/device"
 	"github.com/fleetml/fleetml/internal/drift"
@@ -33,12 +34,16 @@ type Server struct {
 	experimentSvc *experiment.Service
 	driftDetector *drift.Detector
 	driftStore    drift.ResultStore
+	apiKeys       *auth.APIKeyService
 	corsOrigins   string
 	logger        *slog.Logger
 }
 
 // NewServer creates a new REST server.
-func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, corsOrigins string, logger *slog.Logger) *Server {
+func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, corsOrigins string, logger *slog.Logger) *Server {
+	if apiKeys == nil {
+		panic("rest.NewServer: an API key service is required")
+	}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
@@ -55,6 +60,7 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 		experimentSvc: experimentSvc,
 		driftDetector: driftDetector,
 		driftStore:    driftStore,
+		apiKeys:       apiKeys,
 		corsOrigins:   corsOrigins,
 		logger:        logger,
 	}
@@ -108,7 +114,10 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 func (s *Server) registerRoutes() {
 	s.router.GET("/healthz", s.healthCheck)
 
-	api := s.router.Group("/api/v1")
+	// Everything under /api/v1 requires an admin API key; /healthz stays open.
+	api := s.router.Group("/api/v1", RequireAPIKey(s.apiKeys, s.logger))
+
+	NewAPIKeyHandler(s.apiKeys, s.logger).RegisterRoutes(api)
 
 	NewProjectHandler(s.service, s.logger).RegisterRoutes(api)
 	NewModelHandler(s.service, s.logger).RegisterRoutes(api)

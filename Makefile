@@ -59,7 +59,9 @@ dashboard-dev:
 env-file:
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
+		printf 'FLEETML_ADMIN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')" >> .env; \
 		echo "Created .env from .env.example (REST :18080, gRPC :19090, infra on 15xxx host ports)"; \
+		echo "Your admin API key is FLEETML_ADMIN_KEY in .env (used on first start only)"; \
 	fi
 
 dev: env-file docker-up

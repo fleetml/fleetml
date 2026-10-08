@@ -30,6 +30,7 @@ func NewRootCmd() *cobra.Command {
 				outputFmt = cfg.Output
 			}
 			client = NewClient(serverURL)
+			client.SetAPIKey(cfg.APIKey)
 		},
 		SilenceUsage: true,
 	}
@@ -74,6 +75,21 @@ func newConfigCmd() *cobra.Command {
 		Short: "Show current configuration",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			PrintConfig(cfg)
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "set-key [api-key]",
+		Short: "Store the admin API key used for every request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			// Save from the file config, not the env-overlaid one.
+			fileCfg := LoadFileConfig()
+			fileCfg.APIKey = args[0]
+			if err := SaveConfig(fileCfg); err != nil {
+				return err
+			}
+			PrintSuccess("api key saved to " + configPath())
 			return nil
 		},
 	})

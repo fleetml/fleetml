@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -26,4 +28,21 @@ func TestLoadConfig_NoEnv(t *testing.T) {
 	cfg := LoadConfig()
 	assert.NotEmpty(t, cfg.Server)
 	assert.NotEmpty(t, cfg.Output)
+}
+
+func TestSaveConfig_PrivateFileAndAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FLEETML_API_KEY", "")
+	cfg := DefaultConfig()
+	cfg.APIKey = "secret-key-value"
+	require.NoError(t, SaveConfig(cfg))
+
+	info, err := os.Stat(configPath())
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	assert.Equal(t, "secret-key-value", LoadConfig().APIKey)
+
+	t.Setenv("FLEETML_API_KEY", "from-env")
+	assert.Equal(t, "from-env", LoadConfig().APIKey)
+	assert.Equal(t, "secr…alue", maskKey("secret-key-value"))
 }

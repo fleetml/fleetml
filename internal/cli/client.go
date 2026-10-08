@@ -12,6 +12,7 @@ import (
 // Client wraps HTTP calls to the FleetML REST API.
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
@@ -31,6 +32,23 @@ type apiResponse struct {
 type apiError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// SetAPIKey sets the admin API key sent as a Bearer token on API requests.
+func (c *Client) SetAPIKey(key string) {
+	c.apiKey = key
+}
+
+// authorize adds the API key header. It is never added to presigned storage URLs.
+func (c *Client) authorize(req *http.Request) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+}
+
+// errUnauthorized explains how to fix a 401.
+func errUnauthorized(serverMsg string) error {
+	return fmt.Errorf("unauthorized (%s): set an admin API key with `fleetml config set-key <key>` or FLEETML_API_KEY", serverMsg)
 }
 
 // Get performs a GET request and unmarshals the data field.
@@ -88,6 +106,7 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.authorize(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -113,6 +132,9 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 	}
 
 	if apiResp.Error != nil {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return errUnauthorized(apiResp.Error.Message)
+		}
 		return fmt.Errorf("%s", apiResp.Error.Message)
 	}
 
@@ -127,7 +149,12 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 
 // GetRaw performs a GET and returns the full response body.
 func (c *Client) GetRaw(path string) (json.RawMessage, error) {
-	resp, err := c.httpClient.Get(c.baseURL + path)
+	req, err := http.NewRequest("GET", c.baseURL+path, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	c.authorize(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("server unavailable: %w", err)
 	}

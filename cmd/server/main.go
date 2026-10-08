@@ -17,6 +17,7 @@ import (
 	grpcapi "github.com/fleetml/fleetml/internal/api/grpc"
 	"github.com/fleetml/fleetml/internal/api/rest"
 	"github.com/fleetml/fleetml/internal/audit"
+	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/config"
 	"github.com/fleetml/fleetml/internal/db"
 	"github.com/fleetml/fleetml/internal/deploy"
@@ -160,7 +161,19 @@ func run() error {
 	driftTicker := drift.NewTicker(driftDetector, driftAdapter, 5*time.Minute, logger)
 	go driftTicker.Start(ctx)
 
-	restServer := rest.NewServer(pool, s3Client, natsOK, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, cfg.CORSOrigins, logger)
+	// Admin API keys: make sure a fresh install has one.
+	apiKeySvc := auth.NewAPIKeyService(auth.NewAPIKeyRepo(pool))
+	generated, err := apiKeySvc.Bootstrap(ctx, cfg.AdminKey)
+	if err != nil {
+		return fmt.Errorf("bootstrapping admin api key: %w", err)
+	}
+	if generated != "" {
+		// Shown exactly once; only its hash is stored.
+		slog.Warn("no admin API key existed and FLEETML_ADMIN_KEY is not set: generated one, store it now, it will not be shown again",
+			"admin_api_key", generated)
+	}
+
+	restServer := rest.NewServer(pool, s3Client, natsOK, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, cfg.CORSOrigins, logger)
 
 	errCh := make(chan error, 2)
 
