@@ -20,7 +20,7 @@ type Config struct {
 	JWTSecret   string `envconfig:"JWT_SECRET" required:"true"`
 	LogLevel    string `envconfig:"LOG_LEVEL" default:"info"`
 	LogFormat   string `envconfig:"LOG_FORMAT" default:"json"`
-	CORSOrigins string `envconfig:"CORS_ORIGINS" default:"*"`
+	CORSOrigins string `envconfig:"CORS_ORIGINS" default:"http://localhost:5173,http://localhost:18080"`
 	// AdminKey is stored as the "bootstrap" admin API key if no key exists yet.
 	AdminKey string `envconfig:"FLEETML_ADMIN_KEY"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.

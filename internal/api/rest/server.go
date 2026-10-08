@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,44 +64,8 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 		logger:        logger,
 	}
 
-	// CORS
-	allowedOrigins := s.corsOrigins
-	if allowedOrigins == "" {
-		allowedOrigins = "*"
-	}
-	originList := strings.Split(allowedOrigins, ",")
-	for i := range originList {
-		originList[i] = strings.TrimSpace(originList[i])
-	}
-	r.Use(func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
-		if allowedOrigins == "*" {
-			// Wildcard: echo the requesting origin so credentials still work
-			if origin != "" {
-				c.Header("Access-Control-Allow-Origin", origin)
-				c.Header("Vary", "Origin")
-			} else {
-				c.Header("Access-Control-Allow-Origin", "*")
-			}
-		} else {
-			for _, allowed := range originList {
-				if allowed == origin {
-					c.Header("Access-Control-Allow-Origin", origin)
-					c.Header("Vary", "Origin")
-					break
-				}
-			}
-		}
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Max-Age", "3600")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
+	// CORS runs first so preflight requests (which carry no API key) are answered.
+	r.Use(CORS(s.corsOrigins))
 	r.Use(RequestID())
 	r.Use(ErrorRecovery(logger))
 	r.Use(RequestLogger(logger))

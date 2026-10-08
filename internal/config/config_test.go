@@ -42,6 +42,7 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Equal(t, "json", cfg.LogFormat)
 	assert.False(t, cfg.MigrateOnStart)
+	assert.Equal(t, "http://localhost:5173,http://localhost:18080", cfg.CORSOrigins)
 }
 
 func TestLoad_MissingRequired(t *testing.T) {

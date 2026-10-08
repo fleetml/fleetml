@@ -78,7 +78,7 @@ services:
       GRPC_PORT: "19090"
       REST_PORT: "18080"
       LOG_LEVEL: info
-      CORS_ORIGINS: "http://localhost:80,http://localhost:3000"
+      CORS_ORIGINS: "http://localhost"
       MIGRATE_ON_START: "true"
       # Optional: if unset, the server generates an admin key on first start and logs it once.
       FLEETML_ADMIN_KEY: ${FLEETML_ADMIN_KEY:-}
