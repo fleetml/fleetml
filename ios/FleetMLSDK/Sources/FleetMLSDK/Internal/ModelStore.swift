@@ -20,6 +20,18 @@ final class ModelStore {
         var active: [String: ModelRecord] = [:]
         var lastKnownGood: [String: ModelRecord] = [:]
         var failed: [String: Date] = [:]
+        var signingKeys: [SigningKey] = []
+
+        init() {}
+
+        // Files written before a field existed still load.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            active = try c.decodeIfPresent([String: ModelRecord].self, forKey: .active) ?? [:]
+            lastKnownGood = try c.decodeIfPresent([String: ModelRecord].self, forKey: .lastKnownGood) ?? [:]
+            failed = try c.decodeIfPresent([String: Date].self, forKey: .failed) ?? [:]
+            signingKeys = try c.decodeIfPresent([SigningKey].self, forKey: .signingKeys) ?? []
+        }
     }
 
     private let url: URL
@@ -60,6 +72,18 @@ final class ModelStore {
         lock.withLock {
             state.active[modelID] = nil
             state.lastKnownGood[modelID] = nil
+            persist()
+        }
+    }
+
+    /// The project's signing keys, as last sent by the server.
+    var signingKeys: [SigningKey] { lock.withLock { state.signingKeys } }
+
+    /// Replaces the stored signing keys (from Register and every heartbeat).
+    func setSigningKeys(_ keys: [SigningKey]) {
+        lock.withLock {
+            guard keys != state.signingKeys else { return }
+            state.signingKeys = keys
             persist()
         }
     }

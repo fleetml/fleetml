@@ -43,6 +43,11 @@ final class ModelManager {
         store.activeModels.compactMap { rec in cache.cachedFile(rec.variantID).map { rec.active(at: $0) } }
     }
 
+    /// Stores the project's signing keys from a Register or heartbeat response.
+    func setSigningKeys(_ keys: [Fleetml_Device_V1_SigningKey]) {
+        store.setSigningKeys(keys.map { SigningKey(keyID: $0.keyID, publicKey: $0.publicKey, notAfter: $0.notAfter) })
+    }
+
     func apply(_ assignments: [Fleetml_Device_V1_ModelAssignment]) async {
         // A replacement arrives as UPDATE(new) + UNLOAD(old); the old version
         // must stay until the new one is validated, so such UNLOADs are ignored.
@@ -58,6 +63,16 @@ final class ModelManager {
 
     private func install(_ a: Fleetml_Device_V1_ModelAssignment) async {
         if store.isActive(variantID: a.variantID) || store.recentlyFailed(a.variantID, now: now()) { return }
+        // The signature covers the sha256 the download is checked against, so
+        // a model that fails it is not even downloaded.
+        if let reason = ArtifactSignature.verify(keys: store.signingKeys, keyID: a.signingKeyID, signature: a.signature,
+                                                 modelID: a.modelID, version: a.version, sha256: a.blobSha256, now: now()) {
+            Log.sdk.warning("Model \(a.modelName) \(a.version) rejected: \(reason); keeping the current model")
+            store.markFailed(a.variantID, at: now())
+            telemetry?.reportModelEvent(versionID: a.versionID, .signatureInvalid, error: reason)
+            delegate()?.fleetML(modelLoadFailed: a.modelName, version: a.version, reason: "signature: \(reason)")
+            return
+        }
         if cache.cachedFile(a.variantID) == nil && !canDownload(a.urgent) {
             Log.sdk.info("Download of \(a.modelName) \(a.version) waits for the download policy (inexpensive network or charging)")
             return // the assignment is repeated on the next heartbeat

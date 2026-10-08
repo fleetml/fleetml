@@ -333,6 +333,7 @@ final class Instance {
         tokens.saveRegistration(deviceID: response.deviceID, token: response.authToken,
                                 expiresAtUnix: response.tokenExpiresAt, signature: signature)
         apply(response.config) // the server's DeviceConfig wins over the local defaults
+        models.setSigningKeys(response.signingKeys)
         Log.sdk.info("Registered as device \(response.deviceID)")
         delegate?.fleetML(registered: response.deviceID)
         telemetry.onReconnected()

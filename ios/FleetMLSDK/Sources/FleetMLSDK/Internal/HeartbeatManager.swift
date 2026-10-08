@@ -86,6 +86,8 @@ final class HeartbeatManager {
             setInterval(TimeInterval(response.nextHeartbeatSeconds))
             if response.hasConfig { onConfig(response.config) }
             telemetry?.setExperimentArms(Dictionary(response.experiments.map { ($0.modelVersionID, $0.armID) }, uniquingKeysWith: { a, _ in a }))
+            // Keys first: an assignment may be signed by a key the device has not seen.
+            models.setSigningKeys(response.signingKeys)
             await models.apply(response.assignments)
             return true
         } catch is UnauthenticatedError {

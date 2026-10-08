@@ -14,7 +14,7 @@ protocol TelemetrySender {
 /// connection returns. Events for a version in an A/B experiment carry the arm ID.
 public final class TelemetryReporter {
     /// Event types a lifecycle report can carry.
-    public enum ModelEvent { case load, loadFailed, oom, error }
+    public enum ModelEvent { case load, loadFailed, oom, error, signatureInvalid }
 
     private let queue: TelemetryQueue
     private let sender: TelemetrySender
@@ -61,6 +61,7 @@ public final class TelemetryReporter {
         case .loadFailed: t = .modelLoadFailed
         case .oom: t = .oom
         case .error: t = .error
+        case .signatureInvalid: t = .signatureInvalid
         }
         enqueue(event(versionID: versionID, type: t, latencyMs: latencyMs, error: error))
     }

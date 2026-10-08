@@ -8,6 +8,11 @@
 // For information on using the generated types, please see the documentation:
 //   https://github.com/apple/swift-protobuf/
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 import SwiftProtobuf
 
 // If the compiler emits an error on this type, it is because this file
@@ -126,11 +131,35 @@ nonisolated struct Fleetml_Device_V1_RegisterResponse: Sendable {
   /// Expiry of auth_token, Unix seconds.
   var tokenExpiresAt: Int64 = 0
 
+  /// The project's artifact signing keys; replace the stored set with them.
+  var signingKeys: [Fleetml_Device_V1_SigningKey] = []
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
 
   fileprivate var _config: Fleetml_Device_V1_DeviceConfig? = nil
+}
+
+/// A public key that signs the project's model artifacts (ed25519).
+nonisolated struct Fleetml_Device_V1_SigningKey: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Matches ModelAssignment.signing_key_id.
+  var keyID: String = String()
+
+  /// The 32-byte ed25519 public key.
+  var publicKey: Data = Data()
+
+  /// For a key being rotated out: Unix seconds after which signatures made
+  /// with it must be rejected, even offline. 0 for the current key.
+  var notAfter: Int64 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
 }
 
 /// The current token is sent as "authorization: Bearer <token>" metadata.
@@ -268,6 +297,9 @@ nonisolated struct Fleetml_Device_V1_HeartbeatResponse: Sendable {
   /// Clears the value of `config`. Subsequent reads from it will return its default value.
   mutating func clearConfig() {self._config = nil}
 
+  /// The project's artifact signing keys; replace the stored set with them.
+  var signingKeys: [Fleetml_Device_V1_SigningKey] = []
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
@@ -304,6 +336,14 @@ nonisolated struct Fleetml_Device_V1_ModelAssignment: Sendable {
   /// Download now on any connected network, ignoring the download policy
   /// (set by the deployment, and on rollbacks).
   var urgent: Bool = false
+
+  /// ed25519 signature by the project key signing_key_id over the UTF-8 bytes
+  /// "fleetml-artifact-v1\n" + model_id + "\n" + version + "\n" + blob_sha256
+  /// (lowercase hex). Verify it before activating the model; on failure report
+  /// SIGNATURE_INVALID and keep the current version.
+  var signature: Data = Data()
+
+  var signingKeyID: String = String()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -462,7 +502,7 @@ nonisolated extension Fleetml_Device_V1_RegisterRequest: SwiftProtobuf.Message, 
 
 nonisolated extension Fleetml_Device_V1_RegisterResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".RegisterResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}device_id\0\u{3}auth_token\0\u{1}config\0\u{3}token_expires_at\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}device_id\0\u{3}auth_token\0\u{1}config\0\u{3}token_expires_at\0\u{3}signing_keys\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -474,6 +514,7 @@ nonisolated extension Fleetml_Device_V1_RegisterResponse: SwiftProtobuf.Message,
       case 2: try { try decoder.decodeSingularStringField(value: &self.authToken) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._config) }()
       case 4: try { try decoder.decodeSingularInt64Field(value: &self.tokenExpiresAt) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.signingKeys) }()
       default: break
       }
     }
@@ -496,6 +537,9 @@ nonisolated extension Fleetml_Device_V1_RegisterResponse: SwiftProtobuf.Message,
     if self.tokenExpiresAt != 0 {
       try visitor.visitSingularInt64Field(value: self.tokenExpiresAt, fieldNumber: 4)
     }
+    if !self.signingKeys.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.signingKeys, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -504,6 +548,47 @@ nonisolated extension Fleetml_Device_V1_RegisterResponse: SwiftProtobuf.Message,
     if lhs.authToken != rhs.authToken {return false}
     if lhs._config != rhs._config {return false}
     if lhs.tokenExpiresAt != rhs.tokenExpiresAt {return false}
+    if lhs.signingKeys != rhs.signingKeys {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Fleetml_Device_V1_SigningKey: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".SigningKey"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}key_id\0\u{3}public_key\0\u{3}not_after\0")
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.keyID) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.publicKey) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.notAfter) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.keyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.keyID, fieldNumber: 1)
+    }
+    if !self.publicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.publicKey, fieldNumber: 2)
+    }
+    if self.notAfter != 0 {
+      try visitor.visitSingularInt64Field(value: self.notAfter, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Fleetml_Device_V1_SigningKey, rhs: Fleetml_Device_V1_SigningKey) -> Bool {
+    if lhs.keyID != rhs.keyID {return false}
+    if lhs.publicKey != rhs.publicKey {return false}
+    if lhs.notAfter != rhs.notAfter {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -754,7 +839,7 @@ nonisolated extension Fleetml_Device_V1_DeviceHealth: SwiftProtobuf.Message, Swi
 
 nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".HeartbeatResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}assignments\0\u{1}experiments\0\u{3}next_heartbeat_seconds\0\u{1}config\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}assignments\0\u{1}experiments\0\u{3}next_heartbeat_seconds\0\u{1}config\0\u{3}signing_keys\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -766,6 +851,7 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
       case 2: try { try decoder.decodeRepeatedMessageField(value: &self.experiments) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.nextHeartbeatSeconds) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._config) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.signingKeys) }()
       default: break
       }
     }
@@ -788,6 +874,9 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
     try { if let v = self._config {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
+    if !self.signingKeys.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.signingKeys, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -796,6 +885,7 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
     if lhs.experiments != rhs.experiments {return false}
     if lhs.nextHeartbeatSeconds != rhs.nextHeartbeatSeconds {return false}
     if lhs._config != rhs._config {return false}
+    if lhs.signingKeys != rhs.signingKeys {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -803,7 +893,7 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
 
 nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ModelAssignment"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}model_name\0\u{1}version\0\u{3}variant_id\0\u{3}download_url\0\u{3}blob_size_bytes\0\u{3}blob_sha256\0\u{1}action\0\u{3}version_id\0\u{1}urgent\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}model_name\0\u{1}version\0\u{3}variant_id\0\u{3}download_url\0\u{3}blob_size_bytes\0\u{3}blob_sha256\0\u{1}action\0\u{3}version_id\0\u{1}urgent\0\u{1}signature\0\u{3}signing_key_id\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -821,6 +911,8 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
       case 8: try { try decoder.decodeSingularEnumField(value: &self.action) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self.versionID) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.urgent) }()
+      case 11: try { try decoder.decodeSingularBytesField(value: &self.signature) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.signingKeyID) }()
       default: break
       }
     }
@@ -857,6 +949,12 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
     if self.urgent != false {
       try visitor.visitSingularBoolField(value: self.urgent, fieldNumber: 10)
     }
+    if !self.signature.isEmpty {
+      try visitor.visitSingularBytesField(value: self.signature, fieldNumber: 11)
+    }
+    if !self.signingKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.signingKeyID, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -871,6 +969,8 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
     if lhs.action != rhs.action {return false}
     if lhs.versionID != rhs.versionID {return false}
     if lhs.urgent != rhs.urgent {return false}
+    if lhs.signature != rhs.signature {return false}
+    if lhs.signingKeyID != rhs.signingKeyID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

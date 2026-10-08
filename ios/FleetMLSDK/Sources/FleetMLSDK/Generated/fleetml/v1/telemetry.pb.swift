@@ -70,6 +70,9 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
     case oom // = 4
     case predictionDrift // = 5
     case error // = 6
+
+    /// A downloaded model's signature did not verify; it was not activated.
+    case signatureInvalid // = 7
     case UNRECOGNIZED(Int)
 
     init() {
@@ -85,6 +88,7 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
       case 4: self = .oom
       case 5: self = .predictionDrift
       case 6: self = .error
+      case 7: self = .signatureInvalid
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -98,6 +102,7 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
       case .oom: return 4
       case .predictionDrift: return 5
       case .error: return 6
+      case .signatureInvalid: return 7
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -111,6 +116,7 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
       .oom,
       .predictionDrift,
       .error,
+      .signatureInvalid,
     ]
 
   }
@@ -247,7 +253,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
 }
 
 nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent.EventType: SwiftProtobuf._ProtoNameProviding {
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_TYPE_UNSPECIFIED\0\u{1}INFERENCE\0\u{1}MODEL_LOAD\0\u{1}MODEL_LOAD_FAILED\0\u{1}OOM\0\u{1}PREDICTION_DRIFT\0\u{1}ERROR\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_TYPE_UNSPECIFIED\0\u{1}INFERENCE\0\u{1}MODEL_LOAD\0\u{1}MODEL_LOAD_FAILED\0\u{1}OOM\0\u{1}PREDICTION_DRIFT\0\u{1}ERROR\0\u{1}SIGNATURE_INVALID\0")
 }
 
 nonisolated extension Fleetml_Telemetry_V1_TelemetryAck: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

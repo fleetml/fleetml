@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import FleetMLSDK
 
@@ -236,5 +237,27 @@ final class ModelManagerTests: XCTestCase {
         let restarted = manager()
         XCTAssertEqual(restarted.activeModels.map(\.version), ["1.0.0"])
         XCTAssertEqual(restarted.activeModels.first.map { FileManager.default.fileExists(atPath: $0.fileURL.path) }, true)
+    }
+
+    func testAModelWhoseSignatureDoesNotVerifyIsNotDownloaded() async {
+        let key = Curve25519.Signing.PrivateKey()
+        store.setSigningKeys([SigningKey(keyID: "k1", publicKey: key.publicKey.rawRepresentation, notAfter: 0)])
+        let body = Data("signed model".utf8)
+        func signed(_ sha: String) -> Fleetml_Device_V1_ModelAssignment {
+            var a = assignment(.load, variant: "s1", version: "1.0.0", body: body)
+            a.signingKeyID = "k1"
+            a.signature = try! key.signature(for: ArtifactSignature.message(modelID: "m1", version: "1.0.0", sha256: sha))
+            return a
+        }
+        await manager().apply([signed(sha256Hex(Data("another file".utf8)))])
+        XCTAssertTrue(StubURLProtocol.requests.isEmpty, "nothing is downloaded")
+        XCTAssertNil(store.active("m1"))
+        XCTAssertTrue(delegate.failed.last?.reason.hasPrefix("signature:") ?? false, "\(delegate.failed)")
+
+        store = ModelStore(url: dir.appendingPathComponent("models.json")) // keys survive a restart
+        XCTAssertEqual(store.signingKeys.count, 1)
+        store.markFailed("s1", at: .distantPast)
+        await manager().apply([signed(sha256Hex(body))])
+        XCTAssertEqual(store.active("m1")?.version, "1.0.0")
     }
 }
