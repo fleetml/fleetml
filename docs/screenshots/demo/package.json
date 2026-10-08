@@ -1,0 +1,9 @@
+{
+  "name": "fleetml-demo-recording",
+  "private": true,
+  "description": "Regenerates docs/screenshots/demo.gif (see record.sh)",
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "1.64.0"
+  }
+}

@@ -9,6 +9,19 @@ downloads and checking the sha256), validates each one before switching to it,
 keeps the last-known-good version, and reports telemetry. It does not run your
 models: your inference process loads them from disk.
 
+## Try it locally
+
+```bash
+./scripts/demo-agent.sh
+```
+
+starts a server on the dev stack and four agents on this machine (the agent
+also builds for macOS, for local testing), each with a stand-in inference
+process that posts to its local endpoint. A canary of a model that fails at
+inference trips the health gate and rolls back, and the canary boxes switch
+their `current` link back to the last-known-good version. It is the recording
+at the top of the [README](../README.md).
+
 ## Install
 
 Build the binaries (or take them from a release once published):

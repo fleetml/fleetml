@@ -571,6 +571,7 @@ func TestEngine_RollbackFromComplete_CreatesRevert(t *testing.T) {
 	assert.Equal(t, prev, revert.ModelVersionID)
 	assert.Equal(t, "COMPLETE", revert.Status)
 	assert.Equal(t, dep.TargetSelector, revert.TargetSelector)
+	assert.Equal(t, "revert-"+dep.ID.String()[:8], revert.Name, "an unnamed deployment's revert is named after its ID")
 
 	_, err = engine.RollbackDeployment(context.Background(), dep.ID, "again")
 	assert.ErrorIs(t, err, ErrInvalidTransition, "ROLLED_BACK is terminal")

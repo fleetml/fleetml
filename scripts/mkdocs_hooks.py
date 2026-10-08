@@ -14,6 +14,9 @@ from mkdocs.structure.files import File
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # site page -> repository file
 ROOT_PAGES = {"index.md": "README.md", "CHANGELOG.md": "CHANGELOG.md"}
+# Files under docs/ that the site serves; anything else (scripts) links to the repository.
+SITE_EXTENSIONS = (".md", ".png", ".gif", ".jpg", ".svg")
+EXCLUDED = ("docs/screenshots/demo/",)
 REPO_PAGES = {v: k for k, v in ROOT_PAGES.items()}
 LINK = re.compile(r"(!?\[[^\]]*\]\()([^)\s]+)(\))")
 
@@ -34,7 +37,8 @@ def site_link(target, page_dir, repo_url):
     if repo_path in REPO_PAGES:
         return REPO_PAGES[repo_path] + hash_ + frag
     is_dir = os.path.isdir(os.path.join(ROOT, repo_path))
-    if repo_path.startswith("docs/") and not is_dir:
+    served = repo_path.endswith(SITE_EXTENSIONS) and not repo_path.startswith(EXCLUDED)
+    if repo_path.startswith("docs/") and not is_dir and served:
         return repo_path[len("docs/"):] + hash_ + frag
     kind = "tree" if is_dir else "blob"
     return f"{repo_url.rstrip('/')}/{kind}/main/{repo_path}" + hash_ + frag

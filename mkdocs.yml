@@ -7,6 +7,8 @@ edit_uri: blob/main/docs/
 docs_dir: docs
 site_dir: site
 strict: true
+exclude_docs: |
+  screenshots/demo/
 
 theme:
   name: material

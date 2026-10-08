@@ -386,7 +386,7 @@ func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason, trigge
 		revert := &Deployment{
 			ProjectID:      dep.ProjectID,
 			ModelVersionID: *dep.PreviousVersionID,
-			Name:           fmt.Sprintf("revert-%s", dep.Name),
+			Name:           revertName(dep),
 			TargetSelector: dep.TargetSelector,
 			Strategy:       "ALL_AT_ONCE",
 			Status:         "COMPLETE",
@@ -505,12 +505,12 @@ func (e *Engine) EvaluateHealthGate(ctx context.Context, dep *Deployment) GateRe
 
 	if stats.TotalEvents < int64(gate.MinEvents) {
 		res.Healthy = true
-		res.Reason = fmt.Sprintf("insufficient data: %d/%d events from %d cohort devices", stats.TotalEvents, gate.MinEvents, len(cohort))
+		res.Reason = fmt.Sprintf("insufficient data: %d/%d events from %s", stats.TotalEvents, gate.MinEvents, cohortDevices(len(cohort)))
 		return res
 	}
 	if stats.ErrorRate > gate.MaxErrorRate {
-		res.Reason = fmt.Sprintf("error rate %.2f%% exceeds threshold %.2f%% (%d/%d events from %d cohort devices)",
-			stats.ErrorRate*100, gate.MaxErrorRate*100, stats.ErrorCount, stats.TotalEvents, len(cohort))
+		res.Reason = fmt.Sprintf("error rate %.2f%% exceeds threshold %.2f%% (%d/%d events from %s)",
+			stats.ErrorRate*100, gate.MaxErrorRate*100, stats.ErrorCount, stats.TotalEvents, cohortDevices(len(cohort)))
 		return res
 	}
 	if gate.MaxLatencyRegression > 0 && dep.PreviousVersionID != nil && stats.P95LatencyMs > 0 {
@@ -566,4 +566,20 @@ func (e *Engine) validateTransition(from, to string) error {
 		return fmt.Errorf("%w: cannot transition from %s to %s", ErrInvalidTransition, from, to)
 	}
 	return nil
+}
+
+func cohortDevices(n int) string {
+	if n == 1 {
+		return "1 cohort device"
+	}
+	return fmt.Sprintf("%d cohort devices", n)
+}
+
+// revertName names the deployment that undoes dep: "revert-<name>", or
+// "revert-<id prefix>" for an unnamed deployment.
+func revertName(dep *Deployment) string {
+	if dep.Name != "" {
+		return "revert-" + dep.Name
+	}
+	return "revert-" + dep.ID.String()[:8]
 }
