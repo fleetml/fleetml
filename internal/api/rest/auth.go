@@ -129,7 +129,11 @@ func (h *APIKeyHandler) create(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "name is required")
 		return
 	}
-	key, k, err := h.keys.Create(c.Request.Context(), req.Name)
+	userID := auth.BootstrapUserID
+	if p := principal(c); p != nil {
+		userID = p.User.ID // a key for the caller (a global admin); other users' keys: POST /users/{id}/api-keys
+	}
+	key, k, err := h.keys.Create(c.Request.Context(), userID, req.Name)
 	if err != nil {
 		handleAuthError(c, err)
 		return

@@ -24,6 +24,15 @@ change APIs).
   feature (metric `feature:<name>`) with the usual deduplication and alerts.
   Every check's PSI is kept (`GET /drift/{id}/points`) and the Drift page draws
   it over time.
+- Users and roles: every API key belongs to a user; users are global admins
+  or have a viewer, operator or admin role per project
+  (`POST /users`, `POST /users/{id}/api-keys`, `PUT /projects/{id}/members`).
+  A permission matrix covers every route and refuses unlisted ones; lists
+  across projects show only the caller's projects. Existing API keys belong to
+  the new `bootstrap` user, a global admin, so nothing changes for them.
+- Audit log of every change and every refused request (user, key, route,
+  project, status, client address): `GET /audit` with filters,
+  `GET /audit/export` as CSV, and an Audit page in the dashboard.
 - Delta updates: when a variant becomes READY the server builds a binary delta
   (bsdiff with raw DEFLATE sections, `internal/delta`) from the previous READY
   variant of the same model, runtime and quantization; assignments carry

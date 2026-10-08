@@ -30,10 +30,10 @@ func newFakeKeyStore() *fakeKeyStore {
 	return &fakeKeyStore{keys: map[uuid.UUID]*auth.APIKey{}, hashes: map[uuid.UUID]string{}}
 }
 
-func (f *fakeKeyStore) Create(_ context.Context, name, keyHash string) (*auth.APIKey, error) {
+func (f *fakeKeyStore) Create(_ context.Context, userID uuid.UUID, name, keyHash string) (*auth.APIKey, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	k := &auth.APIKey{ID: uuid.New(), Name: name, CreatedAt: time.Now()}
+	k := &auth.APIKey{ID: uuid.New(), UserID: userID, Name: name, CreatedAt: time.Now()}
 	f.keys[k.ID] = k
 	f.hashes[k.ID] = keyHash
 	return k, nil
@@ -94,7 +94,7 @@ func newAuthTestRouter(t *testing.T) (r *gin.Engine, svc *auth.APIKeyService, ad
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc = auth.NewAPIKeyService(newFakeKeyStore())
-	adminKey, _, err := svc.Create(context.Background(), "admin")
+	adminKey, _, err := svc.Create(context.Background(), auth.BootstrapUserID, "admin")
 	require.NoError(t, err)
 
 	r = gin.New()
@@ -147,7 +147,7 @@ func TestRequireAuth_APIKeyDeny(t *testing.T) {
 func TestRequireAuth_APIKeyRevoked(t *testing.T) {
 	r, svc, admin := newAuthTestRouter(t)
 	ctx := context.Background()
-	second, rec, err := svc.Create(ctx, "second")
+	second, rec, err := svc.Create(ctx, auth.BootstrapUserID, "second")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, doAuth(r, "GET", "/api/v1/projects", "Bearer "+second).Code)
 

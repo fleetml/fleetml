@@ -15,7 +15,9 @@ const MinBootstrapKeyLength = 32
 
 // APIKey is an admin key for the REST API. The key itself is never stored.
 type APIKey struct {
-	ID         uuid.UUID  `json:"id"`
+	ID uuid.UUID `json:"id"`
+	// UserID is the user the key acts as.
+	UserID     uuid.UUID  `json:"user_id"`
 	Name       string     `json:"name"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`
@@ -24,7 +26,7 @@ type APIKey struct {
 
 // APIKeyStore persists admin API keys.
 type APIKeyStore interface {
-	Create(ctx context.Context, name, keyHash string) (*APIKey, error)
+	Create(ctx context.Context, userID uuid.UUID, name, keyHash string) (*APIKey, error)
 	// GetActiveByHash returns the non-revoked key with this hash, or ErrNotFound.
 	GetActiveByHash(ctx context.Context, keyHash string) (*APIKey, error)
 	List(ctx context.Context) ([]APIKey, error)
@@ -62,7 +64,8 @@ func (s *APIKeyService) Authenticate(ctx context.Context, key string) (*APIKey, 
 }
 
 // Create issues a new key. The returned plaintext is shown once.
-func (s *APIKeyService) Create(ctx context.Context, name string) (string, *APIKey, error) {
+// Create issues a key for a user; the plaintext is shown once.
+func (s *APIKeyService) Create(ctx context.Context, userID uuid.UUID, name string) (string, *APIKey, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", nil, fmt.Errorf("%w: name is required", ErrInvalidInput)
@@ -71,7 +74,7 @@ func (s *APIKeyService) Create(ctx context.Context, name string) (string, *APIKe
 	if err != nil {
 		return "", nil, err
 	}
-	k, err := s.store.Create(ctx, name, hash)
+	k, err := s.store.Create(ctx, userID, name, hash)
 	if err != nil {
 		return "", nil, err
 	}
@@ -112,7 +115,7 @@ func (s *APIKeyService) Bootstrap(ctx context.Context, envKey string) (generated
 			return "", err
 		}
 	}
-	if _, err := s.store.Create(ctx, "bootstrap", hash); err != nil {
+	if _, err := s.store.Create(ctx, BootstrapUserID, "bootstrap", hash); err != nil {
 		return "", fmt.Errorf("storing bootstrap key: %w", err)
 	}
 	return generated, nil

@@ -34,13 +34,14 @@ type Server struct {
 	apiKeys       *auth.APIKeyService
 	enrollment    *auth.EnrollmentService
 	sessions      *auth.SessionService
+	access        *Access
 	corsOrigins   string
 	logger        *slog.Logger
 	api           *gin.RouterGroup
 }
 
 // NewServer creates a new REST server.
-func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, sessions *auth.SessionService, corsOrigins string, logger *slog.Logger) *Server {
+func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, sessions *auth.SessionService, access *Access, corsOrigins string, logger *slog.Logger) *Server {
 	if apiKeys == nil {
 		panic("rest.NewServer: an API key service is required")
 	}
@@ -61,6 +62,7 @@ func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *
 		apiKeys:       apiKeys,
 		enrollment:    enrollment,
 		sessions:      sessions,
+		access:        access,
 		corsOrigins:   corsOrigins,
 		logger:        logger,
 	}
@@ -85,8 +87,16 @@ func (s *Server) registerRoutes() {
 
 	// Everything under /api/v1 except the login requires an admin API key or
 	// a dashboard session.
-	api := s.router.Group("/api/v1", RequireAuth(s.apiKeys, s.sessions, s.logger))
+	// Authentication, then (with Access) the audit log and the permission matrix.
+	mw := []gin.HandlerFunc{RequireAuth(s.apiKeys, s.sessions, s.logger)}
+	if s.access != nil {
+		mw = append(mw, AuditRequests(s.access.Audit, s.logger), Authorize(s.access.Users, s.access.Resolver, s.logger))
+	}
+	api := s.router.Group("/api/v1", mw...)
 	s.api = api
+	if s.access != nil {
+		(&AccessHandler{users: s.access.Users, keys: s.apiKeys, audit: s.access.Audit, logger: s.logger}).RegisterRoutes(api)
+	}
 	if s.sessions != nil {
 		NewSessionHandler(s.sessions, s.logger).RegisterRoutes(s.router.Group("/api/v1"), api)
 	}

@@ -1,4 +1,4 @@
-import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, DriftPoint, AlertSink, AlertDelivery, Session, SessionInfo } from '../types/api';
+import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, DriftPoint, AuditEntry, AlertSink, AlertDelivery, Session, SessionInfo } from '../types/api';
 import { getCsrfToken, notifyUnauthorized, UnauthorizedError } from './auth';
 
 interface ApiResponse<T> { data: T; error?: { code: string; message: string }; pagination?: { total: number; limit: number; offset: number } }
@@ -113,3 +113,11 @@ export const updateAlertSink = (id: string, body: Partial<Pick<AlertSink, 'name'
 export const deleteAlertSink = (id: string) => apiDelete(`/api/v1/alert-sinks/${id}`);
 export const testAlertSink = (id: string) => apiPost<AlertDelivery>(`/api/v1/alert-sinks/${id}/test`);
 export const getAlertDeliveries = (id: string) => apiGet<AlertDelivery[]>(`/api/v1/alert-sinks/${id}/deliveries`);
+
+export interface AuditFilter { project_id?: string; actor?: string; action?: string; outcome?: '' | 'allowed' | 'denied'; limit?: number }
+
+const auditQuery = (f: AuditFilter) =>
+  new URLSearchParams(Object.entries(f).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString()
+export const getAudit = (f: AuditFilter) => apiGet<AuditEntry[]>(`/api/v1/audit?${auditQuery(f)}`);
+/** The CSV export of the same filters, downloaded with the session cookie. */
+export const auditExportURL = (f: AuditFilter) => `/api/v1/audit/export?${auditQuery(f)}`;

@@ -284,7 +284,9 @@ func run() error {
 	}
 
 	sessionSvc := auth.NewSessionService(auth.NewSessionRepo(pool), apiKeySvc, cfg.JWTSecret, cfg.SessionTTL)
-	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, sessionSvc, cfg.CORSOrigins, logger)
+	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, sessionSvc,
+		&rest.Access{Users: auth.NewUserService(auth.NewUserRepo(pool)), Resolver: rest.PoolResolver{Pool: pool}, Audit: auditLogger},
+		cfg.CORSOrigins, logger)
 	restServer.EnableSigning(rest.NewSigningHandler(keyring, logger))
 	restServer.EnableAlertSinks(rest.NewAlertSinkHandler(alertRepo, alerts, smtpCfg.Configured(), logger))
 

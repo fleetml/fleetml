@@ -339,6 +339,40 @@ stateDiagram-v2
   }
 ```
 
+## Users, roles and the audit log
+
+Every API key belongs to a user. A user is either a **global admin** (every
+project, users, API keys, creating projects; the `bootstrap` user that owns
+`FLEETML_ADMIN_KEY` is one) or has a role in individual projects:
+
+| Role | May |
+|---|---|
+| `viewer` | read everything in the project: models, deployments, experiments, devices, telemetry, drift, alert sinks (secrets redacted), the signing key |
+| `operator` | also publish models (versions, variants, features), create and control deployments and experiments, run drift checks, send test alerts |
+| `admin` | also delete, manage enrollment keys, alert sinks and the signing key, edit the project, manage its members, read its audit log |
+
+```bash
+U=$(api POST /api/v1/users '{"name":"vera"}' | jq -r .data.id)              # global admin only
+api POST /api/v1/users/$U/api-keys '{"name":"laptop"}'                         # the key is shown once
+api PUT /api/v1/projects/$P/members "{\"user_id\":\"$U\",\"role\":\"viewer\"}"   # project admin
+```
+
+The permission matrix (`internal/api/rest/permissions.go`) lists the role and
+the project of every route; a route that is not in it is refused, and a test
+checks that the matrix and the router agree and runs every route for every
+kind of caller. A request for a resource of another project, or one that does
+not exist, is refused with 403, so other projects' resources are not revealed.
+Lists that span projects (`GET /projects`, `/devices`, `/deployments`,
+`/experiments`) show only the caller's projects, and users see and revoke only
+their own dashboard sessions.
+
+Every request that changes something, and every refused request, is written
+to the audit log with the user, the API key, the route, the project, the
+status and the client address. `GET /audit` filters it (`project_id`,
+`actor`, `action`, `outcome=allowed|denied`, `from`, `to`, `limit`) and
+`GET /audit/export` returns the same as CSV; project admins read their
+project's entries, global admins all. The dashboard's Audit page shows it.
+
 ## Trust boundaries
 
 ```mermaid
@@ -372,7 +406,7 @@ flowchart LR
 
 | Credential | Held by | Grants | Lifetime |
 |---|---|---|---|
-| Admin API key | operators | every `/api/v1` route | until revoked |
+| API key | one user | what the user's role in each project allows (a global admin: every route) | until revoked |
 | Dashboard session | one browser (`httpOnly`, `SameSite=Strict` cookie, plus a CSRF token for writes) | what its API key grants | `SESSION_TTL` (12 h), revocable, ends with its key |
 | Enrollment key | apps (built in) | registering a device into one project | until rotated or revoked |
 | Device token | one device | its own heartbeats, token refresh and telemetry, within its project | 30 days by default, refreshable, revocable |

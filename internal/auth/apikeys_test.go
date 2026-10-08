@@ -23,10 +23,10 @@ func newMemKeyStore() *memKeyStore {
 	return &memKeyStore{keys: map[uuid.UUID]*APIKey{}, hashes: map[uuid.UUID]string{}}
 }
 
-func (m *memKeyStore) Create(_ context.Context, name, keyHash string) (*APIKey, error) {
+func (m *memKeyStore) Create(_ context.Context, userID uuid.UUID, name, keyHash string) (*APIKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	k := &APIKey{ID: uuid.New(), Name: name, CreatedAt: time.Now()}
+	k := &APIKey{ID: uuid.New(), UserID: userID, Name: name, CreatedAt: time.Now()}
 	m.keys[k.ID] = k
 	m.hashes[k.ID] = keyHash
 	return k, nil
@@ -109,9 +109,9 @@ func TestAPIKeyService_CreateAuthenticateRevoke(t *testing.T) {
 	ctx := context.Background()
 	svc := NewAPIKeyService(newMemKeyStore())
 
-	k1, rec1, err := svc.Create(ctx, "ci")
+	k1, rec1, err := svc.Create(ctx, BootstrapUserID, "ci")
 	require.NoError(t, err)
-	_, rec2, err := svc.Create(ctx, "laptop")
+	_, rec2, err := svc.Create(ctx, BootstrapUserID, "laptop")
 	require.NoError(t, err)
 
 	got, err := svc.Authenticate(ctx, k1)
@@ -130,7 +130,7 @@ func TestAPIKeyService_CreateAuthenticateRevoke(t *testing.T) {
 
 	assert.ErrorIs(t, svc.Revoke(ctx, rec2.ID), ErrLastKey, "the last active key cannot be revoked")
 
-	_, _, err = svc.Create(ctx, "  ")
+	_, _, err = svc.Create(ctx, BootstrapUserID, "  ")
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
 

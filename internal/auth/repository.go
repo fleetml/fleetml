@@ -22,20 +22,23 @@ func NewAPIKeyRepo(pool *pgxpool.Pool) *APIKeyRepo {
 	return &APIKeyRepo{pool: pool}
 }
 
-const apiKeyColumns = `id, name, created_at, last_used_at, revoked_at`
+const apiKeyColumns = `id, user_id, name, created_at, last_used_at, revoked_at`
 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	k := &APIKey{}
-	if err := row.Scan(&k.ID, &k.Name, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
+	if err := row.Scan(&k.ID, &k.UserID, &k.Name, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
 		return nil, err
 	}
 	return k, nil
 }
 
-func (r *APIKeyRepo) Create(ctx context.Context, name, keyHash string) (*APIKey, error) {
+func (r *APIKeyRepo) Create(ctx context.Context, userID uuid.UUID, name, keyHash string) (*APIKey, error) {
 	k, err := scanAPIKey(r.pool.QueryRow(ctx,
-		`INSERT INTO api_keys (name, key_hash) VALUES ($1, $2) RETURNING `+apiKeyColumns, name, keyHash))
+		`INSERT INTO api_keys (user_id, name, key_hash) VALUES ($1, $2, $3) RETURNING `+apiKeyColumns, userID, name, keyHash))
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return nil, fmt.Errorf("apiKey.Create: user: %w", ErrNotFound)
+		}
 		return nil, fmt.Errorf("apiKey.Create: %w", err)
 	}
 	return k, nil
@@ -246,11 +249,11 @@ func NewSessionRepo(pool *pgxpool.Pool) *SessionRepo {
 	return &SessionRepo{pool: pool}
 }
 
-const sessionColumns = `s.id, s.api_key_id, k.name, s.user_agent, s.ip, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at`
+const sessionColumns = `s.id, s.api_key_id, k.name, k.user_id, s.user_agent, s.ip, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at`
 
 func scanSession(row pgx.Row) (*Session, error) {
 	s := &Session{}
-	if err := row.Scan(&s.ID, &s.APIKeyID, &s.APIKeyName, &s.UserAgent, &s.IP, &s.CreatedAt, &s.LastSeenAt, &s.ExpiresAt, &s.RevokedAt); err != nil {
+	if err := row.Scan(&s.ID, &s.APIKeyID, &s.APIKeyName, &s.UserID, &s.UserAgent, &s.IP, &s.CreatedAt, &s.LastSeenAt, &s.ExpiresAt, &s.RevokedAt); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -322,4 +325,109 @@ func (r *SessionRepo) Touch(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("session.Touch: %w", err)
 	}
 	return nil
+}
+
+// UserRepo implements UserStore backed by PostgreSQL.
+type UserRepo struct {
+	pool *pgxpool.Pool
+}
+
+// NewUserRepo creates a UserRepo.
+func NewUserRepo(pool *pgxpool.Pool) *UserRepo { return &UserRepo{pool: pool} }
+
+func (r *UserRepo) CreateUser(ctx context.Context, name string, admin bool) (*User, error) {
+	u := &User{}
+	err := r.pool.QueryRow(ctx, `INSERT INTO users (name, is_admin) VALUES ($1, $2) RETURNING id, name, is_admin, created_at`, name, admin).
+		Scan(&u.ID, &u.Name, &u.Admin, &u.CreatedAt)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, fmt.Errorf("%w: a user named %q exists", ErrInvalidInput, name)
+		}
+		return nil, fmt.Errorf("user.Create: %w", err)
+	}
+	return u, nil
+}
+
+func (r *UserRepo) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id, name, is_admin, created_at FROM users ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("user.List: %w", err)
+	}
+	defer rows.Close()
+	out := []User{}
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Admin, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (r *UserRepo) SetRole(ctx context.Context, userID, projectID uuid.UUID, role string) error {
+	_, err := r.pool.Exec(ctx, `INSERT INTO project_roles (user_id, project_id, role) VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, project_id) DO UPDATE SET role = EXCLUDED.role`, userID, projectID, role)
+	if err != nil {
+		if isForeignKeyViolation(err) {
+			return fmt.Errorf("role: user or project: %w", ErrNotFound)
+		}
+		return fmt.Errorf("role.Set: %w", err)
+	}
+	return nil
+}
+
+func (r *UserRepo) RemoveRole(ctx context.Context, userID, projectID uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM project_roles WHERE user_id = $1 AND project_id = $2`, userID, projectID)
+	if err != nil {
+		return fmt.Errorf("role.Remove: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("role.Remove: %w", ErrNotFound)
+	}
+	return nil
+}
+
+func (r *UserRepo) Members(ctx context.Context, projectID uuid.UUID) ([]Member, error) {
+	rows, err := r.pool.Query(ctx, `SELECT u.id, u.name, pr.role FROM project_roles pr JOIN users u ON u.id = pr.user_id
+		WHERE pr.project_id = $1 ORDER BY u.name`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("role.Members: %w", err)
+	}
+	defer rows.Close()
+	out := []Member{}
+	for rows.Next() {
+		var m Member
+		if err := rows.Scan(&m.UserID, &m.UserName, &m.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (r *UserRepo) PrincipalForKey(ctx context.Context, apiKeyID uuid.UUID) (*Principal, error) {
+	p := &Principal{Roles: map[string]string{}}
+	err := r.pool.QueryRow(ctx, `SELECT u.id, u.name, u.is_admin, u.created_at, k.name FROM api_keys k JOIN users u ON u.id = k.user_id WHERE k.id = $1`, apiKeyID).
+		Scan(&p.User.ID, &p.User.Name, &p.User.Admin, &p.User.CreatedAt, &p.Key)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("principal: %w", ErrNotFound)
+		}
+		return nil, fmt.Errorf("principal: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, `SELECT project_id::text, role FROM project_roles WHERE user_id = $1`, p.User.ID)
+	if err != nil {
+		return nil, fmt.Errorf("principal roles: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var project, role string
+		if err := rows.Scan(&project, &role); err != nil {
+			return nil, err
+		}
+		p.Roles[project] = role
+	}
+	return p, rows.Err()
 }

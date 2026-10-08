@@ -10,6 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fleetml/fleetml/internal/scope"
 )
 
 // DeviceRepository defines data access for devices.
@@ -127,8 +129,13 @@ func (r *DeviceRepo) GetByFingerprint(ctx context.Context, fingerprint string) (
 
 func (r *DeviceRepo) List(ctx context.Context, limit, offset int) ([]Device, int, error) {
 	query := `SELECT ` + deviceColumns + `, COUNT(*) OVER() AS total
-		FROM devices ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-	return r.queryDevices(ctx, query, limit, offset)
+		FROM devices WHERE ($3::uuid[] IS NULL OR project_id = ANY($3)) ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	rows, err := r.pool.Query(ctx, query, limit, offset, scope.Projects(ctx))
+	if err != nil {
+		return nil, 0, fmt.Errorf("device.List: %w", err)
+	}
+	defer rows.Close()
+	return scanDeviceRows(rows)
 }
 
 func (r *DeviceRepo) ListByLabels(ctx context.Context, labels map[string]string, limit, offset int) ([]Device, int, error) {
@@ -142,15 +149,6 @@ func (r *DeviceRepo) ListByLabels(ctx context.Context, labels map[string]string,
 	rows, err := r.pool.Query(ctx, query, labelsJSON, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("device.ListByLabels: %w", err)
-	}
-	defer rows.Close()
-	return scanDeviceRows(rows)
-}
-
-func (r *DeviceRepo) queryDevices(ctx context.Context, query string, limit, offset int) ([]Device, int, error) {
-	rows, err := r.pool.Query(ctx, query, limit, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("device.List: %w", err)
 	}
 	defer rows.Close()
 	return scanDeviceRows(rows)

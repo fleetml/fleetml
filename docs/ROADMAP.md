@@ -7,8 +7,8 @@ and documentation, and the README only claims it once it runs.
 ## Next
 
 - **Sigstore** as an alternative to the built-in artifact signing keys.
-- **Roles and organisations.** Multiple organisations and projects with roles,
-  and the audit log in the dashboard.
+- **Organisations and single sign-on.** Several organisations on one server,
+  and dashboard login through OIDC next to API keys.
 - **Helm chart** and a Kubernetes reference deployment.
 
 ## Ideas

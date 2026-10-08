@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fleetml/fleetml/internal/scope"
 )
 
 // Repository provides data access for experiments.
@@ -98,11 +100,11 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Experiment, er
 }
 
 func (r *Repository) List(ctx context.Context, projectID *uuid.UUID, limit, offset int) ([]Experiment, int, error) {
-	query := `SELECT ` + expColumns + `, COUNT(*) OVER() AS total FROM experiments`
-	args := []interface{}{}
-	argIdx := 1
+	query := `SELECT ` + expColumns + `, COUNT(*) OVER() AS total FROM experiments WHERE ($1::uuid[] IS NULL OR project_id = ANY($1))`
+	args := []interface{}{scope.Projects(ctx)}
+	argIdx := 2
 	if projectID != nil {
-		query += fmt.Sprintf(" WHERE project_id = $%d", argIdx)
+		query += fmt.Sprintf(" AND project_id = $%d", argIdx)
 		args = append(args, *projectID)
 		argIdx++
 	}

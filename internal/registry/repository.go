@@ -10,6 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fleetml/fleetml/internal/scope"
 )
 
 // ProjectRepository defines data access for projects.
@@ -115,9 +117,9 @@ func (r *ProjectRepo) GetBySlug(ctx context.Context, slug string) (*Project, err
 
 func (r *ProjectRepo) List(ctx context.Context, limit, offset int) ([]Project, int, error) {
 	query := `SELECT id, name, slug, org_id, description, created_at, updated_at, COUNT(*) OVER() AS total
-		FROM projects ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+		FROM projects WHERE ($3::uuid[] IS NULL OR id = ANY($3)) ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 
-	rows, err := r.pool.Query(ctx, query, limit, offset)
+	rows, err := r.pool.Query(ctx, query, limit, offset, scope.Projects(ctx))
 	if err != nil {
 		return nil, 0, fmt.Errorf("project.List: %w", err)
 	}

@@ -21,6 +21,7 @@ type Session struct {
 	ID         uuid.UUID  `json:"id"`
 	APIKeyID   uuid.UUID  `json:"api_key_id"`
 	APIKeyName string     `json:"api_key_name"`
+	UserID     uuid.UUID  `json:"user_id"`
 	UserAgent  string     `json:"user_agent"`
 	IP         string     `json:"ip"`
 	CreatedAt  time.Time  `json:"created_at"`

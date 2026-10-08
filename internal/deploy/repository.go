@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fleetml/fleetml/internal/scope"
 )
 
 // Repository defines data access for deployments.
@@ -107,8 +109,8 @@ func (r *Repo) GetByID(ctx context.Context, id uuid.UUID) (*Deployment, error) {
 
 func (r *Repo) List(ctx context.Context, limit, offset int) ([]Deployment, int, error) {
 	query := `SELECT ` + deployColumns + `, COUNT(*) OVER() AS total
-		FROM deployments ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-	rows, err := r.pool.Query(ctx, query, limit, offset)
+		FROM deployments WHERE ($3::uuid[] IS NULL OR project_id = ANY($3)) ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	rows, err := r.pool.Query(ctx, query, limit, offset, scope.Projects(ctx))
 	if err != nil {
 		return nil, 0, fmt.Errorf("deployment.List: %w", err)
 	}

@@ -1,0 +1,7 @@
+DROP INDEX IF EXISTS idx_audit_time;
+DROP INDEX IF EXISTS idx_audit_project;
+ALTER TABLE audit_logs DROP COLUMN IF EXISTS status;
+ALTER TABLE audit_logs DROP COLUMN IF EXISTS project_id;
+DROP TABLE IF EXISTS project_roles;
+ALTER TABLE api_keys DROP COLUMN IF EXISTS user_id;
+DROP TABLE IF EXISTS users;

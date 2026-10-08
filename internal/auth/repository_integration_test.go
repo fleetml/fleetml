@@ -32,7 +32,7 @@ func TestAPIKeyRepo_Integration(t *testing.T) {
 	_, err = svc.Authenticate(ctx, "wrong")
 	assert.ErrorIs(t, err, ErrInvalidKey)
 
-	key2, rec2, err := svc.Create(ctx, "ci")
+	key2, rec2, err := svc.Create(ctx, BootstrapUserID, "ci")
 	require.NoError(t, err)
 	keys, err := svc.List(ctx)
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestSessionRepo_Integration(t *testing.T) {
 	keys := NewAPIKeyService(NewAPIKeyRepo(pool))
 	_, err := keys.Bootstrap(ctx, "")
 	require.NoError(t, err)
-	key, rec, err := keys.Create(ctx, "dashboard")
+	key, rec, err := keys.Create(ctx, BootstrapUserID, "dashboard")
 	require.NoError(t, err)
 	svc := NewSessionService(NewSessionRepo(pool), keys, "integration-secret", time.Hour)
 
@@ -132,4 +132,49 @@ func TestSessionRepo_Integration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = svc.Authenticate(ctx, "expired-token")
 	assert.ErrorIs(t, err, ErrInvalidSession)
+}
+
+func TestUserRepo_Integration(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx := context.Background()
+	users := NewUserService(NewUserRepo(pool))
+	keys := NewAPIKeyService(NewAPIKeyRepo(pool))
+	f := dbtest.NewVersion(t, pool)
+
+	all, err := users.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 1, "the migration creates the bootstrap user")
+	assert.Equal(t, BootstrapUserID, all[0].ID)
+	assert.True(t, all[0].Admin)
+
+	vera, err := users.Create(ctx, "vera", false)
+	require.NoError(t, err)
+	_, err = users.Create(ctx, "vera", false)
+	assert.ErrorIs(t, err, ErrInvalidInput, "names are unique")
+	_, err = users.Create(ctx, "  ", false)
+	assert.ErrorIs(t, err, ErrInvalidInput)
+
+	_, rec, err := keys.Create(ctx, vera.ID, "laptop")
+	require.NoError(t, err)
+	assert.Equal(t, vera.ID, rec.UserID)
+	_, _, err = keys.Create(ctx, uuid.New(), "ghost")
+	assert.ErrorIs(t, err, ErrNotFound, "a key needs an existing user")
+
+	require.NoError(t, users.SetRole(ctx, vera.ID, f.ProjectID, RoleViewer))
+	require.NoError(t, users.SetRole(ctx, vera.ID, f.ProjectID, RoleOperator), "setting again replaces the role")
+	assert.ErrorIs(t, users.SetRole(ctx, vera.ID, f.ProjectID, "owner"), ErrInvalidInput)
+	assert.ErrorIs(t, users.SetRole(ctx, vera.ID, uuid.New(), RoleViewer), ErrNotFound)
+	members, err := users.Members(ctx, f.ProjectID)
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+	assert.Equal(t, Member{UserID: vera.ID, UserName: "vera", Role: RoleOperator}, members[0])
+
+	p, err := users.PrincipalForKey(ctx, rec.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "vera", p.User.Name)
+	assert.Equal(t, "laptop", p.Key)
+	assert.Equal(t, map[string]string{f.ProjectID.String(): RoleOperator}, p.Roles)
+
+	require.NoError(t, users.RemoveRole(ctx, vera.ID, f.ProjectID))
+	assert.ErrorIs(t, users.RemoveRole(ctx, vera.ID, f.ProjectID), ErrNotFound)
 }

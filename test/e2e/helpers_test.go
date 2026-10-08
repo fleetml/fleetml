@@ -56,6 +56,12 @@ func getenv(k, def string) string {
 // call sends a REST request and decodes {"data": ...} into out; it returns the status code.
 func (e *env) call(t *testing.T, method, path string, body, out any) int {
 	t.Helper()
+	return e.callAs(t, e.key, method, path, body, out)
+}
+
+// callAs is call with another API key.
+func (e *env) callAs(t *testing.T, key, method, path string, body, out any) int {
+	t.Helper()
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -64,7 +70,7 @@ func (e *env) call(t *testing.T, method, path string, body, out any) int {
 	}
 	req, err := http.NewRequest(method, e.api+path, rd)
 	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer "+e.key)
+	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

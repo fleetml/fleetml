@@ -219,3 +219,16 @@ export interface DriftPoint {
   severity: string;
   checked_at: string;
 }
+
+export interface AuditEntry {
+  id: number;
+  recorded_at: string;
+  actor: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  project_id?: string;
+  status?: number;
+  ip?: string;
+  details: Record<string, unknown>;
+}

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Bell, Settings as SettingsIcon } from 'lucide-react'
+import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Bell, ScrollText, Settings as SettingsIcon } from 'lucide-react'
 import { AUTH_EVENT, setCsrfToken } from './api/auth'
 import { getSession } from './api/client'
 import type { SessionInfo } from './types/api'
@@ -15,6 +15,7 @@ const Experiments = lazy(() => import('./pages/Experiments'))
 const Telemetry = lazy(() => import('./pages/Telemetry'))
 const Drift = lazy(() => import('./pages/Drift'))
 const Alerts = lazy(() => import('./pages/Alerts'))
+const Audit = lazy(() => import('./pages/Audit'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const navItems = [
@@ -26,6 +27,7 @@ const navItems = [
   { path: '/telemetry', label: 'Telemetry', icon: Activity },
   { path: '/drift', label: 'Drift', icon: AlertTriangle },
   { path: '/alerts', label: 'Alerts', icon: Bell },
+  { path: '/audit', label: 'Audit', icon: ScrollText },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
@@ -111,6 +113,7 @@ export default function App() {
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/drift" element={<Drift />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/audit" element={<Audit />} />
             <Route path="/settings" element={<Settings session={session.session} onLoggedOut={() => { setCsrfToken(''); setSession(null); setNotice('You are logged out.') }} />} />
           </Routes>
           </Suspense>

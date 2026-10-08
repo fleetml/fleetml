@@ -85,7 +85,7 @@ func newSessionRig(t *testing.T, ttl time.Duration) *sessionRig {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ks := newFakeKeyStore()
 	keys := auth.NewAPIKeyService(ks)
-	admin, _, err := keys.Create(context.Background(), "admin")
+	admin, _, err := keys.Create(context.Background(), auth.BootstrapUserID, "admin")
 	require.NoError(t, err)
 	store := &fakeSessionStore{keys: ks, sessions: map[string]*auth.Session{}}
 	sessions := auth.NewSessionService(store, keys, "test-secret-test-secret-test-secret", ttl)
@@ -221,7 +221,7 @@ func TestSession_RevokeLogoutAndKeyRevocation(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, s.do("GET", "/api/v1/projects", b, "", "").Code)
 
 	// Revoking the API key ends its sessions.
-	second, rec, err := s.keys.Create(context.Background(), "second")
+	second, rec, err := s.keys.Create(context.Background(), auth.BootstrapUserID, "second")
 	require.NoError(t, err)
 	c := s.login(t, second)
 	assert.Equal(t, http.StatusOK, s.do("GET", "/api/v1/projects", c, "", "").Code)

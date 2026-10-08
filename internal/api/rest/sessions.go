@@ -131,9 +131,11 @@ func (h *SessionHandler) list(c *gin.Context) {
 		return
 	}
 	me := currentSession(c)
-	out := make([]sessionView, len(sessions))
-	for i, s := range sessions {
-		out[i] = sessionView{Session: s, Current: me != nil && s.ID == me.ID}
+	out := []sessionView{}
+	for _, s := range sessions {
+		if ownSession(c, s) {
+			out = append(out, sessionView{Session: s, Current: me != nil && s.ID == me.ID})
+		}
 	}
 	respondData(c, http.StatusOK, out)
 }
@@ -143,6 +145,17 @@ func (h *SessionHandler) revoke(c *gin.Context) {
 	if !ok {
 		return
 	}
+	sessions, err := h.sessions.List(c.Request.Context())
+	if err != nil {
+		handleAuthError(c, err)
+		return
+	}
+	for _, s := range sessions {
+		if s.ID == id && !ownSession(c, s) {
+			respondError(c, http.StatusNotFound, "NOT_FOUND", "session not found")
+			return
+		}
+	}
 	if err := h.sessions.Revoke(c.Request.Context(), id); err != nil {
 		handleAuthError(c, err)
 		return
@@ -151,4 +164,11 @@ func (h *SessionHandler) revoke(c *gin.Context) {
 		clearSessionCookie(c)
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// ownSession: users see and revoke their own sessions; global admins (and
+// every caller, when roles are not enforced) see all.
+func ownSession(c *gin.Context, s auth.Session) bool {
+	p := principal(c)
+	return p == nil || p.User.Admin || p.User.ID == s.UserID
 }
