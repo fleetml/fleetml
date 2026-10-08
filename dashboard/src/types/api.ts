@@ -174,3 +174,25 @@ export interface DriftResult {
   message: string;
   checked_at: string;
 }
+
+export interface AlertSink {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: 'webhook' | 'slack' | 'email';
+  config: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface AlertDelivery {
+  id: string;
+  sink_id: string;
+  alert_id: string;
+  alert_type: string;
+  attempt: number;
+  status: 'ok' | 'error' | 'dead';
+  http_status?: number;
+  error?: string;
+  created_at: string;
+}

@@ -178,6 +178,11 @@ func run() error {
 	if cfg.AlertWebhookURL != "" && cfg.AlertWebhookSecret == "" {
 		slog.Warn("ALERT_WEBHOOK_URL is set without ALERT_WEBHOOK_SECRET: webhook bodies will not be signed")
 	}
+	alertRepo := alert.NewRepo(pool)
+	alerts.SetStore(alertRepo)
+	alerts.SetLookup(alertRepo)
+	smtpCfg := alert.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}
+	alerts.SetEnv(alert.SinkEnv{DashboardURL: cfg.DashboardURL, SMTP: smtpCfg})
 	deployEngine.SetAlertSender(alerts)
 	versionChecker := deploy.NewVersionAdapter(pool)
 	deploySvc.SetVersionChecker(versionChecker)
@@ -253,6 +258,7 @@ func run() error {
 	}
 
 	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, cfg.CORSOrigins, logger)
+	restServer.EnableAlertSinks(rest.NewAlertSinkHandler(alertRepo, alerts, smtpCfg.Configured(), logger))
 
 	errCh := make(chan error, 2)
 

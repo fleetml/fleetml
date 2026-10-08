@@ -73,6 +73,14 @@ Each must be at least `1s`; short values are for tests and demos.
 |---|---|---|
 | `ALERT_WEBHOOK_URL` | *(unset)* | `http(s)` URL that receives rollback and drift alerts as JSON POSTs ([details](ROLLOUTS.md#alerts)). Alerts always go to NATS (`fleetml.alerts.*`) |
 | `ALERT_WEBHOOK_SECRET` | *(unset)* | Signs webhook bodies: `X-FleetML-Signature: sha256=<HMAC-SHA256>` |
+| `DASHBOARD_URL` | *(unset)* | `http(s)` URL of the dashboard; Slack and email alerts link to its pages |
+| `SMTP_HOST`, `SMTP_PORT` | *(unset)*, `587` | Mail server for email sinks; STARTTLS is used when the server offers it |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | *(unset)* | SMTP login (PLAIN), if the server needs one |
+| `SMTP_FROM` | *(unset)* | Sender address; set together with `SMTP_HOST` |
+
+Per-project sinks (webhook, Slack, email) are configured in the database
+through the dashboard or REST, not in the environment; see
+[ROLLOUTS.md](ROLLOUTS.md#alert-sinks).
 
 ### Logging
 

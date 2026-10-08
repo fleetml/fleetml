@@ -76,11 +76,14 @@ func TestLoad_Invalid(t *testing.T) {
 		"ALERT_WEBHOOK_URL":                    "hooks.example.com/x",
 		"DEVICE_BACKGROUND_HEARTBEAT_INTERVAL": "5m",
 		"DEVICE_DOWNLOAD_POLICY":               "wifi",
+		"DASHBOARD_URL":                        "fleet.example.com",
+		"SMTP_HOST":                            "smtp.example.com",
 	})
 	_, err := Load()
 	require.Error(t, err)
 	for _, name := range []string{"JWT_SECRET must be at least 32", "S3_ENDPOINT must be host:port", "S3_PUBLIC_ENDPOINT must be host:port",
-		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL", "DEVICE_BACKGROUND_HEARTBEAT_INTERVAL", "DEVICE_DOWNLOAD_POLICY"} {
+		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL", "DEVICE_BACKGROUND_HEARTBEAT_INTERVAL", "DEVICE_DOWNLOAD_POLICY",
+		"DASHBOARD_URL", "SMTP_HOST and SMTP_FROM"} {
 		assert.ErrorContains(t, err, name)
 	}
 }

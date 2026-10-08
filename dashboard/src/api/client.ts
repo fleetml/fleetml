@@ -1,4 +1,4 @@
-import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult } from '../types/api';
+import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, AlertSink, AlertDelivery } from '../types/api';
 import { getApiKey, notifyUnauthorized, UnauthorizedError } from './auth';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -31,6 +31,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 const apiGet = <T>(path: string) => request<T>('GET', path)
 const apiPost = <T>(path: string, body?: unknown) => request<T>('POST', path, body)
+const apiPatch = <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
+const apiDelete = (path: string) => request<void>('DELETE', path)
 
 /** Checks a key without storing it. Resolves true if the API accepts it. */
 export async function verifyApiKey(key: string): Promise<boolean> {
@@ -92,3 +94,16 @@ export const resumeExperiment = (id: string) => apiPost<Experiment>(`/api/v1/exp
 export const cancelExperiment = (id: string) => apiPost<Experiment>(`/api/v1/experiments/${id}/cancel`);
 export const concludeExperiment = (id: string, winnerVersionId: string, note: string) =>
   apiPost<Experiment>(`/api/v1/experiments/${id}/conclude`, { winner_version_id: winnerVersionId, note });
+
+export interface NewAlertSink {
+  name: string;
+  kind: AlertSink['kind'];
+  config: Record<string, string>;
+}
+
+export const getAlertSinks = (projectId: string) => apiGet<AlertSink[]>(`/api/v1/projects/${projectId}/alert-sinks`);
+export const createAlertSink = (projectId: string, body: NewAlertSink) => apiPost<AlertSink>(`/api/v1/projects/${projectId}/alert-sinks`, body);
+export const updateAlertSink = (id: string, body: Partial<Pick<AlertSink, 'name' | 'enabled' | 'config'>>) => apiPatch<AlertSink>(`/api/v1/alert-sinks/${id}`, body);
+export const deleteAlertSink = (id: string) => apiDelete(`/api/v1/alert-sinks/${id}`);
+export const testAlertSink = (id: string) => apiPost<AlertDelivery>(`/api/v1/alert-sinks/${id}/test`);
+export const getAlertDeliveries = (id: string) => apiGet<AlertDelivery[]>(`/api/v1/alert-sinks/${id}/deliveries`);

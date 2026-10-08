@@ -18,11 +18,20 @@ change APIs).
   post-activate hook, queues telemetry on disk, offers a local HTTP endpoint
   for inference events, and honours the download policy and urgent flag.
   `docs/LINUX_AGENT.md`.
+- Alert sinks per project (webhook with HMAC signing, Slack Block Kit,
+  SMTP email), managed over REST (`/projects/{id}/alert-sinks`,
+  `/alert-sinks/{id}`) and on the dashboard's Alerts page, with a test-send
+  button and a delivery log of the last 50 attempts. Alerts now carry
+  `project_id` and the model name and version. New settings:
+  `DASHBOARD_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+  `SMTP_PASSWORD`, `SMTP_FROM`.
 
 ### Changed
 
 - Linux devices accept `CUSTOM` model variants, and a `linux/arm64` chipset is
   profiled as arm64.
+- Alert deliveries make up to five attempts (after 1s, 2s, 4s and 8s) instead
+  of four; the last failure is recorded as a dead letter.
 
 ## [0.1.0] - 2026-10-08
 

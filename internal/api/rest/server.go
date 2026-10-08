@@ -35,6 +35,7 @@ type Server struct {
 	enrollment    *auth.EnrollmentService
 	corsOrigins   string
 	logger        *slog.Logger
+	api           *gin.RouterGroup
 }
 
 // NewServer creates a new REST server.
@@ -82,6 +83,7 @@ func (s *Server) registerRoutes() {
 
 	// Everything under /api/v1 requires an admin API key.
 	api := s.router.Group("/api/v1", RequireAPIKey(s.apiKeys, s.logger))
+	s.api = api
 
 	NewAPIKeyHandler(s.apiKeys, s.logger).RegisterRoutes(api)
 	if s.enrollment != nil {
@@ -110,6 +112,11 @@ func (s *Server) registerRoutes() {
 	if s.driftDetector != nil && s.driftStore != nil {
 		NewDriftHandler(s.driftDetector, s.driftStore, s.logger).RegisterRoutes(api)
 	}
+}
+
+// EnableAlertSinks adds the alert sink routes; call it before serving.
+func (s *Server) EnableAlertSinks(h *AlertSinkHandler) {
+	h.RegisterRoutes(s.api)
 }
 
 func (s *Server) Handler() http.Handler {

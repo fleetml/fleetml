@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Settings as SettingsIcon, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Bell, Settings as SettingsIcon, ShieldAlert } from 'lucide-react'
 import { AUTH_EVENT, getApiKey } from './api/auth'
 
 // Each page is its own chunk, so the first load stays small (charts load with Telemetry).
@@ -11,6 +11,7 @@ const Deployments = lazy(() => import('./pages/Deployments'))
 const Experiments = lazy(() => import('./pages/Experiments'))
 const Telemetry = lazy(() => import('./pages/Telemetry'))
 const Drift = lazy(() => import('./pages/Drift'))
+const Alerts = lazy(() => import('./pages/Alerts'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const navItems = [
@@ -21,6 +22,7 @@ const navItems = [
   { path: '/experiments', label: 'Experiments', icon: FlaskConical },
   { path: '/telemetry', label: 'Telemetry', icon: Activity },
   { path: '/drift', label: 'Drift', icon: AlertTriangle },
+  { path: '/alerts', label: 'Alerts', icon: Bell },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
@@ -80,6 +82,7 @@ export default function App() {
             <Route path="/experiments" element={<Experiments />} />
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/drift" element={<Drift />} />
+            <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings onKeySaved={() => setAuthError('')} />} />
           </Routes>
           </Suspense>

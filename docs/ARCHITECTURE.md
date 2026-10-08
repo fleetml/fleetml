@@ -27,7 +27,7 @@ flowchart LR
   pg[(Postgres +<br/>TimescaleDB)]
   s3[(S3 object store<br/>SeaweedFS)]
   nats[[NATS]]
-  hook([Webhook receiver])
+  hook([Webhook, Slack, email])
 
   dash -- admin API key --> rest
   cli -- admin API key --> rest
@@ -60,7 +60,7 @@ flowchart LR
 | `internal/experiment` | A/B cohorts, arm IDs, Welch test, conclusion |
 | `internal/telemetry` | Ingest, NATS pipeline, queries |
 | `internal/drift` | PSI drift checks and history |
-| `internal/alert` | Rollback and drift alerts on NATS and a signed webhook |
+| `internal/alert` | Rollback and drift alerts on NATS and to per-project sinks (webhook, Slack, email) with retries and a delivery log |
 | `internal/auth` | Admin API keys and enrollment keys |
 | `internal/health`, `internal/metrics` | Readiness checks and Prometheus metrics |
 

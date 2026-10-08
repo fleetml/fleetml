@@ -39,6 +39,14 @@ type Config struct {
 	AlertWebhookURL string `envconfig:"ALERT_WEBHOOK_URL"`
 	// AlertWebhookSecret signs webhook bodies: X-FleetML-Signature: sha256=<HMAC-SHA256>.
 	AlertWebhookSecret string `envconfig:"ALERT_WEBHOOK_SECRET"`
+	// DashboardURL is where Slack and email alerts link to (optional).
+	DashboardURL string `envconfig:"DASHBOARD_URL"`
+	// SMTP server for email alert sinks; email sinks need SMTP_HOST and SMTP_FROM.
+	SMTPHost     string `envconfig:"SMTP_HOST"`
+	SMTPPort     int    `envconfig:"SMTP_PORT" default:"587"`
+	SMTPUsername string `envconfig:"SMTP_USERNAME"`
+	SMTPPassword string `envconfig:"SMTP_PASSWORD"`
+	SMTPFrom     string `envconfig:"SMTP_FROM"`
 	// Background loop intervals. Short values are for tests and demos.
 	DeployTickInterval     time.Duration `envconfig:"DEPLOY_TICK_INTERVAL" default:"30s"`
 	ExperimentTickInterval time.Duration `envconfig:"EXPERIMENT_TICK_INTERVAL" default:"60s"`
@@ -141,6 +149,17 @@ func (c Config) validate() error {
 		if u, err := url.Parse(c.AlertWebhookURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			fail("ALERT_WEBHOOK_URL must be an http(s) URL, got %q", c.AlertWebhookURL)
 		}
+	}
+	if c.DashboardURL != "" {
+		if u, err := url.Parse(c.DashboardURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			fail("DASHBOARD_URL must be an http(s) URL, got %q", c.DashboardURL)
+		}
+	}
+	if (c.SMTPHost == "") != (c.SMTPFrom == "") {
+		fail("SMTP_HOST and SMTP_FROM must be set together")
+	}
+	if c.SMTPPort < 1 || c.SMTPPort > 65535 {
+		fail("SMTP_PORT must be a port number, got %d", c.SMTPPort)
 	}
 	return errors.Join(errs...)
 }

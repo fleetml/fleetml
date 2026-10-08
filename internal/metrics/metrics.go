@@ -44,7 +44,7 @@ var (
 		Help: "Telemetry events rejected at ingest (invalid, or for a model version outside the device's project).",
 	})
 	AlertsSent = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "fleetml_alerts_sent_total", Help: "Alerts by type (rollback, drift), channel (nats, webhook) and result (ok, error).",
+		Name: "fleetml_alerts_sent_total", Help: "Alerts by type (rollback, drift), channel (nats, webhook, slack, email) and result (ok, error).",
 	}, []string{"type", "channel", "result"})
 )
 

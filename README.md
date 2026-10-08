@@ -51,7 +51,7 @@ and jq; 47 seconds from a fresh stack):
 | **Rollback, cancel, one version per model.** Manual rollback (also after completion) returns devices to the previous version; the newest deployment that reaches a device wins | DONE | e2e `TestE2E_RollbackFromComplete` |
 | **A/B experiments.** Sticky cohorts, each arm's model delivered and verified, telemetry attributed per arm, a fixed-horizon Welch t-test and a maximum duration | DONE | [Tour §4](docs/QUICKSTART.md#4-an-ab-experiment), e2e `TestE2E_ABExperiment` |
 | **Drift detection.** PSI on inference latency and confidence, last 24 hours against the 7 days before, with history; a change into CRITICAL raises an alert | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
-| **Alerts.** Rollback and drift alerts on NATS and to an HMAC-signed webhook with retries | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alerts) |
+| **Alerts.** Rollback and drift alerts on NATS and to per-project sinks: HMAC-signed webhooks, Slack (Block Kit) and email, with a test button, five attempts and a delivery log with dead letters | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
 | **Android SDK.** Kotlin, minSdk 26: resumable verified downloads, validation before activation, last-known-good, offline start, persistent telemetry | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
 | **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md) |
 | **Linux device agent.** A static binary (amd64, arm64) and systemd service for Jetson, Raspberry Pi and x86 edge boxes: the same rollout, validation and last-known-good rules, models behind a `current` symlink, a command validator, a post-activate hook, and a local HTTP endpoint for inference telemetry | DONE | [LINUX_AGENT.md](docs/LINUX_AGENT.md), `go test ./internal/agent` |
@@ -131,7 +131,7 @@ the test scripts. The essentials:
 | `FLEETML_ADMIN_KEY` | *(generated)* | First admin API key; if unset, one is generated and logged once |
 | `REST_PORT`, `GRPC_PORT` | `18080`, `19090` | REST API and device gRPC API |
 | `NATS_URL` | `nats://localhost:14222` | Telemetry pipeline and alerts |
-| `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_SECRET` | *(unset)* | Signed webhook for rollback and drift alerts |
+| `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_SECRET` | *(unset)* | Server-wide signed webhook for rollback and drift alerts (per-project sinks are set in the dashboard) |
 
 The server checks its configuration at start-up and names every missing or
 invalid variable.

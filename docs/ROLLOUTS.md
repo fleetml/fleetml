@@ -145,8 +145,8 @@ recommended arm wins if significant, control otherwise. At `max_duration`
 
 ## Alerts
 
-Every alert is published on NATS and, if `ALERT_WEBHOOK_URL` is set, POSTed as
-the same JSON.
+Every alert is published on NATS and delivered to the project's alert sinks,
+and to `ALERT_WEBHOOK_URL` if it is set.
 
 | Event | NATS subject | When |
 |---|---|---|
@@ -158,6 +158,8 @@ the same JSON.
   "id": "6f1c…",
   "type": "rollback",
   "occurred_at": "2026-10-08T09:30:12Z",
+  "project_id": "…",
+  "model": { "name": "detector", "version": "2.0.0" },
   "rollback": {
     "deployment_id": "…", "project_id": "…", "model_version_id": "…",
     "previous_version_id": "…", "strategy": "CANARY", "stage": 0,
@@ -172,6 +174,8 @@ the same JSON.
   "id": "374d…",
   "type": "drift",
   "occurred_at": "2026-10-08T09:31:40Z",
+  "project_id": "…",
+  "model": { "name": "detector", "version": "2.0.0" },
   "drift": {
     "model_version_id": "…", "metric": "latency", "psi": 44.77,
     "severity": "CRITICAL", "previous_severity": "NONE",
@@ -180,11 +184,44 @@ the same JSON.
 }
 ```
 
+### Alert sinks
+
+Each project has its own sinks, managed on the dashboard's **Alerts** page or
+over REST:
+
+| Kind | Config | Delivers |
+|---|---|---|
+| `webhook` | `url`, optional `secret` | The alert JSON above, signed with the secret |
+| `slack` | `webhook_url` (a Slack incoming webhook) | A Block Kit message: what happened, the reason or PSI, and a link to the dashboard page (`DASHBOARD_URL`) |
+| `email` | `to` (comma separated) | A plain-text mail through the server's SMTP settings (`SMTP_HOST`, `SMTP_FROM`; [CONFIG.md](CONFIG.md#alerts)) |
+
+```bash
+api POST /api/v1/projects/$P/alert-sinks \
+  '{"name":"on-call","kind":"webhook","config":{"url":"https://example.com/fleetml","secret":"change-me"}}'
+api POST /api/v1/projects/$P/alert-sinks \
+  '{"name":"#ml-alerts","kind":"slack","config":{"webhook_url":"https://hooks.slack.com/services/…"}}'
+api GET    /api/v1/projects/$P/alert-sinks          # secrets are shown redacted
+api PATCH  /api/v1/alert-sinks/$SINK '{"enabled":false}'
+api POST   /api/v1/alert-sinks/$SINK/test           # one test alert, no retries; returns the attempt
+api GET    /api/v1/alert-sinks/$SINK/deliveries     # the last 50 attempts, newest first
+api DELETE /api/v1/alert-sinks/$SINK
+```
+
+A PATCH may send the redacted config back unchanged; redacted values keep
+their stored secret.
+
+Every sink, and `ALERT_WEBHOOK_URL`, gets up to five attempts per alert, after
+1s, 2s, 4s and 8s. Each attempt is recorded in the sink's delivery log with its
+status (`ok`, `error`) and error; when the fifth attempt fails it is recorded
+as `dead` (the dead letter) and the alert is not tried again. The log keeps the
+last 50 attempts per sink. `ALERT_WEBHOOK_URL` has no delivery log; its
+failures are in the server log and in `fleetml_alerts_sent_total`.
+
 Webhook requests carry `X-FleetML-Event` (the type), `X-FleetML-Delivery` (the
 alert `id`, unchanged across retries, so receivers can deduplicate) and, when
-`ALERT_WEBHOOK_SECRET` is set, `X-FleetML-Signature: sha256=<hex HMAC-SHA256 of
-the raw body>`. Any non-2xx response is retried three times (after 1s, 2s and
-4s). Verify a signature in Python:
+the sink has a secret (`ALERT_WEBHOOK_SECRET` for `ALERT_WEBHOOK_URL`),
+`X-FleetML-Signature: sha256=<hex HMAC-SHA256 of the raw body>`. Any non-2xx
+response counts as a failed attempt. Verify a signature in Python:
 
 ```python
 import hashlib, hmac

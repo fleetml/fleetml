@@ -25,6 +25,10 @@ const badgeStyle: Record<string, string> = {
   NONE: 'bg-green-50 text-green-700',
   WARNING: 'bg-amber-50 text-amber-700',
   CRITICAL: 'bg-red-50 text-red-700',
+  // alert deliveries
+  ok: 'bg-green-50 text-green-700',
+  error: 'bg-amber-50 text-amber-700',
+  dead: 'bg-red-50 text-red-700',
 }
 
 export function StatusBadge({ status }: { status: string }) {

@@ -98,8 +98,9 @@ sleep 5; tail -1 /tmp/fleetml-sim.log                                   # simula
 ```
 
 The rollback also creates a deployment that returns the cohort to 1.0.0, and
-sends a rollback alert (NATS subject `fleetml.alerts.rollback`, and the
-webhook if `ALERT_WEBHOOK_URL` is set). Rolling deployments
+sends a rollback alert (NATS subject `fleetml.alerts.rollback`, the
+project's alert sinks from the dashboard's Alerts page, and the webhook if
+`ALERT_WEBHOOK_URL` is set). Rolling deployments
 (`"strategy":"ROLLING"`, `"rolling_config":{"batch_size_percent":20,"batch_interval":"1m"}`)
 use the same gate; see [ROLLOUTS.md](ROLLOUTS.md).
 
