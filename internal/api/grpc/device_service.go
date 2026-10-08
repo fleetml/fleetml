@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -18,7 +19,10 @@ import (
 
 type contextKey string
 
-const deviceIDKey contextKey = "device_id"
+const (
+	deviceIDKey    contextKey = "device_id"
+	tokenExpiryKey contextKey = "token_expires_at"
+)
 
 // DeviceServiceServer implements the fleetmlv1.DeviceServiceServer interface.
 type DeviceServiceServer struct {
@@ -61,8 +65,9 @@ func (s *DeviceServiceServer) Register(ctx context.Context, req *fleetmlv1.Regis
 	}
 
 	return &fleetmlv1.RegisterResponse{
-		DeviceId:  resp.DeviceID,
-		AuthToken: resp.AuthToken,
+		DeviceId:       resp.DeviceID,
+		AuthToken:      resp.AuthToken,
+		TokenExpiresAt: resp.TokenExpiresAt.Unix(),
 		Config: &fleetmlv1.DeviceConfig{
 			HeartbeatIntervalSeconds: resp.HeartbeatIntervalSecs,
 			TelemetryBatchSize:       resp.TelemetryBatchSize,
@@ -127,6 +132,24 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 	}, nil
 }
 
+// RefreshToken exchanges a token close to expiry for a new one.
+func (s *DeviceServiceServer) RefreshToken(ctx context.Context, _ *fleetmlv1.RefreshTokenRequest) (*fleetmlv1.RefreshTokenResponse, error) {
+	deviceID, ok := ctx.Value(deviceIDKey).(uuid.UUID)
+	expiry, ok2 := ctx.Value(tokenExpiryKey).(time.Time)
+	if !ok || !ok2 {
+		return nil, status.Errorf(codes.Unauthenticated, "missing device authentication")
+	}
+	token, expiresAt, err := s.service.RefreshToken(ctx, deviceID, expiry)
+	if err != nil {
+		if errors.Is(err, device.ErrRefreshTooEarly) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		s.logger.Error("token refresh failed", "device_id", deviceID, "error", err)
+		return nil, status.Error(codes.Internal, "token refresh failed")
+	}
+	return &fleetmlv1.RefreshTokenResponse{AuthToken: token, TokenExpiresAt: expiresAt.Unix()}, nil
+}
+
 // bearerFromMetadata returns the bearer token from "authorization" metadata, or "".
 func bearerFromMetadata(ctx context.Context) string {
 	md, ok := metadata.FromIncomingContext(ctx)
@@ -181,12 +204,17 @@ func AuthInterceptor(svc *device.Service) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.Unauthenticated, "invalid authorization format, expected Bearer token")
 		}
 
-		deviceID, err := svc.ValidateToken(token)
+		deviceID, expiresAt, err := svc.ValidateToken(ctx, token)
 		if err != nil {
-			return nil, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
+			if errors.Is(err, device.ErrUnauthenticated) {
+				return nil, status.Error(codes.Unauthenticated, err.Error())
+			}
+			slog.Error("token validation failed", "method", info.FullMethod, "error", err)
+			return nil, status.Error(codes.Internal, "token validation failed")
 		}
 
 		ctx = context.WithValue(ctx, deviceIDKey, deviceID)
+		ctx = context.WithValue(ctx, tokenExpiryKey, expiresAt)
 		return handler(ctx, req)
 	}
 }

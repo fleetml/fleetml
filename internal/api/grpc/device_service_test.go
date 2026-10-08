@@ -190,6 +190,12 @@ func testLogger() *slog.Logger {
 
 func setupGRPCTest(t *testing.T) fleetmlv1.DeviceServiceClient {
 	t.Helper()
+	client, _ := setupGRPCTestWithService(t)
+	return client
+}
+
+func setupGRPCTestWithService(t *testing.T) (fleetmlv1.DeviceServiceClient, *device.Service) {
+	t.Helper()
 	logger := testLogger()
 
 	deviceSvc := device.NewService(
@@ -226,7 +232,7 @@ func setupGRPCTest(t *testing.T) fleetmlv1.DeviceServiceClient {
 	t.Cleanup(func() { _ = conn.Close() })
 
 	client := fleetmlv1.NewDeviceServiceClient(conn)
-	return client
+	return client, deviceSvc
 }
 
 func validFingerprint() string {
@@ -344,4 +350,73 @@ func TestRegister_KnownFingerprintNeedsCredentials(t *testing.T) {
 	require.NoError(t, err, "current token in metadata authorizes re-registration")
 	assert.Equal(t, first.DeviceId, second.DeviceId)
 	assert.NotEqual(t, first.AuthToken, second.AuthToken)
+}
+
+func (m *mockDeviceRepo) SetAuthTokenHash(_ context.Context, id uuid.UUID, hash *string) error {
+	d, ok := m.devices[id]
+	if !ok {
+		return device.ErrNotFound
+	}
+	d.AuthTokenHash = hash
+	return nil
+}
+
+func withToken(token string) context.Context {
+	return metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer "+token)
+}
+
+func TestHeartbeat_OldTokenRejectedAfterReRegister(t *testing.T) {
+	client := setupGRPCTest(t)
+	fp := validFingerprint()
+	first, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: fp, Os: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	_, err = client.Heartbeat(withToken(first.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: first.DeviceId})
+	require.NoError(t, err)
+
+	second, err := client.Register(withToken(first.AuthToken), &fleetmlv1.RegisterRequest{Fingerprint: fp, Os: "ANDROID"})
+	require.NoError(t, err)
+
+	_, err = client.Heartbeat(withToken(first.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: first.DeviceId})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err), "old token must fail after re-register")
+	_, err = client.Heartbeat(withToken(second.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: second.DeviceId})
+	assert.NoError(t, err)
+}
+
+func TestRefreshToken_RPC(t *testing.T) {
+	client, svc := setupGRPCTestWithService(t)
+
+	reg, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: validFingerprint(), Os: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	assert.InDelta(t, time.Now().Add(device.DefaultTokenTTL).Unix(), reg.TokenExpiresAt, 60)
+
+	_, err = client.RefreshToken(withToken(reg.AuthToken), &fleetmlv1.RefreshTokenRequest{})
+	assert.Equal(t, codes.FailedPrecondition, status.Code(err), "30 days left: too early")
+
+	_, err = client.RefreshToken(context.Background(), &fleetmlv1.RefreshTokenRequest{})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err), "refresh needs a token")
+
+	// A short-lived token is inside the refresh window.
+	svc.SetTokenTTL(2 * 24 * time.Hour)
+	short, err := client.Register(withToken(reg.AuthToken), &fleetmlv1.RegisterRequest{Fingerprint: validFingerprint(), Os: "ANDROID"})
+	require.NoError(t, err)
+	svc.SetTokenTTL(device.DefaultTokenTTL)
+
+	refreshed, err := client.RefreshToken(withToken(short.AuthToken), &fleetmlv1.RefreshTokenRequest{})
+	require.NoError(t, err)
+	assert.Greater(t, refreshed.TokenExpiresAt, short.TokenExpiresAt)
+
+	_, err = client.Heartbeat(withToken(refreshed.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: short.DeviceId})
+	assert.NoError(t, err)
+	_, err = client.Heartbeat(withToken(short.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: short.DeviceId})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err), "refreshed-away token fails")
+}
+
+func TestHeartbeat_RevokedToken(t *testing.T) {
+	client, svc := setupGRPCTestWithService(t)
+	reg, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: validFingerprint(), Os: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+
+	require.NoError(t, svc.RevokeDeviceToken(context.Background(), uuid.MustParse(reg.DeviceId)))
+	_, err = client.Heartbeat(withToken(reg.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: reg.DeviceId})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }

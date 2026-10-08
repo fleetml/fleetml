@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DeviceService_Register_FullMethodName  = "/fleetml.device.v1.DeviceService/Register"
-	DeviceService_Heartbeat_FullMethodName = "/fleetml.device.v1.DeviceService/Heartbeat"
+	DeviceService_Register_FullMethodName     = "/fleetml.device.v1.DeviceService/Register"
+	DeviceService_Heartbeat_FullMethodName    = "/fleetml.device.v1.DeviceService/Heartbeat"
+	DeviceService_RefreshToken_FullMethodName = "/fleetml.device.v1.DeviceService/RefreshToken"
 )
 
 // DeviceServiceClient is the client API for DeviceService service.
@@ -34,6 +35,9 @@ type DeviceServiceClient interface {
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	// Periodic heartbeat — server responds with pending actions
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
+	// Exchange a valid token that expires within 7 days for a new one. The old
+	// token stops working. Returns FAILED_PRECONDITION if called too early.
+	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenResponse, error)
 }
 
 type deviceServiceClient struct {
@@ -64,6 +68,16 @@ func (c *deviceServiceClient) Heartbeat(ctx context.Context, in *HeartbeatReques
 	return out, nil
 }
 
+func (c *deviceServiceClient) RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshTokenResponse)
+	err := c.cc.Invoke(ctx, DeviceService_RefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DeviceServiceServer is the server API for DeviceService service.
 // All implementations must embed UnimplementedDeviceServiceServer
 // for forward compatibility.
@@ -75,6 +89,9 @@ type DeviceServiceServer interface {
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	// Periodic heartbeat — server responds with pending actions
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
+	// Exchange a valid token that expires within 7 days for a new one. The old
+	// token stops working. Returns FAILED_PRECONDITION if called too early.
+	RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenResponse, error)
 	mustEmbedUnimplementedDeviceServiceServer()
 }
 
@@ -90,6 +107,9 @@ func (UnimplementedDeviceServiceServer) Register(context.Context, *RegisterReque
 }
 func (UnimplementedDeviceServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedDeviceServiceServer) RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RefreshToken not implemented")
 }
 func (UnimplementedDeviceServiceServer) mustEmbedUnimplementedDeviceServiceServer() {}
 func (UnimplementedDeviceServiceServer) testEmbeddedByValue()                       {}
@@ -148,6 +168,24 @@ func _DeviceService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DeviceService_RefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeviceServiceServer).RefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DeviceService_RefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeviceServiceServer).RefreshToken(ctx, req.(*RefreshTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DeviceService_ServiceDesc is the grpc.ServiceDesc for DeviceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -162,6 +200,10 @@ var DeviceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Heartbeat",
 			Handler:    _DeviceService_Heartbeat_Handler,
+		},
+		{
+			MethodName: "RefreshToken",
+			Handler:    _DeviceService_RefreshToken_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

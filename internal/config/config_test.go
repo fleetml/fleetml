@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,19 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "json", cfg.LogFormat)
 	assert.False(t, cfg.MigrateOnStart)
 	assert.Equal(t, "http://localhost:5173,http://localhost:18080", cfg.CORSOrigins)
+	assert.Equal(t, 30*24*time.Hour, cfg.DeviceTokenTTL)
+}
+
+func TestLoad_DeviceTokenTTL(t *testing.T) {
+	minimalEnv(t)
+	t.Setenv("DEVICE_TOKEN_TTL", "168h")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, 7*24*time.Hour, cfg.DeviceTokenTTL)
+
+	t.Setenv("DEVICE_TOKEN_TTL", "1h")
+	_, err = Load()
+	assert.ErrorContains(t, err, "DEVICE_TOKEN_TTL")
 }
 
 func TestLoad_MissingRequired(t *testing.T) {

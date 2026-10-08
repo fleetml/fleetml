@@ -503,13 +503,101 @@ func TestValidateToken(t *testing.T) {
 	require.NoError(t, err)
 
 	// Valid token
-	deviceID, err := svc.ValidateToken(resp.AuthToken)
+	deviceID, expiresAt, err := svc.ValidateToken(ctx, resp.AuthToken)
 	require.NoError(t, err)
 	assert.Equal(t, resp.DeviceID, deviceID.String())
+	assert.WithinDuration(t, time.Now().Add(DefaultTokenTTL), expiresAt, time.Minute, "default lifetime is 30 days")
+	assert.Equal(t, resp.TokenExpiresAt.Unix(), expiresAt.Unix())
 
 	// Invalid token
-	_, err = svc.ValidateToken("invalid-token")
-	assert.Error(t, err)
+	_, _, err = svc.ValidateToken(ctx, "invalid-token")
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+}
+
+func TestValidateToken_OldTokenRejectedAfterReRegister(t *testing.T) {
+	svc, _, _, _ := newTestService()
+	ctx := context.Background()
+	fp := validFingerprint()
+
+	first, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	second, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", CurrentToken: first.AuthToken})
+	require.NoError(t, err)
+
+	_, _, err = svc.ValidateToken(ctx, first.AuthToken)
+	assert.ErrorIs(t, err, ErrUnauthenticated, "a superseded token must stop working even though its signature is valid")
+	_, _, err = svc.ValidateToken(ctx, second.AuthToken)
+	assert.NoError(t, err)
+}
+
+func TestValidateToken_TokenFromOtherSecretRejected(t *testing.T) {
+	svc, _, _, _ := newTestService()
+	ctx := context.Background()
+	other, _, _, _ := newTestService()
+	other.tokenSecret = "a-different-secret"
+	resp, err := other.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	_, _, err = svc.ValidateToken(ctx, resp.AuthToken)
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+}
+
+func TestRefreshToken(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("too early", func(t *testing.T) {
+		svc, _, _, _ := newTestService()
+		resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
+		require.NoError(t, err)
+		id, exp, err := svc.ValidateToken(ctx, resp.AuthToken)
+		require.NoError(t, err)
+		_, _, err = svc.RefreshToken(ctx, id, exp)
+		assert.ErrorIs(t, err, ErrRefreshTooEarly, "a fresh 30-day token is not refreshable yet")
+		_, _, err = svc.ValidateToken(ctx, resp.AuthToken)
+		assert.NoError(t, err, "a refused refresh leaves the token valid")
+	})
+
+	t.Run("within window", func(t *testing.T) {
+		svc, _, _, _ := newTestService()
+		svc.SetTokenTTL(3 * 24 * time.Hour) // inside the 7-day window from the start
+		resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
+		require.NoError(t, err)
+		id, exp, err := svc.ValidateToken(ctx, resp.AuthToken)
+		require.NoError(t, err)
+
+		svc.SetTokenTTL(DefaultTokenTTL)
+		newToken, newExp, err := svc.RefreshToken(ctx, id, exp)
+		require.NoError(t, err)
+		assert.NotEqual(t, resp.AuthToken, newToken)
+		assert.True(t, newExp.After(exp))
+
+		gotID, _, err := svc.ValidateToken(ctx, newToken)
+		require.NoError(t, err)
+		assert.Equal(t, id, gotID)
+		_, _, err = svc.ValidateToken(ctx, resp.AuthToken)
+		assert.ErrorIs(t, err, ErrUnauthenticated, "the refreshed-away token stops working")
+	})
+}
+
+func TestRevokeDeviceToken(t *testing.T) {
+	svc, _, _, _ := newTestService()
+	ctx := context.Background()
+	fp := validFingerprint()
+	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+
+	require.NoError(t, svc.RevokeDeviceToken(ctx, uuid.MustParse(resp.DeviceID)))
+	_, _, err = svc.ValidateToken(ctx, resp.AuthToken)
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+
+	// The revoked token cannot be used to re-register either; an enrollment key can.
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", CurrentToken: resp.AuthToken})
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+	again, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	_, _, err = svc.ValidateToken(ctx, again.AuthToken)
+	assert.NoError(t, err)
+
+	assert.ErrorIs(t, svc.RevokeDeviceToken(ctx, uuid.New()), ErrNotFound)
 }
 
 func TestCanaryHashing(t *testing.T) {
@@ -651,4 +739,13 @@ func TestRegisterDevice_LegacyDeviceAdoptsProject(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, devices.devices[legacy.ID].ProjectID)
 	assert.Equal(t, otherProjectID, *devices.devices[legacy.ID].ProjectID)
+}
+
+func (m *mockDeviceRepo) SetAuthTokenHash(_ context.Context, id uuid.UUID, hash *string) error {
+	d, ok := m.devices[id]
+	if !ok {
+		return fmt.Errorf("device.SetAuthTokenHash: %w", ErrNotFound)
+	}
+	d.AuthTokenHash = hash
+	return nil
 }

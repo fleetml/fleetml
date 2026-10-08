@@ -27,6 +27,7 @@ func (h *DeviceHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/devices", h.listDevices)
 	rg.GET("/devices/:device_id", h.getDevice)
 	rg.DELETE("/devices/:device_id", h.deleteDevice)
+	rg.POST("/devices/:device_id/revoke", h.revokeDevice)
 	rg.GET("/device-classes", h.listDeviceClasses)
 	rg.GET("/device-classes/:class_id", h.getDeviceClass)
 }
@@ -84,6 +85,19 @@ func (h *DeviceHandler) deleteDevice(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteDevice(c.Request.Context(), id); err != nil {
+		handleDeviceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// revokeDevice invalidates the device's token; it must re-enroll to get a new one.
+func (h *DeviceHandler) revokeDevice(c *gin.Context) {
+	id, ok := parseUUID(c, "device_id")
+	if !ok {
+		return
+	}
+	if err := h.service.RevokeDeviceToken(c.Request.Context(), id); err != nil {
 		handleDeviceError(c, err)
 		return
 	}

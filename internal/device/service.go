@@ -18,7 +18,11 @@ import (
 )
 
 const (
-	tokenExpiry          = 90 * 24 * time.Hour // 90 days
+	// DefaultTokenTTL is the lifetime of a device token.
+	DefaultTokenTTL = 30 * 24 * time.Hour
+	// RefreshWindow is how close to expiry a token must be before RefreshToken
+	// issues a new one.
+	RefreshWindow        = 7 * 24 * time.Hour
 	defaultHeartbeatSecs = 60
 	defaultBatchSize     = 100
 	defaultMaxCacheMB    = 512
@@ -47,6 +51,7 @@ type RegisterRequest struct {
 type RegisterResponse struct {
 	DeviceID              string
 	AuthToken             string
+	TokenExpiresAt        time.Time
 	HeartbeatIntervalSecs uint32
 	TelemetryBatchSize    uint32
 	MaxCacheSizeMB        uint32
@@ -119,6 +124,7 @@ type Service struct {
 	experimentComp ExperimentAssigner
 	enrollment     EnrollmentVerifier
 	tokenSecret    string
+	tokenTTL       time.Duration
 	logger         *slog.Logger
 }
 
@@ -139,6 +145,7 @@ func NewService(
 		variants:    variants,
 		storage:     storage,
 		tokenSecret: tokenSecret,
+		tokenTTL:    DefaultTokenTTL,
 		logger:      logger,
 	}
 }
@@ -146,6 +153,13 @@ func NewService(
 // SetAssignmentComputer sets the assignment computer (intelligence orchestrator).
 func (s *Service) SetAssignmentComputer(ac AssignmentComputer) {
 	s.assignmentComp = ac
+}
+
+// SetTokenTTL sets the lifetime of newly issued device tokens.
+func (s *Service) SetTokenTTL(ttl time.Duration) {
+	if ttl > 0 {
+		s.tokenTTL = ttl
+	}
 }
 
 // SetEnrollmentVerifier sets the enrollment key verifier. Without one, new
@@ -207,7 +221,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		existing.DeviceClassID = &dc.ID
 
 		// Generate new token; storing its hash invalidates the previous one.
-		token, tokenHash, err := s.generateToken(existing.ID, existing.Fingerprint)
+		token, tokenHash, expiresAt, err := s.generateToken(existing.ID, existing.Fingerprint)
 		if err != nil {
 			return nil, fmt.Errorf("generating token: %w", err)
 		}
@@ -220,6 +234,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		return &RegisterResponse{
 			DeviceID:              existing.ID.String(),
 			AuthToken:             token,
+			TokenExpiresAt:        expiresAt,
 			HeartbeatIntervalSecs: defaultHeartbeatSecs,
 			TelemetryBatchSize:    defaultBatchSize,
 			MaxCacheSizeMB:        defaultMaxCacheMB,
@@ -261,7 +276,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		return nil, fmt.Errorf("creating device: %w", err)
 	}
 
-	token, tokenHash, err := s.generateToken(d.ID, d.Fingerprint)
+	token, tokenHash, expiresAt, err := s.generateToken(d.ID, d.Fingerprint)
 	if err != nil {
 		return nil, fmt.Errorf("generating token: %w", err)
 	}
@@ -274,6 +289,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 	return &RegisterResponse{
 		DeviceID:              d.ID.String(),
 		AuthToken:             token,
+		TokenExpiresAt:        expiresAt,
 		HeartbeatIntervalSecs: defaultHeartbeatSecs,
 		TelemetryBatchSize:    defaultBatchSize,
 		MaxCacheSizeMB:        defaultMaxCacheMB,
@@ -463,13 +479,54 @@ func (s *Service) computeAssignments(ctx context.Context, device *Device, curren
 	return assignments, nil
 }
 
-// ValidateToken validates a JWT token and returns the device_id claim.
-func (s *Service) ValidateToken(tokenString string) (uuid.UUID, error) {
+// ValidateToken checks a device token's signature and expiry, and that it is
+// the token currently stored for that device, so re-registration and
+// revocation take effect immediately. Credential problems wrap
+// ErrUnauthenticated; anything else is an internal error.
+func (s *Service) ValidateToken(ctx context.Context, tokenString string) (deviceID uuid.UUID, expiresAt time.Time, err error) {
 	claims, err := s.parseToken(tokenString)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, time.Time{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
-	return claims.DeviceID, nil
+	dev, err := s.devices.GetByID(ctx, claims.DeviceID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return uuid.Nil, time.Time{}, fmt.Errorf("%w: device no longer exists", ErrUnauthenticated)
+		}
+		return uuid.Nil, time.Time{}, fmt.Errorf("loading device for token check: %w", err)
+	}
+	if dev.AuthTokenHash == nil || !auth.HashEqual(auth.HashKey(tokenString), *dev.AuthTokenHash) {
+		return uuid.Nil, time.Time{}, fmt.Errorf("%w: token was revoked or superseded", ErrUnauthenticated)
+	}
+	return claims.DeviceID, claims.ExpiresAt, nil
+}
+
+// RefreshToken issues a new token for a device whose current token (already
+// validated by the caller) expires within RefreshWindow. The old token stops
+// working once the new hash is stored.
+func (s *Service) RefreshToken(ctx context.Context, deviceID uuid.UUID, currentExpiry time.Time) (token string, expiresAt time.Time, err error) {
+	if remaining := time.Until(currentExpiry); remaining > RefreshWindow {
+		return "", time.Time{}, fmt.Errorf("%w: token is valid for another %s; refresh within %s of expiry",
+			ErrRefreshTooEarly, remaining.Round(time.Hour), RefreshWindow)
+	}
+	dev, err := s.devices.GetByID(ctx, deviceID)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("loading device: %w", err)
+	}
+	token, hash, expiresAt, err := s.generateToken(dev.ID, dev.Fingerprint)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("generating token: %w", err)
+	}
+	if err := s.devices.SetAuthTokenHash(ctx, dev.ID, &hash); err != nil {
+		return "", time.Time{}, fmt.Errorf("storing token hash: %w", err)
+	}
+	return token, expiresAt, nil
+}
+
+// RevokeDeviceToken invalidates a device's current token. The device must
+// re-register with an enrollment key to get a new one.
+func (s *Service) RevokeDeviceToken(ctx context.Context, deviceID uuid.UUID) error {
+	return s.devices.SetAuthTokenHash(ctx, deviceID, nil)
 }
 
 // tokenClaims are the parts of a device token the server relies on.
@@ -542,22 +599,23 @@ func (s *Service) GetDeviceClass(ctx context.Context, id uuid.UUID) (*DeviceClas
 
 // --- helpers ---
 
-func (s *Service) generateToken(deviceID uuid.UUID, fingerprint string) (tokenStr, tokenHash string, err error) {
+func (s *Service) generateToken(deviceID uuid.UUID, fingerprint string) (tokenStr, tokenHash string, expiresAt time.Time, err error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"device_id":   deviceID.String(),
 		"fingerprint": fingerprint,
 		"jti":         uuid.NewString(), // two tokens issued in the same second must differ
 		"iat":         now.Unix(),
-		"exp":         now.Add(tokenExpiry).Unix(),
+		"exp":         now.Add(s.tokenTTL).Unix(),
 	}
+	expiresAt = time.Unix(now.Add(s.tokenTTL).Unix(), 0)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenStr, err = token.SignedString([]byte(s.tokenSecret))
 	if err != nil {
-		return "", "", fmt.Errorf("signing token: %w", err)
+		return "", "", time.Time{}, fmt.Errorf("signing token: %w", err)
 	}
 
-	return tokenStr, auth.HashKey(tokenStr), nil
+	return tokenStr, auth.HashKey(tokenStr), expiresAt, nil
 }
 
 func (s *Service) buildDeviceClass(d *Device, className string) *DeviceClass {

@@ -22,6 +22,8 @@ type DeviceRepository interface {
 	UpdateLastSeen(ctx context.Context, id uuid.UUID) error
 	UpdateLabels(ctx context.Context, id uuid.UUID, labels map[string]string) error
 	Update(ctx context.Context, d *Device) error
+	// SetAuthTokenHash replaces the stored token hash; nil revokes the token.
+	SetAuthTokenHash(ctx context.Context, id uuid.UUID, hash *string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -224,6 +226,17 @@ func (r *DeviceRepo) Update(ctx context.Context, d *Device) error {
 			return fmt.Errorf("device.Update: %w", ErrNotFound)
 		}
 		return fmt.Errorf("device.Update: %w", err)
+	}
+	return nil
+}
+
+func (r *DeviceRepo) SetAuthTokenHash(ctx context.Context, id uuid.UUID, hash *string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE devices SET auth_token_hash = $1 WHERE id = $2`, hash, id)
+	if err != nil {
+		return fmt.Errorf("device.SetAuthTokenHash: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("device.SetAuthTokenHash: %w", ErrNotFound)
 	}
 	return nil
 }

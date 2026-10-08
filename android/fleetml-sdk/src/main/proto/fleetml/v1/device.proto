@@ -12,6 +12,10 @@ service DeviceService {
 
   // Periodic heartbeat — server responds with pending actions
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Exchange a valid token that expires within 7 days for a new one. The old
+  // token stops working. Returns FAILED_PRECONDITION if called too early.
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
 }
 
 message RegisterRequest {
@@ -33,6 +37,17 @@ message RegisterResponse {
   string device_id = 1;
   string auth_token = 2;
   DeviceConfig config = 3;
+  // Expiry of auth_token, Unix seconds.
+  int64 token_expires_at = 4;
+}
+
+// The current token is sent as "authorization: Bearer <token>" metadata.
+message RefreshTokenRequest {}
+
+message RefreshTokenResponse {
+  string auth_token = 1;
+  // Expiry of auth_token, Unix seconds.
+  int64 token_expires_at = 2;
 }
 
 message DeviceConfig {

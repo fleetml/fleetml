@@ -3,9 +3,13 @@ package com.fleetml.sdk
 import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
 import com.fleetml.sdk.internal.TokenManager
+import com.fleetml.sdk.internal.TokenRefreshPolicy
 import fleetml.device.v1.Device.HeartbeatRequest
 import fleetml.device.v1.Device.ModelAssignment
 import fleetml.device.v1.Device.ModelStatus
+import fleetml.device.v1.Device.RefreshTokenRequest
+import io.grpc.Status
+import io.grpc.StatusException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,7 +28,9 @@ internal class HeartbeatManager(
     private val downloader: ModelDownloader,
     private val cache: ModelCache,
     private val callback: FleetMLCallback?,
-    private val config: FleetMLConfig
+    private val config: FleetMLConfig,
+    /** Called when the server rejects the token (revoked, superseded or expired). */
+    private val reRegister: suspend () -> Unit = {}
 ) {
     private var heartbeatJob: Job? = null
     private var intervalSeconds: Long = config.heartbeatIntervalSeconds
@@ -36,7 +42,20 @@ internal class HeartbeatManager(
         heartbeatJob = scope.launch {
             while (isActive) {
                 try {
+                    refreshTokenIfDue()
                     sendHeartbeat()
+                } catch (e: StatusException) {
+                    if (e.status.code == Status.Code.UNAUTHENTICATED) {
+                        Logger.w("Token rejected by server, re-registering")
+                        try {
+                            reRegister()
+                        } catch (re: Exception) {
+                            Logger.w("Re-registration failed: ${re.message}")
+                        }
+                    } else {
+                        Logger.w("Heartbeat failed: ${e.message}")
+                    }
+                    callback?.onConnectionStatusChanged(false)
                 } catch (e: Exception) {
                     Logger.w("Heartbeat failed: ${e.message}")
                     callback?.onConnectionStatusChanged(false)
@@ -50,6 +69,21 @@ internal class HeartbeatManager(
     fun stop() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+    }
+
+    /** Swap the token for a new one shortly before it expires. */
+    private suspend fun refreshTokenIfDue() {
+        val token = tokenManager.getAuthToken() ?: return
+        if (!TokenRefreshPolicy.needsRefresh(System.currentTimeMillis(), tokenManager.getTokenExpiresAtMillis())) return
+        try {
+            val response = grpcClient.authenticatedStub(token).refreshToken(RefreshTokenRequest.getDefaultInstance())
+            tokenManager.saveToken(response.authToken, response.tokenExpiresAt)
+            Logger.i("Device token refreshed")
+        } catch (e: StatusException) {
+            // FAILED_PRECONDITION (too early, clock skew) is retried on the next heartbeat.
+            if (e.status.code == Status.Code.UNAUTHENTICATED) throw e
+            Logger.w("Token refresh failed: ${e.status}")
+        }
     }
 
     private suspend fun sendHeartbeat() {

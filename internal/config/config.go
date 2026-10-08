@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -18,9 +19,11 @@ type Config struct {
 	GRPCPort    int    `envconfig:"GRPC_PORT" default:"19090"`
 	RESTPort    int    `envconfig:"REST_PORT" default:"18080"`
 	JWTSecret   string `envconfig:"JWT_SECRET" required:"true"`
-	LogLevel    string `envconfig:"LOG_LEVEL" default:"info"`
-	LogFormat   string `envconfig:"LOG_FORMAT" default:"json"`
-	CORSOrigins string `envconfig:"CORS_ORIGINS" default:"http://localhost:5173,http://localhost:18080"`
+	// DeviceTokenTTL is the lifetime of device tokens (refreshable in their last 7 days).
+	DeviceTokenTTL time.Duration `envconfig:"DEVICE_TOKEN_TTL" default:"720h"`
+	LogLevel       string        `envconfig:"LOG_LEVEL" default:"info"`
+	LogFormat      string        `envconfig:"LOG_FORMAT" default:"json"`
+	CORSOrigins    string        `envconfig:"CORS_ORIGINS" default:"http://localhost:5173,http://localhost:18080"`
 	// AdminKey is stored as the "bootstrap" admin API key if no key exists yet.
 	AdminKey string `envconfig:"FLEETML_ADMIN_KEY"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
@@ -52,6 +55,9 @@ func (c Config) validate() error {
 	}
 	if c.RESTPort < 1 || c.RESTPort > 65535 {
 		return fmt.Errorf("REST_PORT must be between 1 and 65535, got %d", c.RESTPort)
+	}
+	if c.DeviceTokenTTL < 24*time.Hour {
+		return fmt.Errorf("DEVICE_TOKEN_TTL must be at least 24h, got %s", c.DeviceTokenTTL)
 	}
 	if c.GRPCPort == c.RESTPort {
 		return fmt.Errorf("GRPC_PORT and REST_PORT must differ, both are %d", c.GRPCPort)

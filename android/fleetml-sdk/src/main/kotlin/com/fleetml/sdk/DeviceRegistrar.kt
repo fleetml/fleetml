@@ -45,7 +45,7 @@ internal class DeviceRegistrar(
         }
         val stub = currentToken?.let { grpcClient.authenticatedStub(it) } ?: grpcClient.deviceService
         val response = stub.register(request)
-        tokenManager.saveRegistration(response.deviceId, response.authToken)
+        tokenManager.saveRegistration(response.deviceId, response.authToken, response.tokenExpiresAt)
 
         Logger.i("Registered as device ${response.deviceId}")
         return RegisterResult(

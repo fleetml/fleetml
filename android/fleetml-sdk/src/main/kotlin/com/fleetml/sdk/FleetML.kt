@@ -58,7 +58,8 @@ object FleetML {
         val downloader = ModelDownloader(cache, config)
         val registrar = DeviceRegistrar(grpcClient, tokenManager, config, appContext)
         val heartbeatManager = HeartbeatManager(
-            grpcClient, tokenManager, downloader, cache, callback, config
+            grpcClient, tokenManager, downloader, cache, callback, config,
+            reRegister = { registrar.register() }
         )
         val telemetryReporter = TelemetryReporter(grpcClient, tokenManager, config, appContext)
 

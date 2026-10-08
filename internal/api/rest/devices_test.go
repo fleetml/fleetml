@@ -338,3 +338,28 @@ func TestListDeviceClasses(t *testing.T) {
 	w := doJSON(r, "GET", "/api/v1/device-classes", nil)
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+func (m *mockDeviceRepoREST) SetAuthTokenHash(_ context.Context, id uuid.UUID, hash *string) error {
+	d, ok := m.devices[id]
+	if !ok {
+		return fmt.Errorf("device.SetAuthTokenHash: %w", device.ErrNotFound)
+	}
+	d.AuthTokenHash = hash
+	return nil
+}
+
+func TestRevokeDevice(t *testing.T) {
+	svc := newDeviceTestService()
+	r := setupDeviceTestRouter(svc)
+	ctx := context.Background()
+	resp, err := svc.RegisterDevice(ctx, &device.RegisterRequest{EnrollmentKey: restEnrollKey, Fingerprint: deviceFingerprint("revoke"), OS: "ANDROID"})
+	require.NoError(t, err)
+
+	w := doJSON(r, "POST", "/api/v1/devices/"+resp.DeviceID+"/revoke", nil)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	_, _, err = svc.ValidateToken(ctx, resp.AuthToken)
+	assert.ErrorIs(t, err, device.ErrUnauthenticated)
+
+	assert.Equal(t, http.StatusNotFound, doJSON(r, "POST", "/api/v1/devices/"+uuid.NewString()+"/revoke", nil).Code)
+	assert.Equal(t, http.StatusBadRequest, doJSON(r, "POST", "/api/v1/devices/not-a-uuid/revoke", nil).Code)
+}
