@@ -5,9 +5,11 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.1.0] - Unreleased
+## [0.2.0] - Unreleased
 
-The first public release.
+## [0.1.0] - 2026-10-08
+
+The first release.
 
 ### Server
 
@@ -25,6 +27,11 @@ The first public release.
   version; a failing gate rolls back or pauses.
 - Rollback (also after completion) to the previous version with a reason and
   an alert, cancel, pause and resume, with a validated state machine.
+- Urgent deployments: their assignments download on any network, ignoring the
+  device download policy; rollbacks are always urgent.
+- Device settings from the server (`DEVICE_*` variables), sent at
+  registration and with every heartbeat: foreground and background heartbeat
+  intervals, telemetry batch size and flush interval, and the download policy.
 - A/B experiments: sticky cohorts with stable arm IDs, both arms' models
   delivered and kept on the device, telemetry attributed per arm, a
   fixed-horizon Welch t-test, maximum duration and conclusion with a winner.
@@ -50,11 +57,17 @@ The first public release.
 - Android SDK (Kotlin, minSdk 26): enrollment, token refresh, resumable
   sha256-verified downloads, validation with TensorFlow Lite or ONNX Runtime
   before activation, last-known-good, offline start, a persistent telemetry
-  queue, Wi-Fi-only downloads by default, and server-set intervals. A sample
-  app runs the Iris TensorFlow Lite model.
+  queue, and server-set intervals. A sample app runs the Iris TensorFlow Lite
+  model.
 - iOS SDK (Swift package, iOS 15): the same lifecycle with Core ML validation
   and Keychain credentials, and a SwiftUI sample app running the Iris Core ML
   model.
+- Battery and data policy in both SDKs: heartbeats and telemetry flushes on a
+  timer only in the foreground; in the background one check (WorkManager on
+  Android, BGAppRefreshTask on iOS) at the server's interval, hourly by
+  default; telemetry always batched; model downloads on an unmetered network
+  or while charging unless the deployment is urgent. `syncNow()` runs a check
+  on demand.
 - Sample Iris classifiers in TensorFlow Lite and Core ML (`models/iris`).
 
 ### Tools
@@ -77,8 +90,9 @@ The first public release.
 - One admin role; no organisations or per-project permissions yet.
 - The SDKs are used from source; they are not yet published to Maven Central
   or a Swift package registry.
-- Background scheduling (WorkManager, BGAppRefreshTask) and charging-aware
-  downloads are planned ([roadmap](docs/ROADMAP.md)).
-- The iOS SDK targets iOS 15 and was tested on the iOS 26.5 simulator.
+- The iOS SDK targets iOS 15 and was tested on the iOS 26.5 simulator. The
+  Simulator cannot run background tasks, so the iOS background refresh has
+  been checked on the Simulator only up to scheduling.
 
+[0.2.0]: https://github.com/fleetml/fleetml/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fleetml/fleetml/releases/tag/v0.1.0
