@@ -131,15 +131,26 @@ class ModelManagerTest {
     }
 
     @Test
-    fun `downloads wait for an unmetered network when downloadOnWifiOnly is set`() = runTest {
+    fun `downloads wait for the download policy`() = runTest {
         var unmetered = false
         val reporter = TelemetryReporter(queue, { _, _, e -> e.size }, { null }, 50, 30)
-        val mm = ModelManager(store, cache, ModelDownloader(cache), validator, reporter, { callback }, canDownload = { unmetered })
+        val mm = ModelManager(store, cache, ModelDownloader(cache), validator, reporter, { callback }, canDownload = { urgent -> urgent || unmetered })
         mm.apply(listOf(assign("good-v1", "1.0.0")))
         assertEquals(0, server.requestCount)
         assertTrue(mm.loadedStatuses().isEmpty())
         unmetered = true
         mm.apply(listOf(assign("good-v1", "1.0.0")))
+        assertEquals("ready 1.0.0", events.single())
+    }
+
+    @Test
+    fun `an urgent assignment downloads on a metered network`() = runTest {
+        val reporter = TelemetryReporter(queue, { _, _, e -> e.size }, { null }, 50, 30)
+        val mm = ModelManager(store, cache, ModelDownloader(cache), validator, reporter, { callback },
+            canDownload = { urgent -> BatteryPolicy.mayDownload(DownloadPolicy.UNMETERED_OR_CHARGING, urgent, connected = true, metered = true, charging = false) })
+        mm.apply(listOf(assign("good-v1", "1.0.0")))
+        assertEquals("not urgent: waits", 0, server.requestCount)
+        mm.apply(listOf(assign("good-v1", "1.0.0").toBuilder().setUrgent(true).build()))
         assertEquals("ready 1.0.0", events.single())
     }
 

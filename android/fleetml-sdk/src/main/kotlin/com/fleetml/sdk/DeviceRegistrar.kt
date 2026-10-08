@@ -54,6 +54,7 @@ internal class DeviceRegistrar(
             telemetryBatchSize = response.config.telemetryBatchSize.toInt(),
             maxCacheSizeMb = response.config.maxCacheSizeMb.toInt(),
             telemetryFlushIntervalSeconds = response.config.telemetryFlushIntervalSeconds.toInt(),
+            config = response.config,
         )
     }
 
@@ -71,4 +72,5 @@ data class RegisterResult(
     val telemetryBatchSize: Int,
     val maxCacheSizeMb: Int,
     val telemetryFlushIntervalSeconds: Int = 0,
+    val config: fleetml.device.v1.Device.DeviceConfig = fleetml.device.v1.Device.DeviceConfig.getDefaultInstance(),
 )

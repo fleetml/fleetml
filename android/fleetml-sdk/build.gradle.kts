@@ -44,6 +44,11 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    // The protocol is defined once, in the repository's proto/ directory.
+    sourceSets.getByName("main") {
+        (this as ExtensionAware).extensions.getByName<SourceDirectorySet>("proto").srcDir("../../proto")
+    }
 }
 
 protobuf {
@@ -86,6 +91,9 @@ dependencies {
     // AndroidX
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Battery policy: foreground detection and background sync
+    implementation("androidx.lifecycle:lifecycle-process:2.6.2")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // HTTP
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

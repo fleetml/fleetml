@@ -63,6 +63,8 @@ class HeartbeatManagerTest {
     private val sent = mutableListOf<Int>()
     private val connection = mutableListOf<Boolean>()
 
+    private val configs = mutableListOf<fleetml.device.v1.Device.DeviceConfig>()
+
     private fun setup(tokens: MemTokens, api: FakeApi, reRegister: suspend () -> Unit = {}): Pair<HeartbeatManager, TelemetryReporter> {
         val cache = ModelCache(File(dir, "models"), 10)
         val reporter = TelemetryReporter(TelemetryQueue(File(dir, "q")), { _, _, e -> sent += e.size; e.size },
@@ -71,7 +73,7 @@ class HeartbeatManagerTest {
         val cb = object : FleetMLCallback {
             override fun onConnectionStatusChanged(connected: Boolean) { connection += connected }
         }
-        return HeartbeatManager(api, tokens, models, reporter, { cb }, 30, reRegister, now = { now }) to reporter
+        return HeartbeatManager(api, tokens, models, reporter, { cb }, 30, reRegister, onConfig = { configs += it }, now = { now }) to reporter
     }
 
     @Test
@@ -87,6 +89,16 @@ class HeartbeatManagerTest {
         reporter.reportInference("v-arm", 5)
         reporter.flushNow()
         assertEquals(1, sent.single())
+    }
+
+    @Test
+    fun `passes the heartbeat's device config on`() = runTest {
+        val config = fleetml.device.v1.Device.DeviceConfig.newBuilder()
+            .setDownloadPolicy(fleetml.device.v1.Device.DownloadPolicy.ANY_NETWORK).setBackgroundHeartbeatIntervalSeconds(7200).build()
+        val api = FakeApi().apply { response = HeartbeatResponse.newBuilder().setNextHeartbeatSeconds(60).setConfig(config).build() }
+        val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+        hb.beatOnce()
+        assertEquals(listOf(config), configs)
     }
 
     @Test

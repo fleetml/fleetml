@@ -35,6 +35,8 @@ internal class HeartbeatManager(
     initialIntervalSeconds: Long,
     /** Called when the server rejects the token (revoked, superseded or expired). */
     private val reRegister: suspend () -> Unit = {},
+    /** Called with the DeviceConfig of every heartbeat response that carries one. */
+    private val onConfig: (fleetml.device.v1.Device.DeviceConfig) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private var heartbeatJob: Job? = null
@@ -76,6 +78,7 @@ internal class HeartbeatManager(
             )
             setConnected(true)
             setInterval(response.nextHeartbeatSeconds.toLong())
+            if (response.hasConfig()) onConfig(response.config)
             telemetry?.setExperimentArms(response.experimentsList.associate { it.modelVersionId to it.armId })
             models.apply(response.assignmentsList)
             true

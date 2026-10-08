@@ -17,9 +17,28 @@ internal class DeviceStats(private val context: Context) {
         0
     }
 
-    /** True on a metered network (mobile data); downloadOnWifiOnly waits for an unmetered one. */
+    /** True on a metered network (mobile data). */
     fun isNetworkMetered(): Boolean = try {
         (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+    } catch (_: Exception) {
+        false
+    }
+
+    /** True if a network with internet access is connected. */
+    fun isConnected(): Boolean = try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    } catch (_: Exception) {
+        false
+    }
+
+    /** True while the device is charging or full on a charger. */
+    fun isCharging(): Boolean = try {
+        val status = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        when (status?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)) {
+            BatteryManager.BATTERY_STATUS_CHARGING, BatteryManager.BATTERY_STATUS_FULL -> true
+            else -> false
+        }
     } catch (_: Exception) {
         false
     }

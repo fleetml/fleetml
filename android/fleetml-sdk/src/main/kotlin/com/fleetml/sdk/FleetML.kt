@@ -1,6 +1,16 @@
 package com.fleetml.sdk
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.fleetml.sdk.internal.DeviceStats
 import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
@@ -17,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * FleetML Android SDK entry point.
@@ -36,6 +47,12 @@ import java.io.File
  * through [FleetMLCallback.onModelReady] (and [activeModels]) as soon as
  * [start] runs, before the server is reached; the server reconciles in the
  * background.
+ *
+ * Battery and data: heartbeats and telemetry flushes run on a timer only while
+ * the app is in the foreground. In the background a WorkManager job (at most
+ * every 15 minutes, by default hourly, on any connected network) runs one
+ * heartbeat and one telemetry flush. Models download only as the
+ * [DownloadPolicy] allows, unless the deployment is urgent.
  */
 object FleetML {
     @Volatile private var instance: FleetMLInstance? = null
@@ -75,6 +92,18 @@ object FleetML {
         instance = null
     }
 
+    /**
+     * Runs one heartbeat and one telemetry flush now, whatever the app's
+     * state. The background job calls it; apps can too (e.g. pull to refresh).
+     * Returns true if the server was reached. A no-op before [init].
+     */
+    suspend fun syncNow(): Boolean = instance?.syncNow() ?: false
+
+    /** Schedules the next background check (called by the background job). */
+    internal fun scheduleBackgroundSync() {
+        instance?.scheduleBackgroundWork()
+    }
+
     /** True between [init] and [stop]. */
     fun isInitialized(): Boolean = instance != null
 
@@ -106,7 +135,7 @@ object FleetML {
 }
 
 internal class FleetMLInstance(
-    context: Context,
+    private val context: Context,
     val config: FleetMLConfig,
     private val callback: FleetMLCallback?,
     validator: ModelValidator,
@@ -118,6 +147,10 @@ internal class FleetMLInstance(
     val cache = ModelCache(File(root, "models"), config.maxCacheSizeMb).also { it.cleanupTemp() }
     private val registrar = DeviceRegistrar(grpcClient, tokenManager, config, context)
     private val stats = DeviceStats(context)
+
+    // The server's DeviceConfig overrides these local defaults.
+    @Volatile private var downloadPolicy = config.downloadPolicy
+    @Volatile private var backgroundIntervalSeconds = config.backgroundHeartbeatIntervalSeconds
 
     val telemetryReporter = TelemetryReporter(
         queue = TelemetryQueue(File(root, "telemetry.queue")),
@@ -140,7 +173,9 @@ internal class FleetMLInstance(
         validator = validator,
         telemetry = telemetryReporter,
         callback = { callback },
-        canDownload = { !config.downloadOnWifiOnly || !stats.isNetworkMetered() },
+        canDownload = { urgent ->
+            BatteryPolicy.mayDownload(downloadPolicy, urgent, stats.isConnected(), stats.isNetworkMetered(), stats.isCharging())
+        },
     )
 
     private val heartbeat = HeartbeatManager(
@@ -156,10 +191,20 @@ internal class FleetMLInstance(
         callback = { callback },
         initialIntervalSeconds = config.heartbeatIntervalSeconds,
         reRegister = { register() },
+        onConfig = ::applyConfig,
     )
 
+    /** Foreground: timers run. Background: they stop and a WorkManager job takes over. */
+    private val lifecycleObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) = onForeground()
+        override fun onStop(owner: LifecycleOwner) = onBackground()
+    }
+    @Volatile private var started = false
+    @Volatile private var registered = false
+    @Volatile private var foreground = false
+
     fun start() {
-        telemetryReporter.start(scope)
+        started = true
         scope.launch {
             // Offline start: what was active last time is usable immediately.
             models.activeModels().forEach { callback?.onModelReady(it) }
@@ -172,20 +217,84 @@ internal class FleetMLInstance(
                     delay(REGISTER_RETRY_MS)
                 }
             }
-            heartbeat.start(scope)
+            registered = true
+            if (foreground) startTimers()
         }
+        Handler(Looper.getMainLooper()).post { ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver) }
+    }
+
+    private fun onForeground() {
+        foreground = true
+        WorkManager.getInstance(context).cancelUniqueWork(BACKGROUND_WORK)
+        if (registered) startTimers()
+    }
+
+    private fun onBackground() {
+        foreground = false
+        heartbeat.stop()
+        telemetryReporter.stop()
+        scope.launch { telemetryReporter.flushNow() }
+        scheduleBackgroundWork()
+    }
+
+    private fun startTimers() {
+        telemetryReporter.start(scope)
+        heartbeat.start(scope)
+    }
+
+    /**
+     * Schedules the next background check. It is a one-time job that the
+     * worker re-schedules after each run, so the interval follows the server's
+     * DeviceConfig without re-enqueueing a periodic job.
+     */
+    fun scheduleBackgroundWork() {
+        if (foreground) return
+        val interval = BatteryPolicy.backgroundIntervalSeconds(backgroundIntervalSeconds)
+        val request = OneTimeWorkRequestBuilder<FleetMLSyncWorker>()
+            .setInitialDelay(interval, TimeUnit.SECONDS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(BACKGROUND_WORK, ExistingWorkPolicy.REPLACE, request)
+        Logger.i("In the background: next sync in ${interval}s through WorkManager")
+    }
+
+    /** One heartbeat and one telemetry flush (the background job and [FleetML.syncNow]). */
+    suspend fun syncNow(): Boolean {
+        if (registrar.needsRegistration()) {
+            try {
+                register()
+                registered = true
+            } catch (e: Exception) {
+                Logger.w("Registration failed: ${e.message}")
+                return false
+            }
+        }
+        val reached = heartbeat.beatOnce()
+        telemetryReporter.flushNow()
+        return reached
     }
 
     private suspend fun register() {
         val result = registrar.register()
         heartbeat.setInterval(result.heartbeatIntervalSeconds.toLong())
         // The server's DeviceConfig wins over the local defaults.
-        telemetryReporter.configure(result.telemetryBatchSize, result.telemetryFlushIntervalSeconds.toLong())
+        applyConfig(result.config)
         callback?.onRegistered(result.deviceId)
         telemetryReporter.onReconnected()
     }
 
+    private fun applyConfig(c: fleetml.device.v1.Device.DeviceConfig) {
+        if (c.heartbeatIntervalSeconds > 0) heartbeat.setInterval(c.heartbeatIntervalSeconds.toLong())
+        telemetryReporter.configure(c.telemetryBatchSize.toInt(), c.telemetryFlushIntervalSeconds.toLong())
+        downloadPolicy = BatteryPolicy.fromProto(c.downloadPolicy, downloadPolicy)
+        if (c.backgroundHeartbeatIntervalSeconds > 0) backgroundIntervalSeconds = c.backgroundHeartbeatIntervalSeconds.toLong()
+    }
+
     fun stop() {
+        if (started) {
+            Handler(Looper.getMainLooper()).post { ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver) }
+            WorkManager.getInstance(context).cancelUniqueWork(BACKGROUND_WORK)
+        }
         telemetryReporter.stop()
         heartbeat.stop()
         scope.cancel()
@@ -201,5 +310,6 @@ internal class FleetMLInstance(
 
     private companion object {
         const val REGISTER_RETRY_MS = 10_000L
+        const val BACKGROUND_WORK = "fleetml-background-sync"
     }
 }

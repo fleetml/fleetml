@@ -45,7 +45,7 @@ class SampleApp : Application(), FleetMLCallback {
     private fun startSdk(s: Settings) {
         note("Starting FleetML against ${s.host}:${s.port}")
         FleetML.init(this, FleetMLConfig(serverHost = s.host, serverPort = s.port, enrollmentKey = s.enrollmentKey,
-            labels = mapOf("app" to "sample"), downloadOnWifiOnly = false), callback = this)
+            labels = mapOf("app" to "sample")), callback = this)
     }
 
     fun observe(listener: () -> Unit) = listeners.add(listener)

@@ -47,7 +47,7 @@ class LiveServerTest {
         FleetML.init(
             context,
             FleetMLConfig(serverHost = host, serverPort = args.getString("grpcPort", "19090").toInt(),
-                enrollmentKey = enrollmentKey!!, labels = mapOf("e2e-run" to args.getString("label")!!), downloadOnWifiOnly = false),
+                enrollmentKey = enrollmentKey!!, labels = mapOf("e2e-run" to args.getString("label")!!)),
             object : FleetMLCallback {
                 override fun onModelReady(model: ActiveModel) {
                     active = model
@@ -56,7 +56,14 @@ class LiveServerTest {
             },
         )
 
-        assertTrue("model assigned, downloaded and validated within 90s", ready.await(90, TimeUnit.SECONDS))
+        // The test process has no activity, so the SDK is "in the background" and
+        // its timers do not run: drive it the way the background job does.
+        var waited = 0
+        while (!ready.await(2, TimeUnit.SECONDS) && waited < 90) {
+            runBlocking { FleetML.syncNow() }
+            waited += 2
+        }
+        assertTrue("model assigned, downloaded and validated within 90s", ready.count == 0L)
         val model = active!!
         assertEquals(expectedVersion, model.version)
         assertEquals(expectedSha, sha256(model.file.readBytes()))
