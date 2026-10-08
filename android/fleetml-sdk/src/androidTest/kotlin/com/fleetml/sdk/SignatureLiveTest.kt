@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.security.MessageDigest
 
 /**
  * One phase of scripts/signing-e2e.sh: the models in expectActive must become
@@ -23,18 +24,23 @@ class SignatureLiveTest {
     @After
     fun tearDown() {
         FleetML.stop()
+        DeviceFingerprint.override = null
     }
 
     @Test
     fun signaturesAreVerifiedBeforeActivation() {
         val enrollmentKey = args.getString("enrollmentKey")
-        assumeTrue("run via scripts/signing-e2e.sh android", !enrollmentKey.isNullOrEmpty())
+        // scripts/android-e2e.sh passes an enrollment key too, but no expectations.
+        assumeTrue("run via scripts/signing-e2e.sh android", !enrollmentKey.isNullOrEmpty() && args.containsKey("expectActive"))
         val expectActive = args.getString("expectActive")!!.split(",").toSet()
         val expectRejected = args.getString("expectRejected")!!.split(",").toSet()
         val rejected = mutableListOf<String>()
 
-        // The same device across the script's phases: it keeps the keys it was sent.
+        // The same device across the script's phases (the label is the run's),
+        // but not one an earlier run registered in another project.
         FleetML.stop()
+        DeviceFingerprint.override = MessageDigest.getInstance("SHA-256").digest(args.getString("label")!!.toByteArray())
+            .joinToString("") { "%02x".format(it) }
         FleetML.init(
             context,
             FleetMLConfig(serverHost = args.getString("host", "10.0.2.2"), serverPort = args.getString("grpcPort", "19090").toInt(),

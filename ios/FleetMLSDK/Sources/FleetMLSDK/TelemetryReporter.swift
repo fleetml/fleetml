@@ -151,13 +151,18 @@ public final class TelemetryReporter {
 
     /// Sends queued events in batches until the queue is empty; false if a send
     /// failed (events stay queued). Unregistered devices keep everything queued.
+    /// One flush runs at a time: a caller that finds one running waits for it,
+    /// then sends what is left, so events reported before the call are sent
+    /// when it returns.
     @discardableResult
     func flushNow() async -> Bool {
-        guard lock.withLock({ () -> Bool in
+        while !lock.withLock({ () -> Bool in
             if flushing { return false }
             flushing = true
             return true
-        }) else { return true }
+        }) {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
         defer { lock.withLock { flushing = false } }
         guard let creds = credentials() else { return true }
         while true {

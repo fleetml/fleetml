@@ -163,7 +163,10 @@ final class Instance {
         let api = grpc
         heartbeat = HeartbeatManager(api: api, tokens: tokens, models: models, telemetry: telemetry,
                                      delegate: { weakSelf()?.delegate }, interval: config.heartbeatIntervalSeconds,
-                                     reRegister: { try? await weakSelf()?.register() },
+                                     reRegister: {
+                                         guard let me = weakSelf() else { return }
+                                         try? await me.registration.register { try await me.register() }
+                                     },
                                      onConfig: { weakSelf()?.apply($0) })
         weakSelf = { [weak self] in self }
         pathMonitor.pathUpdateHandler = { [weak self] p in
@@ -202,6 +205,7 @@ final class Instance {
     }
 
     private var needsRegistration: Bool { !tokens.isRegistered || tokens.registrationSignature != signature }
+    private let registration = RegistrationGate()
 
     func start() {
         observeLifecycle()
@@ -212,7 +216,7 @@ final class Instance {
             for model in self.models.activeModels { self.delegate?.fleetML(modelReady: model) }
             while self.needsRegistration && !Task.isCancelled {
                 do {
-                    try await self.register()
+                    try await self.registration.register { try await self.register() }
                 } catch {
                     Log.sdk.error("Registration failed: \(error.localizedDescription)")
                     self.delegate?.fleetML(connectionChanged: false)
@@ -306,7 +310,7 @@ final class Instance {
     func syncNow() async -> Bool {
         if needsRegistration {
             do {
-                try await register()
+                try await registration.register { try await self.register() }
                 lock.withLock { registered = true }
             } catch {
                 Log.sdk.warning("Registration failed: \(error.localizedDescription)")

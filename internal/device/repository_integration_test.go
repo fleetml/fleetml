@@ -66,8 +66,15 @@ func TestDeviceRepo_Integration(t *testing.T) {
 	assert.Nil(t, got.AuthTokenHash)
 	assert.ErrorIs(t, repo.SetAuthTokenHash(ctx, uuid.New(), nil), ErrNotFound)
 
+	// A device with telemetry can be deleted; its telemetry goes with it.
+	_, err = pool.Exec(ctx, `INSERT INTO telemetry_events (device_id, model_version_id, event_type, event_id) VALUES ($1, $2, 'INFERENCE', $3)`,
+		other.ID, fx.VersionID, uuid.New())
+	require.NoError(t, err)
 	require.NoError(t, repo.Delete(ctx, other.ID))
 	assert.ErrorIs(t, repo.Delete(ctx, other.ID), ErrNotFound)
+	var events int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM telemetry_events WHERE device_id = $1`, other.ID).Scan(&events))
+	assert.Zero(t, events)
 
 	dc := &DeviceClass{Name: "android-midrange", OS: "ANDROID", MinRAMMB: 4096}
 	require.NoError(t, classes.Upsert(ctx, dc))

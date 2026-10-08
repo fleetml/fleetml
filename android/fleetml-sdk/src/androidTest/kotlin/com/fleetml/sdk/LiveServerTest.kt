@@ -31,6 +31,7 @@ class LiveServerTest {
     @After
     fun tearDown() {
         FleetML.reset()
+        DeviceFingerprint.override = null
     }
 
     @Test
@@ -41,9 +42,10 @@ class LiveServerTest {
         val expectedVersion = args.getString("expectedVersion")!!
         val expectedSha = args.getString("expectedSha")!!
 
-        // Keep the device's registration from earlier runs: each run uses a new
-        // project, so a repeat run moves the device there with its token.
+        // Each run uses a new project, and the previous run's tearDown cleared
+        // the stored token: register as a device of this run's own.
         FleetML.stop()
+        DeviceFingerprint.override = sha256(args.getString("label")!!.toByteArray())
         val ready = CountDownLatch(1)
         var active: ActiveModel? = null
         FleetML.init(
@@ -52,6 +54,8 @@ class LiveServerTest {
                 enrollmentKey = enrollmentKey!!, labels = mapOf("e2e-run" to args.getString("label")!!)),
             object : FleetMLCallback {
                 override fun onModelReady(model: ActiveModel) {
+                    // Models another live test left in the app's storage are reported first (offline start).
+                    if (model.modelName != "iris" || model.version != expectedVersion) return
                     active = model
                     ready.countDown()
                 }

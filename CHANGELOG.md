@@ -62,7 +62,6 @@ change APIs).
   start their own NATS, so they no longer share the dev stack's.
 - The telemetry consumer drops only events the database can never accept
   (invalid values, unknown model versions); other database errors are retried.
-
 - The Linux agent applies a telemetry flush interval from the server at once
   instead of after its first 30-second wait.
 - The CLI, the Linux agent, the dashboard and the Android and iOS SDKs are
@@ -71,6 +70,31 @@ change APIs).
   `.env`.
 - The quickstart's dashboard hint mentions the login (it still pointed to
   Settings).
+- The 20 MB delta timing test no longer runs under the race detector, where
+  it took minutes.
+
+### Fixed
+
+- `DELETE /devices/{id}` failed with a 500 for any device that had reported
+  telemetry. Deleting a device now deletes its telemetry too (migration
+  000018), as it already deleted its experiment assignments.
+- Android and iOS SDKs: the start-up registration and a `syncNow()` right
+  after `init()` could both register; each Register issues a token that
+  supersedes the previous one, so the device could keep the superseded token
+  and be refused on its next start. Registrations now run one at a time, and
+  a caller that waited does not register again.
+- iOS SDK: `flushNow()` called while another flush was running (for example
+  the one a reconnect starts) returned at once without sending; it now waits
+  for that flush and sends what is left, as on Android.
+- The Android live tests failed when run again against the same server:
+  `LiveServerTest` cleared the stored token after each run while the
+  emulator's fingerprint stayed registered in that run's project, so the next
+  run (a new project) was refused; and it took the first model reported,
+  which could be one `SignatureLiveTest` had left in storage. Each run now
+  registers with a fingerprint of its own (as the iOS live tests do) and
+  waits for the model it deployed. `scripts/android-e2e.sh` runs only
+  `LiveServerTest`; `SignatureLiveTest` is skipped unless
+  `scripts/signing-e2e.sh` runs it.
 
 ## [0.2.0] - 2026-10-08
 

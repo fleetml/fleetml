@@ -17,9 +17,16 @@ import java.security.MessageDigest
 object DeviceFingerprint {
 
     /**
+     * Replaces the hardware fingerprint (tests only): each live test run
+     * registers as its own device, in its own project.
+     */
+    @Volatile internal var override: String? = null
+
+    /**
      * Generate a 64-character lowercase hex SHA256 fingerprint.
      */
     fun generate(context: Context): String {
+        override?.let { return it }
         val parts = listOf(
             context.packageName,
             Build.BOARD.orEmpty(),

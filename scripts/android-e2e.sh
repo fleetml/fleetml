@@ -39,6 +39,7 @@ ADB=$(command -v adb || echo "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platfor
 
 cd android
 JAVA_HOME=${JAVA_HOME_17:-/opt/homebrew/opt/openjdk@17} ./gradlew :fleetml-sdk:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.fleetml.sdk.LiveServerTest \
   -Pandroid.testInstrumentationRunnerArguments.enrollmentKey="$EK" \
   -Pandroid.testInstrumentationRunnerArguments.label="$LABEL" \
   -Pandroid.testInstrumentationRunnerArguments.expectedVersion=2.0.0 \

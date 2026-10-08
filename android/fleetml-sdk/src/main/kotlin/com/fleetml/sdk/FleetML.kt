@@ -16,6 +16,7 @@ import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
 import com.fleetml.sdk.internal.ModelManager
 import com.fleetml.sdk.internal.ModelStore
+import com.fleetml.sdk.internal.RegistrationGate
 import com.fleetml.sdk.internal.TelemetryQueue
 import com.fleetml.sdk.internal.TokenManager
 import fleetml.device.v1.Device.HeartbeatRequest
@@ -150,6 +151,7 @@ internal class FleetMLInstance(
     val tokenManager = TokenManager(context)
     val cache = ModelCache(File(root, "models"), config.maxCacheSizeMb).also { it.cleanupTemp() }
     private val registrar = DeviceRegistrar(grpcClient, tokenManager, config, context)
+    private val registration = RegistrationGate { registrar.needsRegistration() }
     private val stats = DeviceStats(context)
 
     // The server's DeviceConfig overrides these local defaults.
@@ -194,7 +196,7 @@ internal class FleetMLInstance(
         telemetry = telemetryReporter,
         callback = { callback },
         initialIntervalSeconds = config.heartbeatIntervalSeconds,
-        reRegister = { register() },
+        reRegister = { registration.register(::register) },
         onConfig = ::applyConfig,
     )
 
@@ -214,7 +216,7 @@ internal class FleetMLInstance(
             models.activeModels().forEach { callback?.onModelReady(it) }
             while (registrar.needsRegistration()) {
                 try {
-                    register()
+                    registration.registerIfNeeded(::register)
                 } catch (e: Exception) {
                     Logger.e("Registration failed: ${e.message}", e)
                     callback?.onConnectionStatusChanged(false)
@@ -266,7 +268,7 @@ internal class FleetMLInstance(
     suspend fun syncNow(): Boolean {
         if (registrar.needsRegistration()) {
             try {
-                register()
+                registration.registerIfNeeded(::register)
                 registered = true
             } catch (e: Exception) {
                 Logger.w("Registration failed: ${e.message}")

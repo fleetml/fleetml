@@ -51,6 +51,23 @@ final class TelemetryReporterTests: XCTestCase {
         XCTAssertEqual(sender.events.first?.latencyMs, 4)
     }
 
+    func testFlushNowDuringAnotherFlushSendsTheNewEvents() async {
+        let sender = GatedSender()
+        let r = TelemetryReporter(queue: TelemetryQueue(url: tempDir().appendingPathComponent("q")), sender: sender,
+                                  credentials: { ("device-1", "token") }, batchSize: 100, flushInterval: 3600)
+        r.reportInference(versionID: "first", latencyMs: 1)
+        let background = Task { await r.flushNow() } // e.g. the flush a reconnect starts
+        await sender.waitForFirstSend()
+        r.reportInference(versionID: "second", latencyMs: 1)
+        let flushing = Task { await r.flushNow() }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        sender.release()
+        let ok = await flushing.value
+        XCTAssertTrue(ok)
+        XCTAssertEqual(sender.sent, ["first", "second"])
+        _ = await background.value
+    }
+
     func testUnregisteredDeviceKeepsEventsQueued() async {
         let sender = FakeSender()
         let r = reporter(sender, registered: false, batch: 100)
@@ -116,3 +133,26 @@ final class FeatureHistogramTests: XCTestCase {
     }
 }
 
+
+/// Holds its first send until release(), so a test can call flushNow while a flush is in progress.
+private final class GatedSender: TelemetrySender {
+    private let lock = NSLock()
+    private var _sent: [String] = []
+    private var started = false
+    private var released = false
+
+    var sent: [String] { lock.withLock { _sent } }
+
+    func waitForFirstSend() async {
+        while !lock.withLock({ started }) { try? await Task.sleep(nanoseconds: 5_000_000) }
+    }
+
+    func release() { lock.withLock { released = true } }
+
+    func send(deviceID: String, token: String, events: [Fleetml_Telemetry_V1_TelemetryEvent]) async throws -> Int {
+        lock.withLock { started = true }
+        while !lock.withLock({ released }) { try? await Task.sleep(nanoseconds: 5_000_000) }
+        lock.withLock { _sent += events.map(\.modelVersionID) }
+        return events.count
+    }
+}

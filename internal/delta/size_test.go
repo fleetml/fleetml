@@ -1,3 +1,7 @@
+// The race detector makes this timing test take minutes and says nothing
+// about it; the small tests in this package cover the same code under -race.
+//go:build !race
+
 package delta
 
 import (
