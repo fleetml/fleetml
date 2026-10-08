@@ -40,6 +40,37 @@ func NewS3Client(cfg S3Config) (*S3Client, error) {
 	}, nil
 }
 
+// DownloadSigner presigns download URLs for a host other than the one the
+// server uses, e.g. the address devices reach the object store at.
+type DownloadSigner struct {
+	client *minio.Client
+	bucket string
+}
+
+// NewDownloadSigner returns a signer for publicEndpoint ("host:port").
+// Presigning is computed locally (the region is fixed), so the server never
+// needs to reach publicEndpoint itself.
+func NewDownloadSigner(cfg S3Config, publicEndpoint string) (*DownloadSigner, error) {
+	client, err := minio.New(publicEndpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure: cfg.UseSSL,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating s3 download signer: %w", err)
+	}
+	return &DownloadSigner{client: client, bucket: cfg.Bucket}, nil
+}
+
+// GeneratePresignedDownload returns a presigned GET URL for publicEndpoint.
+func (d *DownloadSigner) GeneratePresignedDownload(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := d.client.PresignedGetObject(ctx, d.bucket, key, expiry, url.Values{})
+	if err != nil {
+		return "", fmt.Errorf("generating presigned download URL: %w", err)
+	}
+	return u.String(), nil
+}
+
 // EnsureBucket creates the configured bucket if it does not exist yet, so the
 // server works against a fresh S3-compatible store without an init container.
 func (s *S3Client) EnsureBucket(ctx context.Context) error {

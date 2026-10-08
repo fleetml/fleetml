@@ -101,7 +101,7 @@ internal class HeartbeatManager(
 
     /** Swaps the token for a new one shortly before it expires. Returns the token to use. */
     private suspend fun refreshTokenIfDue(token: String): String {
-        if (!TokenRefreshPolicy.needsRefresh(now(), tokens.getTokenExpiresAtMillis())) return token
+        if (!TokenRefreshPolicy.needsRefresh(now(), tokens.getTokenExpiresAtMillis(), tokens.getTokenIssuedAtMillis())) return token
         return try {
             val response = api.refreshToken(token)
             tokens.saveToken(response.authToken, response.tokenExpiresAt)

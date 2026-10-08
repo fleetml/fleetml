@@ -3,7 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:allowBackup="true"
+        android:name=".SampleApp"
+        android:allowBackup="false"
         android:label="FleetML Sample"
         android:theme="@style/Theme.AppCompat.Light">
         <activity

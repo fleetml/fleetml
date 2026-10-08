@@ -126,7 +126,19 @@ func run() error {
 	profiler := intelligence.NewProfiler(logger)
 	selector := intelligence.NewSelector(logger)
 	intelVariantRepo := intelligence.NewVariantRepoAdapter(pool)
-	orchestrator := intelligence.NewOrchestrator(profiler, selector, intelVariantRepo, s3Client, logger)
+	// Device download URLs are signed for the address devices use.
+	var deviceURLs intelligence.StorageClient = s3Client
+	if cfg.S3PublicEndpoint != "" {
+		signer, err := storage.NewDownloadSigner(storage.S3Config{
+			AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL, Bucket: cfg.S3Bucket,
+		}, cfg.S3PublicEndpoint)
+		if err != nil {
+			return fmt.Errorf("creating device download signer: %w", err)
+		}
+		deviceURLs = signer
+		slog.Info("device download URLs use S3_PUBLIC_ENDPOINT", "endpoint", cfg.S3PublicEndpoint)
+	}
+	orchestrator := intelligence.NewOrchestrator(profiler, selector, intelVariantRepo, deviceURLs, logger)
 
 	// Wire intelligence into device service
 	intelDeployRepo := intelligence.NewDeploymentRepoAdapter(pool)

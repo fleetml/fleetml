@@ -14,11 +14,14 @@ type Config struct {
 	S3AccessKey string `envconfig:"S3_ACCESS_KEY" required:"true"`
 	S3SecretKey string `envconfig:"S3_SECRET_KEY" required:"true"`
 	S3UseSSL    bool   `envconfig:"S3_USE_SSL" default:"false"`
-	NatsURL     string `envconfig:"NATS_URL" default:"nats://localhost:14222"`
-	RedisURL    string `envconfig:"REDIS_URL" default:"redis://localhost:16379"`
-	GRPCPort    int    `envconfig:"GRPC_PORT" default:"19090"`
-	RESTPort    int    `envconfig:"REST_PORT" default:"18080"`
-	JWTSecret   string `envconfig:"JWT_SECRET" required:"true"`
+	// S3PublicEndpoint is the host:port devices download models from, if it
+	// differs from S3_ENDPOINT (e.g. 10.0.2.2:19000 for the Android emulator).
+	S3PublicEndpoint string `envconfig:"S3_PUBLIC_ENDPOINT"`
+	NatsURL          string `envconfig:"NATS_URL" default:"nats://localhost:14222"`
+	RedisURL         string `envconfig:"REDIS_URL" default:"redis://localhost:16379"`
+	GRPCPort         int    `envconfig:"GRPC_PORT" default:"19090"`
+	RESTPort         int    `envconfig:"REST_PORT" default:"18080"`
+	JWTSecret        string `envconfig:"JWT_SECRET" required:"true"`
 	// DeviceTokenTTL is the lifetime of device tokens (refreshable in their last 7 days).
 	DeviceTokenTTL time.Duration `envconfig:"DEVICE_TOKEN_TTL" default:"720h"`
 	LogLevel       string        `envconfig:"LOG_LEVEL" default:"info"`

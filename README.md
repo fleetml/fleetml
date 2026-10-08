@@ -100,6 +100,7 @@ The server reads its configuration from environment variables (`.env.example` ha
 | `S3_BUCKET` | `fleetml-models` | Bucket for model blobs (created on server start if missing) |
 | `S3_ACCESS_KEY` | *(required)* | S3 access key |
 | `S3_SECRET_KEY` | *(required)* | S3 secret key |
+| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` devices download models from, if not `S3_ENDPOINT` (Android emulator: `10.0.2.2:19000`); device download URLs are signed for it |
 | `S3_USE_SSL` | `false` | Use HTTPS to reach S3 |
 | `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline |
 | `REDIS_URL` | `redis://localhost:16379` | Reserved; not used yet |

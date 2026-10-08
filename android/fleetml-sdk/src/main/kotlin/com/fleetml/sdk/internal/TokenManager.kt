@@ -13,6 +13,8 @@ internal interface TokenStore {
     fun getDeviceId(): String?
     fun getAuthToken(): String?
     fun getTokenExpiresAtMillis(): Long
+    /** When the current token was obtained, in epoch millis (0 if unknown). */
+    fun getTokenIssuedAtMillis(): Long = 0
     fun saveToken(authToken: String, tokenExpiresAtSeconds: Long)
 }
 
@@ -37,6 +39,7 @@ internal class TokenManager(context: Context) : TokenStore {
             .putString(KEY_DEVICE_ID, deviceId)
             .putString(KEY_AUTH_TOKEN, authToken)
             .putLong(KEY_TOKEN_EXPIRES_AT, tokenExpiresAtSeconds * 1000)
+            .putLong(KEY_TOKEN_ISSUED_AT, System.currentTimeMillis())
             .putLong(KEY_REGISTERED_AT, System.currentTimeMillis())
             .putString(KEY_SIGNATURE, signature)
             .apply()
@@ -48,8 +51,11 @@ internal class TokenManager(context: Context) : TokenStore {
         prefs.edit()
             .putString(KEY_AUTH_TOKEN, authToken)
             .putLong(KEY_TOKEN_EXPIRES_AT, tokenExpiresAtSeconds * 1000)
+            .putLong(KEY_TOKEN_ISSUED_AT, System.currentTimeMillis())
             .apply()
     }
+
+    override fun getTokenIssuedAtMillis(): Long = prefs.getLong(KEY_TOKEN_ISSUED_AT, 0L)
 
     /** Token expiry in epoch millis, or 0 if unknown (registered by an older SDK). */
     override fun getTokenExpiresAtMillis(): Long = prefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L)
@@ -74,5 +80,6 @@ internal class TokenManager(context: Context) : TokenStore {
         const val KEY_REGISTERED_AT = "registered_at"
         const val KEY_TOKEN_EXPIRES_AT = "token_expires_at"
         const val KEY_SIGNATURE = "registration_signature"
+        const val KEY_TOKEN_ISSUED_AT = "token_issued_at"
     }
 }

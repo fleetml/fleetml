@@ -87,6 +87,9 @@ object FleetML {
     /** The local file of a cached variant, or null. */
     fun getModelFile(variantId: String): File? = instance?.cache?.getModelFile(variantId)
 
+    /** The device ID assigned by the server, or null before the first registration. */
+    fun deviceId(): String? = instance?.tokenManager?.getDeviceId()
+
     /** True if the device has registered with the server. */
     fun isRegistered(): Boolean = instance?.tokenManager?.isRegistered() ?: false
 

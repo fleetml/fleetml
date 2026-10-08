@@ -39,4 +39,20 @@ class TokenRefreshPolicyTest {
     fun `sdk window sits inside the server's seven-day window`() {
         assertTrue(TokenRefreshPolicy.REFRESH_BEFORE_EXPIRY_MS < 7 * day)
     }
+
+    @Test
+    fun `short-lived tokens refresh at half their lifetime, not every heartbeat`() {
+        val issued = now
+        val expires = now + day // DEVICE_TOKEN_TTL=24h
+        assertFalse(TokenRefreshPolicy.needsRefresh(now + 60_000, expires, issued))
+        assertFalse(TokenRefreshPolicy.needsRefresh(now + 11 * 60 * 60 * 1000L, expires, issued))
+        assertTrue(TokenRefreshPolicy.needsRefresh(now + 12 * 60 * 60 * 1000L, expires, issued))
+    }
+
+    @Test
+    fun `long-lived tokens still use the six-day window`() {
+        val expires = now + 30 * day
+        assertFalse(TokenRefreshPolicy.needsRefresh(now + 23 * day, expires, now))
+        assertTrue(TokenRefreshPolicy.needsRefresh(now + 24 * day, expires, now))
+    }
 }
