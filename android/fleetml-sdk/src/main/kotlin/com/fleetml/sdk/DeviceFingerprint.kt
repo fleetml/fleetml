@@ -8,9 +8,11 @@ import java.security.MessageDigest
 /**
  * Generates a stable, unique SHA256 fingerprint from device hardware.
  *
- * The fingerprint is deterministic: the same physical device always produces
- * the same fingerprint. No user-resettable or privacy-sensitive identifiers
- * (ANDROID_ID, IMEI, etc.) are used.
+ * The fingerprint is deterministic per app on a device: the same app on the
+ * same hardware always produces the same fingerprint, and two apps using
+ * FleetML on one phone register as separate devices (each in its own
+ * project). No user-resettable or privacy-sensitive identifiers (ANDROID_ID,
+ * IMEI, etc.) are used.
  */
 object DeviceFingerprint {
 
@@ -19,6 +21,7 @@ object DeviceFingerprint {
      */
     fun generate(context: Context): String {
         val parts = listOf(
+            context.packageName,
             Build.BOARD.orEmpty(),
             Build.HARDWARE.orEmpty(),
             getSocManufacturer(),

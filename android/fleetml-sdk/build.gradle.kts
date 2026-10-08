@@ -104,4 +104,9 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("androidx.test:core:1.5.0")
+
+    // Instrumented test against a live dev stack (scripts/android-e2e.sh)
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("org.tensorflow:tensorflow-lite:2.16.1")
 }

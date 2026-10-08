@@ -5,6 +5,7 @@ import android.content.Context
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,7 +37,14 @@ class DeviceFingerprintTest {
         assertTrue(DeviceFingerprint.hasGPU())
     }
 
-    private fun createMockContext(): Context {
+    @Test
+    fun `two apps on one device get different fingerprints`() {
+        val a = DeviceFingerprint.generate(createMockContext("com.example.camera"))
+        val b = DeviceFingerprint.generate(createMockContext("com.example.keyboard"))
+        assertNotEquals(a, b)
+    }
+
+    private fun createMockContext(packageName: String = "com.example.app"): Context {
         val memInfo = ActivityManager.MemoryInfo().apply {
             totalMem = 8L * 1024 * 1024 * 1024 // 8GB
         }
@@ -49,6 +57,7 @@ class DeviceFingerprintTest {
         }
         return mockk<Context> {
             every { getSystemService(Context.ACTIVITY_SERVICE) } returns activityManager
+            every { this@mockk.packageName } returns packageName
         }
     }
 }
