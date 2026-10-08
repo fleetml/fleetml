@@ -111,7 +111,7 @@ func (s *Service) dropUnknownVersions(ctx context.Context, deviceID uuid.UUID, e
 			ids = append(ids, e.ModelVersionID)
 		}
 	}
-	known, err := s.repo.KnownModelVersions(ctx, ids)
+	known, err := s.repo.KnownModelVersions(ctx, deviceID, ids)
 	if err != nil {
 		s.warn("telemetry: model version lookup failed, deferring validation to consumer", "error", err)
 		return events, 0
@@ -126,7 +126,7 @@ func (s *Service) dropUnknownVersions(ctx context.Context, deviceID uuid.UUID, e
 	}
 	if dropped > 0 {
 		s.dropped.Add(int64(dropped))
-		s.warn("dropping telemetry events with unknown model_version_id",
+		s.warn("dropping telemetry events for model versions outside the device's project",
 			"device_id", deviceID, "count", dropped, "dropped_total", s.dropped.Load())
 	}
 	return kept, dropped

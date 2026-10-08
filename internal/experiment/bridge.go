@@ -36,19 +36,24 @@ func NewBridge(service *Service, resolver VersionResolver, logger *slog.Logger) 
 }
 
 // PlanExperiments assigns the device to an arm of every running experiment
-// that targets it and returns the arm models it must run. The first
-// experiment to claim a model wins; an arm whose version has no variant the
-// device can run is skipped, leaving the model to deployments.
+// in its project that targets it and returns the arm models it must run. The
+// first experiment to claim a model wins; an arm whose version has no variant
+// the device can run is skipped, leaving the model to deployments.
 func (b *Bridge) PlanExperiments(ctx context.Context, dev *device.Device, currentlyLoaded []device.ModelStatus) (*device.ExperimentPlan, error) {
+	plan := &device.ExperimentPlan{Keep: map[string]bool{}, Models: map[string]bool{}}
+	if dev.ProjectID == nil {
+		return plan, nil
+	}
 	exps, err := b.service.ListRunning(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	plan := &device.ExperimentPlan{Keep: map[string]bool{}, Models: map[string]bool{}}
 	profile := b.resolver.GetProfiler().BuildProfile(dev, nil)
 
 	for _, exp := range exps {
+		if exp.ProjectID != *dev.ProjectID {
+			continue
+		}
 		ts := intelligence.TargetSelector{Labels: exp.TargetSelector}
 		if !ts.Matches(profile, dev.Labels) {
 			continue

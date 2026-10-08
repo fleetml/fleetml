@@ -207,3 +207,50 @@ func TestE2E_ABExperiment(t *testing.T) {
 	})
 	assert.True(t, res.Final, "both arms reached min_sample_size")
 }
+
+// Deployments and experiments reach only devices of their own project, even
+// when another project's device has exactly the labels they target.
+func TestE2E_ProjectIsolation(t *testing.T) {
+	e := newEnv(t)
+	a, b := e.newFixture(t), e.newFixture(t)
+	labels := map[string]string{"suite": randHex(4)}
+	va, _, _ := e.newVersion(t, a, "1.0.0", "")
+	e.deploy(t, map[string]any{"project_id": a.project, "model_version_id": va, "target_selector": labels})
+	control, _, _ := e.newVersion(t, a, "2.0.0", "")
+	treatment, _, _ := e.newVersion(t, a, "3.0.0", "")
+	var exp idOnly
+	require.Equal(t, 201, e.call(t, "POST", "/api/v1/experiments", map[string]any{"project_id": a.project, "name": "iso-" + randHex(3),
+		"control_version_id": control, "treatment_version_id": treatment, "target_selector": labels, "min_sample_size": 20}, &exp))
+	require.Equal(t, 200, e.call(t, "POST", "/api/v1/experiments/"+exp.ID+"/start", nil, nil))
+
+	inA := e.register(t, a.enrollKey, labels)
+	respA := e.heartbeat(t, inA)
+	assert.NotEmpty(t, respA.Assignments, "project A's device gets project A's model")
+	assert.Len(t, respA.Experiments, 1)
+
+	inB := e.register(t, b.enrollKey, labels)
+	respB := e.heartbeat(t, inB)
+	assert.Empty(t, respB.Assignments, "project B's device must not see project A's deployment")
+	assert.Empty(t, respB.Experiments, "project B's device must not join project A's experiment")
+}
+
+// A device cannot report telemetry against another project's model version.
+func TestE2E_TelemetryStaysInItsProject(t *testing.T) {
+	e := newEnv(t)
+	a, b := e.newFixture(t), e.newFixture(t)
+	va, _, _ := e.newVersion(t, a, "1.0.0", "")
+	intruder := e.register(t, b.enrollKey, nil)
+	ack, err := e.tel.ReportBatch(intruder.ctx(), &fleetmlv1.TelemetryBatch{Events: []*fleetmlv1.TelemetryEvent{
+		{ModelVersionId: va, Type: fleetmlv1.TelemetryEvent_ERROR, ErrorMessage: "forged"},
+	}})
+	require.NoError(t, err)
+	assert.Zero(t, ack.AcceptedCount)
+	assert.Equal(t, uint32(1), ack.RejectedCount)
+
+	owner := e.register(t, a.enrollKey, nil)
+	ack, err = e.tel.ReportBatch(owner.ctx(), &fleetmlv1.TelemetryBatch{Events: []*fleetmlv1.TelemetryEvent{
+		{ModelVersionId: va, Type: fleetmlv1.TelemetryEvent_INFERENCE, LatencyMs: 5},
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), ack.AcceptedCount)
+}

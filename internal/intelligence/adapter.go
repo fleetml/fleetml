@@ -60,9 +60,10 @@ func NewDeploymentRepoAdapter(pool *pgxpool.Pool) *DeploymentRepoAdapter {
 	return &DeploymentRepoAdapter{pool: pool}
 }
 
-// ListActiveDeployments returns active deployments, newest first, with parsed target selectors.
-// Computes effective canary percentage from canary_stages + current_stage.
-func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]DeploymentData, error) {
+// ListActiveDeployments returns a project's active deployments, newest first,
+// with parsed target selectors. Computes effective canary percentage from
+// canary_stages + current_stage.
+func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context, projectID uuid.UUID) ([]DeploymentData, error) {
 	query := `SELECT d.id, COALESCE(mv.model_id, '00000000-0000-0000-0000-000000000000'::uuid), d.model_version_id,
 		COALESCE(m.name, ''), COALESCE(mv.version, ''),
 		d.target_selector, d.strategy, d.status, COALESCE(d.canary_percentage, 0),
@@ -70,10 +71,10 @@ func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]De
 		FROM deployments d
 		LEFT JOIN model_versions mv ON mv.id = d.model_version_id
 		LEFT JOIN models m ON m.id = mv.model_id
-		WHERE d.status IN ('ROLLING_OUT', 'COMPLETE')
+		WHERE d.project_id = $1 AND d.status IN ('ROLLING_OUT', 'COMPLETE')
 		ORDER BY d.created_at DESC`
 
-	rows, err := a.pool.Query(ctx, query)
+	rows, err := a.pool.Query(ctx, query, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("deploymentRepoAdapter.ListActive: %w", err)
 	}

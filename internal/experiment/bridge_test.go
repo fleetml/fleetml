@@ -60,7 +60,7 @@ func TestBridge_PlanExperiments(t *testing.T) {
 
 	arms := map[string]int{}
 	for i := 0; i < 40; i++ {
-		dev := &device.Device{ID: uuid.New(), OS: "ANDROID", RAMMB: 4096, Labels: map[string]string{}}
+		dev := &device.Device{ID: uuid.New(), ProjectID: &exp.ProjectID, OS: "ANDROID", RAMMB: 4096, Labels: map[string]string{}}
 		plan, err := bridge.PlanExperiments(context.Background(), dev, nil)
 		require.NoError(t, err)
 		require.Len(t, plan.Experiments, 1)
@@ -84,6 +84,24 @@ func TestBridge_PlanExperiments(t *testing.T) {
 	}
 	assert.Positive(t, arms["control"])
 	assert.Positive(t, arms["treatment"])
+}
+
+// Experiments never reach devices of another project, nor devices without one.
+func TestBridge_PlanExperimentsStaysInItsProject(t *testing.T) {
+	svc := newTestService()
+	exp := runningExperiment(t, svc)
+	res := fakeResolver{modelID: uuid.New(), variants: map[uuid.UUID]string{
+		exp.ControlVersionID: "ctrl-variant", exp.TreatmentVersionID: "treat-variant",
+	}}
+	bridge := NewBridge(svc, res, nil)
+	other := uuid.New()
+	for _, project := range []*uuid.UUID{&other, nil} {
+		dev := &device.Device{ID: uuid.New(), ProjectID: project, OS: "ANDROID", RAMMB: 4096, Labels: map[string]string{}}
+		plan, err := bridge.PlanExperiments(context.Background(), dev, nil)
+		require.NoError(t, err)
+		assert.Empty(t, plan.Experiments)
+		assert.Empty(t, plan.Assignments)
+	}
 }
 
 func TestMaxDuration(t *testing.T) {

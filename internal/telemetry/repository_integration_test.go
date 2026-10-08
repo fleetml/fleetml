@@ -45,9 +45,15 @@ func TestRepository_Integration(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM telemetry_events WHERE experiment_arm_id = $1`, arm).Scan(&tagged))
 	assert.Equal(t, 1, tagged, "the arm ID is stored")
 
-	known, err := repo.KnownModelVersions(ctx, []uuid.UUID{fx.VersionID, uuid.New()})
+	known, err := repo.KnownModelVersions(ctx, dev, []uuid.UUID{fx.VersionID})
 	require.NoError(t, err)
-	assert.Equal(t, map[uuid.UUID]bool{fx.VersionID: true}, known)
+	assert.Empty(t, known, "a device without a project knows no versions")
+	other := dbtest.NewVersion(t, pool)
+	_, err = pool.Exec(ctx, `UPDATE devices SET project_id = $1 WHERE id = $2`, fx.ProjectID, dev)
+	require.NoError(t, err)
+	known, err = repo.KnownModelVersions(ctx, dev, []uuid.UUID{fx.VersionID, other.VersionID, uuid.New()})
+	require.NoError(t, err)
+	assert.Equal(t, map[uuid.UUID]bool{fx.VersionID: true}, known, "only versions of the device's own project")
 
 	got, total, err := repo.QueryEvents(ctx, EventFilter{ModelVersionID: &fx.VersionID, DeviceID: &dev, From: now.Add(-3 * time.Hour), To: now.Add(time.Minute)})
 	require.NoError(t, err)

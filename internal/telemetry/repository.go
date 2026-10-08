@@ -66,13 +66,18 @@ func (r *Repository) InsertEvent(ctx context.Context, e Event) error {
 	return nil
 }
 
-// KnownModelVersions returns the subset of ids that exist in model_versions.
-func (r *Repository) KnownModelVersions(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
+// KnownModelVersions returns the subset of ids that are model versions in the
+// device's own project, so a device cannot report telemetry into (and skew the
+// health gates or experiments of) another project.
+func (r *Repository) KnownModelVersions(ctx context.Context, deviceID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
 	known := make(map[uuid.UUID]bool, len(ids))
 	if len(ids) == 0 {
 		return known, nil
 	}
-	rows, err := r.pool.Query(ctx, `SELECT id FROM model_versions WHERE id = ANY($1)`, ids)
+	rows, err := r.pool.Query(ctx, `SELECT mv.id FROM model_versions mv
+		JOIN models m ON m.id = mv.model_id
+		JOIN devices d ON d.project_id = m.project_id
+		WHERE d.id = $1 AND mv.id = ANY($2)`, deviceID, ids)
 	if err != nil {
 		return nil, fmt.Errorf("telemetry.KnownModelVersions: %w", err)
 	}
