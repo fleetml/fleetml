@@ -315,7 +315,7 @@ flowchart LR
     tls[TLS termination]
   end
   subgraph core[FleetML server]
-    restb[REST /api/v1<br/>admin API key]
+    restb[REST /api/v1<br/>admin API key or session]
     probes["/livez, /readyz, /metrics<br/>no credentials"]
     grpcb[gRPC<br/>enrollment key or device token]
   end
@@ -335,12 +335,14 @@ flowchart LR
 | Credential | Held by | Grants | Lifetime |
 |---|---|---|---|
 | Admin API key | operators | every `/api/v1` route | until revoked |
+| Dashboard session | one browser (`httpOnly`, `SameSite=Strict` cookie, plus a CSRF token for writes) | what its API key grants | `SESSION_TTL` (12 h), revocable, ends with its key |
 | Enrollment key | apps (built in) | registering a device into one project | until rotated or revoked |
 | Device token | one device | its own heartbeats, token refresh and telemetry, within its project | 30 days by default, refreshable, revocable |
 | Presigned URL | one client | reading (1 h) or writing (15 min) one object | until it expires |
 | Webhook secret | server and receiver | proves an alert came from this server (HMAC-SHA256) | until changed |
 
-The server keeps only hashes of API keys, enrollment keys and device tokens.
+The server keeps only hashes of API keys, session tokens, enrollment keys and
+device tokens.
 Devices verify every model's sha256 before use, so a tampered object store or
 download cannot activate a different file. TLS is not built in: terminate it in
 front of the server (see [SECURITY.md](../SECURITY.md)).

@@ -100,7 +100,7 @@ func newAuthTestRouter(t *testing.T) (r *gin.Engine, svc *auth.APIKeyService, ad
 	r = gin.New()
 	r.Use(RequestID())
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
-	api := r.Group("/api/v1", RequireAPIKey(svc, logger))
+	api := r.Group("/api/v1", RequireAuth(svc, nil, logger))
 	api.GET("/projects", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"data": []string{}}) })
 	api.DELETE("/projects/:id", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 	NewAPIKeyHandler(svc, logger).RegisterRoutes(api)
@@ -117,7 +117,7 @@ func doAuth(r *gin.Engine, method, path, authHeader string) *httptest.ResponseRe
 	return w
 }
 
-func TestRequireAPIKey_Allow(t *testing.T) {
+func TestRequireAuth_APIKeyAllow(t *testing.T) {
 	r, _, key := newAuthTestRouter(t)
 	assert.Equal(t, http.StatusOK, doAuth(r, "GET", "/api/v1/projects", "Bearer "+key).Code)
 	assert.Equal(t, http.StatusOK, doAuth(r, "GET", "/api/v1/projects", "bearer "+key).Code, "scheme is case-insensitive")
@@ -125,7 +125,7 @@ func TestRequireAPIKey_Allow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, doAuth(r, "GET", "/healthz", "").Code, "/healthz needs no key")
 }
 
-func TestRequireAPIKey_Deny(t *testing.T) {
+func TestRequireAuth_APIKeyDeny(t *testing.T) {
 	r, _, key := newAuthTestRouter(t)
 	cases := map[string]string{
 		"no header":     "",
@@ -144,7 +144,7 @@ func TestRequireAPIKey_Deny(t *testing.T) {
 	}
 }
 
-func TestRequireAPIKey_Revoked(t *testing.T) {
+func TestRequireAuth_APIKeyRevoked(t *testing.T) {
 	r, svc, admin := newAuthTestRouter(t)
 	ctx := context.Background()
 	second, rec, err := svc.Create(ctx, "second")

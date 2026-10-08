@@ -1,26 +1,22 @@
-import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, AlertSink, AlertDelivery } from '../types/api';
-import { getApiKey, notifyUnauthorized, UnauthorizedError } from './auth';
-
-const BASE_URL = import.meta.env.VITE_API_URL || '';
+import type { Project, Model, ModelVersion, ModelVariant, Device, DeviceProfile, Deployment, Experiment, ExperimentResult, TelemetrySummary, TimeSeriesPoint, DriftResult, AlertSink, AlertDelivery, Session, SessionInfo } from '../types/api';
+import { getCsrfToken, notifyUnauthorized, UnauthorizedError } from './auth';
 
 interface ApiResponse<T> { data: T; error?: { code: string; message: string }; pagination?: { total: number; limit: number; offset: number } }
 
+// The dashboard is served from the API's origin (nginx in production, the Vite
+// proxy in development), so the session cookie is sent with every request.
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const key = getApiKey()
-  if (!key) {
-    const msg = 'No API key set. Add your admin API key in Settings.'
-    notifyUnauthorized(msg)
-    throw new UnauthorizedError(msg)
-  }
-  const headers: Record<string, string> = { Authorization: `Bearer ${key}` }
+  const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  const res = await fetch(`${BASE_URL}${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined })
+  if (method !== 'GET') headers['X-CSRF-Token'] = getCsrfToken()
+  const res = await fetch(path, { method, headers, credentials: 'same-origin', body: body !== undefined ? JSON.stringify(body) : undefined })
 
   let json: ApiResponse<T> | undefined
   try { json = await res.json() } catch { json = undefined }
 
   if (res.status === 401) {
-    const msg = `The API rejected your key (401${json?.error?.message ? `: ${json.error.message}` : ''}). Update it in Settings.`
+    // Only a tab that was logged in has a CSRF token: tell it why it is back at the login page.
+    const msg = getCsrfToken() ? 'Your session ended: it expired, was revoked, or you logged out in another tab. Log in again.' : ''
     notifyUnauthorized(msg)
     throw new UnauthorizedError(msg)
   }
@@ -34,13 +30,22 @@ const apiPost = <T>(path: string, body?: unknown) => request<T>('POST', path, bo
 const apiPatch = <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
 const apiDelete = (path: string) => request<void>('DELETE', path)
 
-/** Checks a key without storing it. Resolves true if the API accepts it. */
-export async function verifyApiKey(key: string): Promise<boolean> {
-  const res = await fetch(`${BASE_URL}/api/v1/api-keys`, { headers: { Authorization: `Bearer ${key.trim()}` } })
-  if (res.status === 401) return false
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return true
+/** Exchanges an admin API key for a session cookie. A rejected key throws without signalling a logout. */
+export async function login(apiKey: string): Promise<SessionInfo> {
+  const res = await fetch('/api/v1/auth/login', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey.trim() }),
+  })
+  const json = await res.json().catch(() => undefined) as ApiResponse<SessionInfo> | undefined
+  if (res.status === 401) throw new Error('The API rejected this key. Check that you copied it completely and that it has not been revoked.')
+  if (!res.ok || !json) throw new Error(json?.error?.message || `HTTP ${res.status}`)
+  return json.data
 }
+
+export const getSession = () => apiGet<SessionInfo>('/api/v1/auth/session');
+export const logout = () => apiPost<void>('/api/v1/auth/logout');
+export const getSessions = () => apiGet<(Session & { current: boolean })[]>('/api/v1/auth/sessions');
+export const revokeSession = (id: string) => apiPost<void>(`/api/v1/auth/sessions/${id}/revoke`);
 
 export const getProjects = () => apiGet<Project[]>('/api/v1/projects');
 export const getModels = (projectId: string) => apiGet<Model[]>(`/api/v1/projects/${projectId}/models`);

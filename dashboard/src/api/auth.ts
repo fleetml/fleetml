@@ -1,39 +1,25 @@
-// Admin API key storage for the dashboard. The key lives in this browser's
-// localStorage and is sent as "Authorization: Bearer <key>" on every request.
+// Dashboard session. Logging in exchanges the admin API key for an httpOnly
+// session cookie, so the key is never stored in the browser. Requests that
+// change state send the session's CSRF token, which lives only in memory and
+// is fetched again from GET /auth/session after a reload.
 
-const STORAGE_KEY = 'fleetml.apiKey'
+let csrfToken = ''
 
-/** Fired on window whenever the API rejects the key (or none is set). */
+export function getCsrfToken(): string {
+  return csrfToken
+}
+
+export function setCsrfToken(token: string): void {
+  csrfToken = token
+}
+
+/** Fired on window when the API answers 401: the session expired or was revoked. */
 export const AUTH_EVENT = 'fleetml:unauthorized'
 
 export class UnauthorizedError extends Error {
-  constructor(message = 'API key missing or rejected') {
+  constructor(message = 'Your session expired or was revoked') {
     super(message)
     this.name = 'UnauthorizedError'
-  }
-}
-
-export function getApiKey(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-
-export function setApiKey(key: string): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, key.trim())
-  } catch {
-    // Storage unavailable (private mode, blocked site data): nothing to persist.
-  }
-}
-
-export function clearApiKey(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    // ignore
   }
 }
 

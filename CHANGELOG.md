@@ -25,11 +25,22 @@ change APIs).
   `project_id` and the model name and version. New settings:
   `DASHBOARD_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
   `SMTP_PASSWORD`, `SMTP_FROM`.
+- Dashboard login: `POST /api/v1/auth/login` exchanges an admin API key for
+  an `httpOnly`, `SameSite=Strict` session cookie backed by a server-side
+  session (`SESSION_TTL`, 12 hours by default). Writes with a session need its
+  CSRF token (`X-CSRF-Token`). `GET /auth/session`, `POST /auth/logout`,
+  `GET /auth/sessions` and `POST /auth/sessions/{id}/revoke`; the dashboard
+  has a login page, redirects to it when the session ends, and lists and
+  revokes sessions in Settings. The REST API still accepts
+  `Authorization: Bearer <key>`.
 
 ### Changed
 
 - Linux devices accept `CUSTOM` model variants, and a `linux/arm64` chipset is
   profiled as arm64.
+- The dashboard no longer stores the API key in the browser's local storage,
+  and no longer supports `VITE_API_URL`: it calls the API on its own origin
+  (`FLEETML_API` sets the dev and preview proxy target).
 - Alert deliveries make up to five attempts (after 1s, 2s, 4s and 8s) instead
   of four; the last failure is recorded as a dead letter.
 

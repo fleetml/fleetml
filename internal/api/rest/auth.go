@@ -24,27 +24,69 @@ func bearerToken(header string) (string, bool) {
 	return token, token != ""
 }
 
-// RequireAPIKey rejects requests without a valid, non-revoked admin API key.
-func RequireAPIKey(keys *auth.APIKeyService, logger *slog.Logger) gin.HandlerFunc {
+// RequireAuth accepts an admin API key ("Authorization: Bearer <key>") or a
+// dashboard session cookie. Requests with a session cookie that change state
+// must also send the session's CSRF token in X-CSRF-Token. sessions may be nil.
+func RequireAuth(keys *auth.APIKeyService, sessions *auth.SessionService, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token, ok := bearerToken(c.GetHeader("Authorization"))
-		if !ok {
-			unauthorized(c, "missing API key: send Authorization: Bearer <key>")
+		if header := c.GetHeader("Authorization"); header != "" || sessions == nil {
+			apiKeyAuth(c, keys, header)
 			return
 		}
-		k, err := keys.Authenticate(c.Request.Context(), token)
+		token, err := c.Cookie(SessionCookie)
+		if err != nil || token == "" {
+			unauthorized(c, "missing API key: send Authorization: Bearer <key>, or log in to the dashboard")
+			return
+		}
+		sess, err := sessions.Authenticate(c.Request.Context(), token)
 		if err != nil {
-			if errors.Is(err, auth.ErrInvalidKey) {
-				unauthorized(c, "invalid or revoked API key")
+			if errors.Is(err, auth.ErrInvalidSession) {
+				clearSessionCookie(c)
+				c.Header("WWW-Authenticate", `Bearer realm="fleetml"`)
+				respondError(c, http.StatusUnauthorized, "SESSION_EXPIRED", "your session expired or was revoked: log in again")
+				c.Abort()
 				return
 			}
-			internalError(c, fmt.Errorf("api key lookup: %w", err), "An internal error occurred")
+			internalError(c, fmt.Errorf("session lookup: %w", err), "An internal error occurred")
 			c.Abort()
 			return
 		}
-		c.Set(apiKeyIDKey, k.ID.String())
+		if !safeMethod(c.Request.Method) && !sessions.CheckCSRF(token, c.GetHeader(CSRFHeader)) {
+			logger.Warn("request with a session cookie and a missing or stale CSRF token rejected",
+				"method", c.Request.Method, "path", c.FullPath(), "session_id", sess.ID)
+			respondError(c, http.StatusForbidden, "CSRF_INVALID", "missing or stale CSRF token: reload the page")
+			c.Abort()
+			return
+		}
+		c.Set(apiKeyIDKey, sess.APIKeyID.String())
+		c.Set(sessionKey, sess)
+		c.Set(sessionTokenKey, token)
 		c.Next()
 	}
+}
+
+func apiKeyAuth(c *gin.Context, keys *auth.APIKeyService, header string) {
+	token, ok := bearerToken(header)
+	if !ok {
+		unauthorized(c, "missing API key: send Authorization: Bearer <key>")
+		return
+	}
+	k, err := keys.Authenticate(c.Request.Context(), token)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidKey) {
+			unauthorized(c, "invalid or revoked API key")
+			return
+		}
+		internalError(c, fmt.Errorf("api key lookup: %w", err), "An internal error occurred")
+		c.Abort()
+		return
+	}
+	c.Set(apiKeyIDKey, k.ID.String())
+	c.Next()
+}
+
+func safeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
 func unauthorized(c *gin.Context, message string) {

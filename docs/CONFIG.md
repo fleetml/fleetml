@@ -15,7 +15,7 @@ missing or invalid variable.
 |---|---|
 | `DATABASE_URL` | Postgres 16 + TimescaleDB connection string, e.g. `postgres://fleetml:fleetml_dev@localhost:15432/fleetml?sslmode=disable` |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | Credentials for the S3-compatible object store that holds model files |
-| `JWT_SECRET` | HMAC secret that signs device tokens. At least 32 characters (`openssl rand -base64 32`). Changing it invalidates every device token; devices then re-register with their enrollment key |
+| `JWT_SECRET` | HMAC secret that signs device tokens and derives the dashboard's CSRF tokens. At least 32 characters (`openssl rand -base64 32`). Changing it invalidates every device token; devices then re-register with their enrollment key |
 
 ### Network and storage
 
@@ -38,6 +38,7 @@ and NATS, so it can start together with them.
 | Variable | Default | Description |
 |---|---|---|
 | `FLEETML_ADMIN_KEY` | *(unset)* | Stored as the `bootstrap` admin API key on first start if no key exists yet (at least 32 characters). If unset, the server generates one and logs it once (`admin_api_key`) |
+| `SESSION_TTL` | `12h` | How long a dashboard login lasts (at least `5m`). Sessions end earlier when revoked or when their API key is revoked |
 | `DEVICE_TOKEN_TTL` | `720h` | Device token lifetime, at least `24h`; devices refresh tokens in their last 7 days |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
 | `GRPC_REFLECTION` | `false` | Register gRPC server reflection, for tools like `grpcurl` without proto files |
@@ -124,7 +125,7 @@ and friends); these override it:
 
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_API_URL` | *(empty: same origin)* | REST API base URL, fixed at build time (`npm run build`). The dev server proxies `/api` to `localhost:18080` |
+| `FLEETML_API` | `http://localhost:18080` | Where `npm run dev` and `npm run preview` proxy `/api`. The dashboard always calls the API on its own origin, so its session cookie is first-party; in production nginx proxies `/api` to the server |
 
 ## Tests and scripts
 

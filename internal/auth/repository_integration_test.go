@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -78,4 +79,57 @@ func TestEnrollmentKeyRepo_Integration(t *testing.T) {
 	list, err := svc.List(ctx, fx.ProjectID)
 	require.NoError(t, err)
 	assert.Len(t, list, 2)
+}
+
+func TestSessionRepo_Integration(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx := context.Background()
+	keys := NewAPIKeyService(NewAPIKeyRepo(pool))
+	_, err := keys.Bootstrap(ctx, "")
+	require.NoError(t, err)
+	key, rec, err := keys.Create(ctx, "dashboard")
+	require.NoError(t, err)
+	svc := NewSessionService(NewSessionRepo(pool), keys, "integration-secret", time.Hour)
+
+	_, _, err = svc.Login(ctx, "wrong", "ua", "127.0.0.1")
+	assert.ErrorIs(t, err, ErrInvalidKey)
+	token, sess, err := svc.Login(ctx, key, "Mozilla/5.0", "127.0.0.1")
+	require.NoError(t, err)
+	assert.Equal(t, "dashboard", sess.APIKeyName)
+	assert.WithinDuration(t, time.Now().Add(time.Hour), sess.ExpiresAt, time.Minute)
+
+	got, err := svc.Authenticate(ctx, token)
+	require.NoError(t, err)
+	assert.Equal(t, sess.ID, got.ID)
+	assert.Equal(t, rec.ID, got.APIKeyID)
+	_, err = svc.Authenticate(ctx, key)
+	assert.ErrorIs(t, err, ErrInvalidSession, "the API key is not a session token")
+
+	token2, _, err := svc.Login(ctx, key, "curl", "10.0.0.1")
+	require.NoError(t, err)
+	list, err := svc.List(ctx)
+	require.NoError(t, err)
+	assert.Len(t, list, 2)
+
+	require.NoError(t, svc.Revoke(ctx, sess.ID))
+	require.NoError(t, svc.Revoke(ctx, sess.ID), "revoking twice is a no-op")
+	assert.ErrorIs(t, svc.Revoke(ctx, uuid.New()), ErrNotFound)
+	_, err = svc.Authenticate(ctx, token)
+	assert.ErrorIs(t, err, ErrInvalidSession)
+
+	// Revoking the API key ends its remaining session.
+	require.NoError(t, keys.Revoke(ctx, rec.ID))
+	_, err = svc.Authenticate(ctx, token2)
+	assert.ErrorIs(t, err, ErrInvalidSession)
+	list, err = svc.List(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, list)
+
+	// Expired sessions do not authenticate.
+	boot, err := keys.List(ctx)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO sessions (api_key_id, token_hash, expires_at) VALUES ($1, $2, NOW() - INTERVAL '1 second')`, boot[0].ID, HashKey("expired-token"))
+	require.NoError(t, err)
+	_, err = svc.Authenticate(ctx, "expired-token")
+	assert.ErrorIs(t, err, ErrInvalidSession)
 }

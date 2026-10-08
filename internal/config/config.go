@@ -33,6 +33,8 @@ type Config struct {
 	LogLevel       string        `envconfig:"LOG_LEVEL" default:"info"`
 	LogFormat      string        `envconfig:"LOG_FORMAT" default:"json"`
 	CORSOrigins    string        `envconfig:"CORS_ORIGINS" default:"http://localhost:5173,http://localhost:18080"`
+	// SessionTTL is how long a dashboard login lasts.
+	SessionTTL time.Duration `envconfig:"SESSION_TTL" default:"12h"`
 	// AdminKey is stored as the "bootstrap" admin API key if no key exists yet.
 	AdminKey string `envconfig:"FLEETML_ADMIN_KEY"`
 	// AlertWebhookURL receives rollback and drift alerts as signed JSON POSTs (optional).
@@ -149,6 +151,9 @@ func (c Config) validate() error {
 		if u, err := url.Parse(c.AlertWebhookURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			fail("ALERT_WEBHOOK_URL must be an http(s) URL, got %q", c.AlertWebhookURL)
 		}
+	}
+	if c.SessionTTL < 5*time.Minute {
+		fail("SESSION_TTL must be at least 5m, got %s", c.SessionTTL)
 	}
 	if c.DashboardURL != "" {
 		if u, err := url.Parse(c.DashboardURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

@@ -33,13 +33,14 @@ type Server struct {
 	driftStore    drift.ResultStore
 	apiKeys       *auth.APIKeyService
 	enrollment    *auth.EnrollmentService
+	sessions      *auth.SessionService
 	corsOrigins   string
 	logger        *slog.Logger
 	api           *gin.RouterGroup
 }
 
 // NewServer creates a new REST server.
-func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, corsOrigins string, logger *slog.Logger) *Server {
+func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, sessions *auth.SessionService, corsOrigins string, logger *slog.Logger) *Server {
 	if apiKeys == nil {
 		panic("rest.NewServer: an API key service is required")
 	}
@@ -59,6 +60,7 @@ func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *
 		driftStore:    driftStore,
 		apiKeys:       apiKeys,
 		enrollment:    enrollment,
+		sessions:      sessions,
 		corsOrigins:   corsOrigins,
 		logger:        logger,
 	}
@@ -81,9 +83,13 @@ func (s *Server) registerRoutes() {
 	s.router.GET("/healthz", s.ready) // the original health endpoint, same as /readyz
 	s.router.GET("/metrics", gin.WrapH(metrics.Handler()))
 
-	// Everything under /api/v1 requires an admin API key.
-	api := s.router.Group("/api/v1", RequireAPIKey(s.apiKeys, s.logger))
+	// Everything under /api/v1 except the login requires an admin API key or
+	// a dashboard session.
+	api := s.router.Group("/api/v1", RequireAuth(s.apiKeys, s.sessions, s.logger))
 	s.api = api
+	if s.sessions != nil {
+		NewSessionHandler(s.sessions, s.logger).RegisterRoutes(s.router.Group("/api/v1"), api)
+	}
 
 	NewAPIKeyHandler(s.apiKeys, s.logger).RegisterRoutes(api)
 	if s.enrollment != nil {

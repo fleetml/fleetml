@@ -6,12 +6,6 @@ and documentation, and the README only claims it once it runs.
 
 ## Next
 
-- **More alert sinks.** Slack and email next to NATS and the signed webhook.
-- **Dashboard sign-in.** Exchange the admin API key for a session instead of
-  keeping it in the browser's local storage.
-
-## Later
-
 - **Artifact signing.** Per-project ed25519 keys (optionally Sigstore),
   verified on the device before a model is activated.
 - **Feature-level drift.** Input histograms from devices and PSI per feature,

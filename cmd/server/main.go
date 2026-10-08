@@ -257,7 +257,8 @@ func run() error {
 			"admin_api_key", generated)
 	}
 
-	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, cfg.CORSOrigins, logger)
+	sessionSvc := auth.NewSessionService(auth.NewSessionRepo(pool), apiKeySvc, cfg.JWTSecret, cfg.SessionTTL)
+	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, sessionSvc, cfg.CORSOrigins, logger)
 	restServer.EnableAlertSinks(rest.NewAlertSinkHandler(alertRepo, alerts, smtpCfg.Configured(), logger))
 
 	errCh := make(chan error, 2)

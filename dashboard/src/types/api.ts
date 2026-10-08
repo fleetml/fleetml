@@ -196,3 +196,19 @@ export interface AlertDelivery {
   error?: string;
   created_at: string;
 }
+
+export interface Session {
+  id: string;
+  api_key_id: string;
+  api_key_name: string;
+  user_agent: string;
+  ip: string;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+}
+
+export interface SessionInfo {
+  session: Session;
+  csrf_token: string;
+}

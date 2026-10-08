@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Bell, Settings as SettingsIcon, ShieldAlert } from 'lucide-react'
-import { AUTH_EVENT, getApiKey } from './api/auth'
+import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Bell, Settings as SettingsIcon } from 'lucide-react'
+import { AUTH_EVENT, setCsrfToken } from './api/auth'
+import { getSession } from './api/client'
+import type { SessionInfo } from './types/api'
+import Login from './pages/Login'
 
 // Each page is its own chunk, so the first load stays small (charts load with Telemetry).
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -26,15 +29,52 @@ const navItems = [
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
+// How often an open dashboard checks that its session is still valid, so a
+// session revoked elsewhere sends this tab to the login page.
+const SESSION_CHECK_MS = 15_000
+
 export default function App() {
   const location = useLocation()
-  const [authError, setAuthError] = useState(getApiKey() ? '' : 'No API key set. Add your admin API key in Settings.')
+  const navigate = useNavigate()
+  const [session, setSession] = useState<SessionInfo | null | 'loading'>('loading')
+  const [notice, setNotice] = useState('')
+
+  const signedIn = (s: SessionInfo) => { setCsrfToken(s.csrf_token); setSession(s); setNotice('') }
 
   useEffect(() => {
-    const onUnauthorized = (e: Event) => setAuthError((e as CustomEvent<string>).detail || 'API key missing or rejected.')
+    getSession().then(signedIn).catch(() => setSession(null))
+    const onUnauthorized = (e: Event) => {
+      setCsrfToken('')
+      setSession(null)
+      setNotice((e as CustomEvent<string>).detail || '')
+    }
     window.addEventListener(AUTH_EVENT, onUnauthorized)
     return () => window.removeEventListener(AUTH_EVENT, onUnauthorized)
   }, [])
+
+  useEffect(() => {
+    if (!session || session === 'loading') return
+    const check = () => { getSession().catch(() => undefined) } // a 401 fires AUTH_EVENT
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    const timer = window.setInterval(check, SESSION_CHECK_MS)
+    window.addEventListener('focus', check)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', check)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [session])
+
+  if (session === 'loading') return <p className="p-8 text-sm text-gray-400">Loading…</p>
+  if (!session) {
+    if (location.pathname !== '/login') return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+    return <Login notice={notice} onLoggedIn={s => {
+      signedIn(s)
+      navigate((location.state as { from?: string } | null)?.from || '/', { replace: true })
+    }} />
+  }
+  if (location.pathname === '/login') return <Navigate to="/" replace />
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-white">
@@ -61,18 +101,6 @@ export default function App() {
       </nav>
       <main className="flex-1 overflow-auto bg-white">
         <div className="max-w-7xl mx-auto p-4 md:p-8">
-          {authError && (
-            <div role="alert" className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-              <ShieldAlert size={18} className="mt-0.5 text-red-600 shrink-0" strokeWidth={1.75} />
-              <div className="text-sm">
-                <p className="font-medium text-red-800">Not authorized</p>
-                <p className="text-red-700">{authError}</p>
-                {location.pathname !== '/settings' && (
-                  <Link to="/settings" className="mt-1 inline-block font-medium text-red-800 underline">Open Settings</Link>
-                )}
-              </div>
-            </div>
-          )}
           <Suspense fallback={<p className="text-sm text-gray-400">Loading…</p>}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -83,7 +111,7 @@ export default function App() {
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/drift" element={<Drift />} />
             <Route path="/alerts" element={<Alerts />} />
-            <Route path="/settings" element={<Settings onKeySaved={() => setAuthError('')} />} />
+            <Route path="/settings" element={<Settings session={session.session} onLoggedOut={() => { setCsrfToken(''); setSession(null); setNotice('You are logged out.') }} />} />
           </Routes>
           </Suspense>
         </div>

@@ -146,8 +146,8 @@ CRITICAL sends a drift alert.
 
 ### 6. Dashboard
 
-Open <http://localhost>, go to **Settings** and paste the admin key
-(`echo $FLEETML_ADMIN_KEY`). **Models** shows iris with its three versions and
+Open <http://localhost> and log in with the admin key
+(`echo $FLEETML_ADMIN_KEY`); the dashboard keeps a session cookie, not the key. **Models** shows iris with its three versions and
 their variants (one FAILED from step 1), **Deployments** the rolled-back
 canary with its reason, **Experiments** the concluded A/B test with per-arm
 results, and **Drift** the history for 1.0.0. Deployments and experiments can

@@ -76,7 +76,7 @@ export JWT_SECRET=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -h
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
 curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (Settings → admin API key: $FLEETML_ADMIN_KEY)"
+echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
 Measured on a laptop, cold: **1 min 50 s** from `git clone` to a working UI
@@ -112,7 +112,8 @@ has the request paths, data model, device protocol and trust boundaries.
 
 | Credential | Who uses it | Manage |
 |---|---|---|
-| Admin API key | Dashboard, CLI, scripts (`Authorization: Bearer`) | `POST/GET /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke` |
+| Admin API key | CLI and scripts (`Authorization: Bearer`); the dashboard logs in with one | `POST/GET /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke` |
+| Dashboard session | One browser after logging in (`httpOnly` cookie, 12 hours) | Settings → Active sessions, `GET /api/v1/auth/sessions`, `POST /api/v1/auth/sessions/{id}/revoke` |
 | Enrollment key | An app's first device registration, per project | `POST/GET /api/v1/projects/{id}/enrollment-keys`, `POST /api/v1/enrollment-keys/{id}/rotate`, `.../revoke` |
 | Device token | Every device call after registering (30 days, refreshed by the SDK) | `POST /api/v1/devices/{id}/revoke` |
 

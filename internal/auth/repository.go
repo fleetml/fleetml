@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -231,6 +232,94 @@ func (r *EnrollmentKeyRepo) Touch(ctx context.Context, id uuid.UUID) error {
 		WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`, id)
 	if err != nil {
 		return fmt.Errorf("enrollmentKey.Touch: %w", err)
+	}
+	return nil
+}
+
+// SessionRepo implements SessionStore backed by PostgreSQL.
+type SessionRepo struct {
+	pool *pgxpool.Pool
+}
+
+// NewSessionRepo creates a SessionRepo.
+func NewSessionRepo(pool *pgxpool.Pool) *SessionRepo {
+	return &SessionRepo{pool: pool}
+}
+
+const sessionColumns = `s.id, s.api_key_id, k.name, s.user_agent, s.ip, s.created_at, s.last_seen_at, s.expires_at, s.revoked_at`
+
+func scanSession(row pgx.Row) (*Session, error) {
+	s := &Session{}
+	if err := row.Scan(&s.ID, &s.APIKeyID, &s.APIKeyName, &s.UserAgent, &s.IP, &s.CreatedAt, &s.LastSeenAt, &s.ExpiresAt, &s.RevokedAt); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (r *SessionRepo) Create(ctx context.Context, apiKeyID uuid.UUID, tokenHash, userAgent, ip string, expiresAt time.Time) (*Session, error) {
+	// Sessions expired for a week are of no further interest.
+	if _, err := r.pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '7 days'`); err != nil {
+		return nil, fmt.Errorf("session.Create: pruning: %w", err)
+	}
+	s, err := scanSession(r.pool.QueryRow(ctx,
+		`WITH s AS (INSERT INTO sessions (api_key_id, token_hash, user_agent, ip, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING *)
+		SELECT `+sessionColumns+` FROM s JOIN api_keys k ON k.id = s.api_key_id`,
+		apiKeyID, tokenHash, userAgent, ip, expiresAt))
+	if err != nil {
+		return nil, fmt.Errorf("session.Create: %w", err)
+	}
+	return s, nil
+}
+
+const activeSession = `s.revoked_at IS NULL AND s.expires_at > NOW() AND k.revoked_at IS NULL`
+
+func (r *SessionRepo) GetActiveByHash(ctx context.Context, tokenHash string) (*Session, error) {
+	s, err := scanSession(r.pool.QueryRow(ctx,
+		`SELECT `+sessionColumns+` FROM sessions s JOIN api_keys k ON k.id = s.api_key_id WHERE s.token_hash = $1 AND `+activeSession, tokenHash))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("session.GetActiveByHash: %w", ErrNotFound)
+		}
+		return nil, fmt.Errorf("session.GetActiveByHash: %w", err)
+	}
+	return s, nil
+}
+
+func (r *SessionRepo) ListActive(ctx context.Context) ([]Session, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+sessionColumns+` FROM sessions s JOIN api_keys k ON k.id = s.api_key_id WHERE `+activeSession+` ORDER BY s.created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("session.ListActive: %w", err)
+	}
+	defer rows.Close()
+	out := []Session{}
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("session.ListActive: %w", err)
+		}
+		out = append(out, *s)
+	}
+	return out, rows.Err()
+}
+
+// Revoke is idempotent for a revoked session; ErrNotFound for an unknown one.
+func (r *SessionRepo) Revoke(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("session.Revoke: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("session.Revoke: %w", ErrNotFound)
+	}
+	return nil
+}
+
+func (r *SessionRepo) Touch(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE sessions SET last_seen_at = NOW() WHERE id = $1 AND last_seen_at < NOW() - INTERVAL '1 minute'`, id)
+	if err != nil {
+		return fmt.Errorf("session.Touch: %w", err)
 	}
 	return nil
 }
