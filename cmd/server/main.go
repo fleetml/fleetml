@@ -102,6 +102,8 @@ func run() error {
 	deploymentAdapter := device.NewDeploymentAdapter(pool)
 	variantAdapter := device.NewVariantAdapter(pool)
 	deviceSvc := device.NewService(deviceRepo, deviceClassRepo, deploymentAdapter, variantAdapter, s3Client, cfg.JWTSecret, logger)
+	enrollmentSvc := auth.NewEnrollmentService(auth.NewEnrollmentKeyRepo(pool))
+	deviceSvc.SetEnrollmentVerifier(enrollmentSvc)
 
 	// Deploy service + engine
 	deployRepo := deploy.NewRepo(pool)
@@ -173,7 +175,7 @@ func run() error {
 			"admin_api_key", generated)
 	}
 
-	restServer := rest.NewServer(pool, s3Client, natsOK, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, cfg.CORSOrigins, logger)
+	restServer := rest.NewServer(pool, s3Client, natsOK, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, cfg.CORSOrigins, logger)
 
 	errCh := make(chan error, 2)
 

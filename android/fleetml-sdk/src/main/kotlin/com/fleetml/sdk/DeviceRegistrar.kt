@@ -17,7 +17,9 @@ internal class DeviceRegistrar(
 ) {
     /**
      * Register this device with FleetML server.
-     * If already registered (token exists), re-registers to update hardware info.
+     * If already registered (token exists), re-registers to update hardware info,
+     * authenticating with the current token. The enrollment key from [FleetMLConfig]
+     * is always sent so a device whose token was revoked or expired can re-enroll.
      * Returns the server-assigned configuration.
      */
     suspend fun register(): RegisterResult {
@@ -34,9 +36,15 @@ internal class DeviceRegistrar(
             .setHasGpu(DeviceFingerprint.hasGPU())
             .setAgentVersion(BuildConfig.SDK_VERSION)
             .putAllLabels(config.labels)
+            .setEnrollmentKey(config.enrollmentKey)
             .build()
 
-        val response = grpcClient.deviceService.register(request)
+        val currentToken = tokenManager.getAuthToken()
+        if (currentToken == null && config.enrollmentKey.isBlank()) {
+            Logger.w("No enrollment key configured: the server will reject the first registration")
+        }
+        val stub = currentToken?.let { grpcClient.authenticatedStub(it) } ?: grpcClient.deviceService
+        val response = stub.register(request)
         tokenManager.saveRegistration(response.deviceId, response.authToken)
 
         Logger.i("Registered as device ${response.deviceId}")

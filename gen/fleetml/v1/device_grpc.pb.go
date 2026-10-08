@@ -27,7 +27,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DeviceServiceClient interface {
-	// Device registers itself on first boot
+	// Device registers itself on first boot. A new device must send a valid
+	// enrollment_key. A known fingerprint must send either its current token
+	// (as "authorization: Bearer <token>" metadata) or an enrollment key for its
+	// project; it then gets a new token and the previous one stops working.
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	// Periodic heartbeat — server responds with pending actions
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
@@ -65,7 +68,10 @@ func (c *deviceServiceClient) Heartbeat(ctx context.Context, in *HeartbeatReques
 // All implementations must embed UnimplementedDeviceServiceServer
 // for forward compatibility.
 type DeviceServiceServer interface {
-	// Device registers itself on first boot
+	// Device registers itself on first boot. A new device must send a valid
+	// enrollment_key. A known fingerprint must send either its current token
+	// (as "authorization: Bearer <token>" metadata) or an enrollment key for its
+	// project; it then gets a new token and the previous one stops working.
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	// Periodic heartbeat — server responds with pending actions
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -112,4 +113,124 @@ func (r *APIKeyRepo) Count(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("apiKey.Count: %w", err)
 	}
 	return n, nil
+}
+
+// EnrollmentKeyRepo implements EnrollmentKeyStore backed by PostgreSQL.
+type EnrollmentKeyRepo struct {
+	pool *pgxpool.Pool
+}
+
+// NewEnrollmentKeyRepo creates an EnrollmentKeyRepo.
+func NewEnrollmentKeyRepo(pool *pgxpool.Pool) *EnrollmentKeyRepo {
+	return &EnrollmentKeyRepo{pool: pool}
+}
+
+const enrollmentKeyColumns = `id, project_id, name, created_at, last_used_at, revoked_at`
+
+func scanEnrollmentKey(row pgx.Row) (*EnrollmentKey, error) {
+	k := &EnrollmentKey{}
+	if err := row.Scan(&k.ID, &k.ProjectID, &k.Name, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
+		return nil, err
+	}
+	return k, nil
+}
+
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
+func (r *EnrollmentKeyRepo) Create(ctx context.Context, projectID uuid.UUID, name, keyHash string) (*EnrollmentKey, error) {
+	k, err := scanEnrollmentKey(r.pool.QueryRow(ctx,
+		`INSERT INTO enrollment_keys (project_id, name, key_hash) VALUES ($1, $2, $3) RETURNING `+enrollmentKeyColumns,
+		projectID, name, keyHash))
+	if err != nil {
+		if isForeignKeyViolation(err) {
+			return nil, fmt.Errorf("enrollmentKey.Create: project: %w", ErrNotFound)
+		}
+		return nil, fmt.Errorf("enrollmentKey.Create: %w", err)
+	}
+	return k, nil
+}
+
+func (r *EnrollmentKeyRepo) GetActiveByHash(ctx context.Context, keyHash string) (*EnrollmentKey, error) {
+	k, err := scanEnrollmentKey(r.pool.QueryRow(ctx,
+		`SELECT `+enrollmentKeyColumns+` FROM enrollment_keys WHERE key_hash = $1 AND revoked_at IS NULL`, keyHash))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("enrollmentKey.GetActiveByHash: %w", ErrNotFound)
+		}
+		return nil, fmt.Errorf("enrollmentKey.GetActiveByHash: %w", err)
+	}
+	return k, nil
+}
+
+func (r *EnrollmentKeyRepo) ListByProject(ctx context.Context, projectID uuid.UUID) ([]EnrollmentKey, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+enrollmentKeyColumns+` FROM enrollment_keys WHERE project_id = $1 ORDER BY created_at`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("enrollmentKey.ListByProject: %w", err)
+	}
+	defer rows.Close()
+	keys := []EnrollmentKey{}
+	for rows.Next() {
+		k, err := scanEnrollmentKey(rows)
+		if err != nil {
+			return nil, fmt.Errorf("enrollmentKey.ListByProject: scanning: %w", err)
+		}
+		keys = append(keys, *k)
+	}
+	return keys, rows.Err()
+}
+
+func (r *EnrollmentKeyRepo) Revoke(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE enrollment_keys SET revoked_at = COALESCE(revoked_at, NOW()) WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("enrollmentKey.Revoke: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("enrollmentKey.Revoke: %w", ErrNotFound)
+	}
+	return nil
+}
+
+func (r *EnrollmentKeyRepo) Rotate(ctx context.Context, id uuid.UUID, newKeyHash string) (*EnrollmentKey, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("enrollmentKey.Rotate: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var projectID uuid.UUID
+	var name string
+	err = tx.QueryRow(ctx,
+		`UPDATE enrollment_keys SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING project_id, name`,
+		id).Scan(&projectID, &name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("enrollmentKey.Rotate: active key: %w", ErrNotFound)
+		}
+		return nil, fmt.Errorf("enrollmentKey.Rotate: %w", err)
+	}
+	k, err := scanEnrollmentKey(tx.QueryRow(ctx,
+		`INSERT INTO enrollment_keys (project_id, name, key_hash) VALUES ($1, $2, $3) RETURNING `+enrollmentKeyColumns,
+		projectID, name, newKeyHash))
+	if err != nil {
+		return nil, fmt.Errorf("enrollmentKey.Rotate: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("enrollmentKey.Rotate: commit: %w", err)
+	}
+	return k, nil
+}
+
+func (r *EnrollmentKeyRepo) Touch(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE enrollment_keys SET last_used_at = NOW()
+		WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`, id)
+	if err != nil {
+		return fmt.Errorf("enrollmentKey.Touch: %w", err)
+	}
+	return nil
 }

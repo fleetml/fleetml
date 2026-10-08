@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/fleetml/fleetml/internal/auth"
 )
 
 // --- Mock repositories ---
@@ -238,7 +240,28 @@ func newTestService() (*Service, *mockDeviceRepo, *mockDeploymentQuerier, *mockV
 	dq := &mockDeploymentQuerier{}
 	vq := newMockVariantQuerier()
 	svc := NewService(dr, dcr, dq, vq, &mockStorage{}, "test-secret", testLogger())
+	svc.SetEnrollmentVerifier(fakeEnrollment{testEnrollKey: testProjectID, otherEnrollKey: otherProjectID})
 	return svc, dr, dq, vq
+}
+
+const (
+	testEnrollKey  = "enroll-key-project-a"
+	otherEnrollKey = "enroll-key-project-b"
+)
+
+var (
+	testProjectID  = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	otherProjectID = uuid.MustParse("22222222-2222-2222-2222-222222222222")
+)
+
+// fakeEnrollment maps enrollment keys to projects.
+type fakeEnrollment map[string]uuid.UUID
+
+func (f fakeEnrollment) VerifyEnrollmentKey(_ context.Context, key string) (uuid.UUID, error) {
+	if p, ok := f[key]; ok {
+		return p, nil
+	}
+	return uuid.Nil, auth.ErrInvalidKey
 }
 
 func validFingerprint() string {
@@ -252,16 +275,17 @@ func TestRegisterDevice_New(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint:  validFingerprint(),
-		OS:           "ANDROID",
-		OSVersion:    "14",
-		Chipset:      "snapdragon-8-gen-3",
-		RAMMB:        12288,
-		HasNPU:       true,
-		HasGPU:       true,
-		NPUTflops:    45.0,
-		AgentVersion: "0.1.0",
-		Labels:       map[string]string{"env": "staging"},
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		OSVersion:     "14",
+		Chipset:       "snapdragon-8-gen-3",
+		RAMMB:         12288,
+		HasNPU:        true,
+		HasGPU:        true,
+		NPUTflops:     45.0,
+		AgentVersion:  "0.1.0",
+		Labels:        map[string]string{"env": "staging"},
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.DeviceID)
@@ -277,20 +301,22 @@ func TestRegisterDevice_ReRegister(t *testing.T) {
 	fp := validFingerprint()
 
 	resp1, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: fp,
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   fp,
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
 	})
 	require.NoError(t, err)
 
 	// Re-register with same fingerprint
 	resp2, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint:  fp,
-		OS:           "ANDROID",
-		RAMMB:        16384,
-		HasNPU:       true,
-		AgentVersion: "0.2.0",
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   fp,
+		OS:            "ANDROID",
+		RAMMB:         16384,
+		HasNPU:        true,
+		AgentVersion:  "0.2.0",
 	})
 	require.NoError(t, err)
 
@@ -303,8 +329,9 @@ func TestRegisterDevice_ReRegister(t *testing.T) {
 func TestRegisterDevice_InvalidFingerprint(t *testing.T) {
 	svc, _, _, _ := newTestService()
 	_, err := svc.RegisterDevice(context.Background(), &RegisterRequest{
-		Fingerprint: "too-short",
-		OS:          "ANDROID",
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   "too-short",
+		OS:            "ANDROID",
 	})
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
@@ -312,8 +339,9 @@ func TestRegisterDevice_InvalidFingerprint(t *testing.T) {
 func TestRegisterDevice_InvalidOS(t *testing.T) {
 	svc, _, _, _ := newTestService()
 	_, err := svc.RegisterDevice(context.Background(), &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "TEMPOS",
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "TEMPOS",
 	})
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
@@ -323,11 +351,12 @@ func TestRegisterDevice_Classification(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
-		Chipset:     "snapdragon-8-gen-3",
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
+		Chipset:       "snapdragon-8-gen-3",
 	})
 	require.NoError(t, err)
 
@@ -343,10 +372,11 @@ func TestHeartbeat_NoDeployments(t *testing.T) {
 
 	// Register device
 	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
 	})
 	require.NoError(t, err)
 
@@ -365,10 +395,11 @@ func TestHeartbeat_WithDeployment(t *testing.T) {
 
 	// Register device
 	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
 	})
 	require.NoError(t, err)
 
@@ -399,10 +430,11 @@ func TestHeartbeat_UnloadRemovedModel(t *testing.T) {
 	ctx := context.Background()
 
 	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
 	})
 	require.NoError(t, err)
 	deviceID, _ := uuid.Parse(regResp.DeviceID)
@@ -424,10 +456,11 @@ func TestHeartbeat_AlreadyLoaded(t *testing.T) {
 	ctx := context.Background()
 
 	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
 	})
 	require.NoError(t, err)
 
@@ -461,10 +494,11 @@ func TestValidateToken(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       12288,
-		HasNPU:      true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         12288,
+		HasNPU:        true,
 	})
 	require.NoError(t, err)
 
@@ -501,9 +535,10 @@ func TestListDevices(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		fp := GenerateFingerprint("ANDROID", fmt.Sprintf("chip-%d", i), 8192)
 		_, err := svc.RegisterDevice(ctx, &RegisterRequest{
-			Fingerprint: fp,
-			OS:          "ANDROID",
-			RAMMB:       8192,
+			EnrollmentKey: testEnrollKey,
+			Fingerprint:   fp,
+			OS:            "ANDROID",
+			RAMMB:         8192,
 		})
 		require.NoError(t, err)
 	}
@@ -519,9 +554,10 @@ func TestDeleteDevice(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		Fingerprint: validFingerprint(),
-		OS:          "ANDROID",
-		RAMMB:       8192,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		OS:            "ANDROID",
+		RAMMB:         8192,
 	})
 	require.NoError(t, err)
 
@@ -531,4 +567,88 @@ func TestDeleteDevice(t *testing.T) {
 
 	_, err = svc.GetDevice(ctx, deviceID)
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestRegisterDevice_RequiresEnrollmentKey(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _, _ := newTestService()
+
+	_, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID"})
+	assert.ErrorIs(t, err, ErrUnauthenticated, "no key")
+
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: "wrong"})
+	assert.ErrorIs(t, err, ErrUnauthenticated, "unknown key")
+
+	unconfigured := NewService(newMockDeviceRepo(), newMockDeviceClassRepo(), &mockDeploymentQuerier{}, newMockVariantQuerier(), &mockStorage{}, "s", testLogger())
+	_, err = unconfigured.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	assert.ErrorIs(t, err, ErrUnauthenticated, "no verifier configured: fail closed")
+}
+
+func TestRegisterDevice_EnrollsIntoKeyProject(t *testing.T) {
+	ctx := context.Background()
+	svc, devices, _, _ := newTestService()
+
+	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: otherEnrollKey})
+	require.NoError(t, err)
+	d := devices.devices[uuid.MustParse(resp.DeviceID)]
+	require.NotNil(t, d.ProjectID)
+	assert.Equal(t, otherProjectID, *d.ProjectID)
+}
+
+func TestRegisterDevice_ReRegisterNeedsCredentials(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _, _ := newTestService()
+	fp := validFingerprint()
+
+	first, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+
+	// Impersonation attempt: the fingerprint alone is not enough.
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID"})
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+
+	// A key for a different project is not enough either.
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: otherEnrollKey})
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+
+	// A garbage token is rejected.
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", CurrentToken: "not.a.jwt"})
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+
+	// The current token works and yields a new token for the same device.
+	second, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", CurrentToken: first.AuthToken})
+	require.NoError(t, err)
+	assert.Equal(t, first.DeviceID, second.DeviceID)
+	assert.NotEqual(t, first.AuthToken, second.AuthToken)
+
+	// The superseded token can no longer be used to re-register.
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", CurrentToken: first.AuthToken})
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+
+	// An enrollment key for the device's own project works.
+	third, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	assert.Equal(t, first.DeviceID, third.DeviceID)
+
+	// Another device's token does not authorize this fingerprint.
+	otherFP := GenerateFingerprint("ANDROID", "other-chip", 4096)
+	other, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: otherFP, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", CurrentToken: other.AuthToken})
+	assert.ErrorIs(t, err, ErrUnauthenticated)
+}
+
+func TestRegisterDevice_LegacyDeviceAdoptsProject(t *testing.T) {
+	ctx := context.Background()
+	svc, devices, _, _ := newTestService()
+	legacy := &Device{Fingerprint: validFingerprint(), OS: "ANDROID", Labels: map[string]string{}}
+	require.NoError(t, devices.Create(ctx, legacy))
+
+	_, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: legacy.Fingerprint, OS: "ANDROID"})
+	assert.ErrorIs(t, err, ErrUnauthenticated, "pre-enrollment devices need a key too")
+
+	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: legacy.Fingerprint, OS: "ANDROID", EnrollmentKey: otherEnrollKey})
+	require.NoError(t, err)
+	require.NotNil(t, devices.devices[legacy.ID].ProjectID)
+	assert.Equal(t, otherProjectID, *devices.devices[legacy.ID].ProjectID)
 }

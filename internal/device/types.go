@@ -9,6 +9,7 @@ import (
 // Device represents a registered edge device.
 type Device struct {
 	ID            uuid.UUID
+	ProjectID     *uuid.UUID // project the device enrolled into; nil for pre-enrollment devices
 	DeviceClassID *uuid.UUID
 	Fingerprint   string
 	OS            string // ANDROID, IOS, LINUX, WINDOWS

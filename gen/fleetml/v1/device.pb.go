@@ -74,17 +74,19 @@ func (ModelAssignment_Action) EnumDescriptor() ([]byte, []int) {
 }
 
 type RegisterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Fingerprint   string                 `protobuf:"bytes,1,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
-	Os            string                 `protobuf:"bytes,2,opt,name=os,proto3" json:"os,omitempty"`
-	OsVersion     string                 `protobuf:"bytes,3,opt,name=os_version,json=osVersion,proto3" json:"os_version,omitempty"`
-	Chipset       string                 `protobuf:"bytes,4,opt,name=chipset,proto3" json:"chipset,omitempty"`
-	RamMb         uint32                 `protobuf:"varint,5,opt,name=ram_mb,json=ramMb,proto3" json:"ram_mb,omitempty"`
-	HasNpu        bool                   `protobuf:"varint,6,opt,name=has_npu,json=hasNpu,proto3" json:"has_npu,omitempty"`
-	HasGpu        bool                   `protobuf:"varint,7,opt,name=has_gpu,json=hasGpu,proto3" json:"has_gpu,omitempty"`
-	NpuTflops     float32                `protobuf:"fixed32,8,opt,name=npu_tflops,json=npuTflops,proto3" json:"npu_tflops,omitempty"`
-	AgentVersion  string                 `protobuf:"bytes,9,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,10,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Fingerprint  string                 `protobuf:"bytes,1,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	Os           string                 `protobuf:"bytes,2,opt,name=os,proto3" json:"os,omitempty"`
+	OsVersion    string                 `protobuf:"bytes,3,opt,name=os_version,json=osVersion,proto3" json:"os_version,omitempty"`
+	Chipset      string                 `protobuf:"bytes,4,opt,name=chipset,proto3" json:"chipset,omitempty"`
+	RamMb        uint32                 `protobuf:"varint,5,opt,name=ram_mb,json=ramMb,proto3" json:"ram_mb,omitempty"`
+	HasNpu       bool                   `protobuf:"varint,6,opt,name=has_npu,json=hasNpu,proto3" json:"has_npu,omitempty"`
+	HasGpu       bool                   `protobuf:"varint,7,opt,name=has_gpu,json=hasGpu,proto3" json:"has_gpu,omitempty"`
+	NpuTflops    float32                `protobuf:"fixed32,8,opt,name=npu_tflops,json=npuTflops,proto3" json:"npu_tflops,omitempty"`
+	AgentVersion string                 `protobuf:"bytes,9,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	Labels       map[string]string      `protobuf:"bytes,10,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Per-project enrollment key, created via POST /api/v1/projects/{id}/enrollment-keys.
+	EnrollmentKey string `protobuf:"bytes,11,opt,name=enrollment_key,json=enrollmentKey,proto3" json:"enrollment_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -187,6 +189,13 @@ func (x *RegisterRequest) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *RegisterRequest) GetEnrollmentKey() string {
+	if x != nil {
+		return x.EnrollmentKey
+	}
+	return ""
 }
 
 type RegisterResponse struct {
@@ -729,7 +738,7 @@ var File_fleetml_v1_device_proto protoreflect.FileDescriptor
 
 const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\n" +
-	"\x17fleetml/v1/device.proto\x12\x11fleetml.device.v1\"\x8c\x03\n" +
+	"\x17fleetml/v1/device.proto\x12\x11fleetml.device.v1\"\xb3\x03\n" +
 	"\x0fRegisterRequest\x12 \n" +
 	"\vfingerprint\x18\x01 \x01(\tR\vfingerprint\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12\x1d\n" +
@@ -743,7 +752,8 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"npu_tflops\x18\b \x01(\x02R\tnpuTflops\x12#\n" +
 	"\ragent_version\x18\t \x01(\tR\fagentVersion\x12F\n" +
 	"\x06labels\x18\n" +
-	" \x03(\v2..fleetml.device.v1.RegisterRequest.LabelsEntryR\x06labels\x1a9\n" +
+	" \x03(\v2..fleetml.device.v1.RegisterRequest.LabelsEntryR\x06labels\x12%\n" +
+	"\x0eenrollment_key\x18\v \x01(\tR\renrollmentKey\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x01\n" +

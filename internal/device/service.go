@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/registry"
 )
 
@@ -35,6 +37,10 @@ type RegisterRequest struct {
 	NPUTflops    float64
 	AgentVersion string
 	Labels       map[string]string
+	// EnrollmentKey is required for new devices.
+	EnrollmentKey string
+	// CurrentToken is the device's current token, if it has one (re-registration).
+	CurrentToken string
 }
 
 // RegisterResponse is the service-layer response for device registration.
@@ -97,6 +103,11 @@ type ExperimentAssigner interface {
 	ComputeExperimentAssignments(ctx context.Context, dev *Device, currentlyLoaded []ModelStatus) ([]ModelAssignment, error)
 }
 
+// EnrollmentVerifier checks a per-project enrollment key and returns its project.
+type EnrollmentVerifier interface {
+	VerifyEnrollmentKey(ctx context.Context, key string) (uuid.UUID, error)
+}
+
 // Service orchestrates business logic for device management.
 type Service struct {
 	devices        DeviceRepository
@@ -106,6 +117,7 @@ type Service struct {
 	storage        registry.StorageClient
 	assignmentComp AssignmentComputer
 	experimentComp ExperimentAssigner
+	enrollment     EnrollmentVerifier
 	tokenSecret    string
 	logger         *slog.Logger
 }
@@ -136,12 +148,23 @@ func (s *Service) SetAssignmentComputer(ac AssignmentComputer) {
 	s.assignmentComp = ac
 }
 
+// SetEnrollmentVerifier sets the enrollment key verifier. Without one, new
+// devices cannot register.
+func (s *Service) SetEnrollmentVerifier(v EnrollmentVerifier) {
+	s.enrollment = v
+}
+
 // SetExperimentAssigner sets the experiment assigner.
 func (s *Service) SetExperimentAssigner(ea ExperimentAssigner) {
 	s.experimentComp = ea
 }
 
 // RegisterDevice handles first-time device registration or re-registration.
+//
+// A new device must present a valid enrollment key and is enrolled into that
+// key's project. A known fingerprint may only re-register with its current
+// device token or a valid enrollment key for its project; it then receives a
+// new token and the previous one stops working.
 func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*RegisterResponse, error) {
 	if err := ValidateFingerprint(req.Fingerprint); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidInput, err.Error())
@@ -160,6 +183,10 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 	// Check for existing device (re-registration)
 	existing, err := s.devices.GetByFingerprint(ctx, req.Fingerprint)
 	if err == nil {
+		if err := s.authorizeReRegister(ctx, existing, req); err != nil {
+			return nil, err
+		}
+
 		// Re-registration: update device info
 		existing.OS = os
 		existing.OSVersion = req.OSVersion
@@ -179,7 +206,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		}
 		existing.DeviceClassID = &dc.ID
 
-		// Generate new token
+		// Generate new token; storing its hash invalidates the previous one.
 		token, tokenHash, err := s.generateToken(existing.ID, existing.Fingerprint)
 		if err != nil {
 			return nil, fmt.Errorf("generating token: %w", err)
@@ -198,9 +225,18 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 			MaxCacheSizeMB:        defaultMaxCacheMB,
 		}, nil
 	}
+	if !errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("looking up device: %w", err)
+	}
 
-	// New device
+	// New device: enrollment key required.
+	projectID, err := s.verifyEnrollment(ctx, req.EnrollmentKey)
+	if err != nil {
+		return nil, err
+	}
+
 	d := &Device{
+		ProjectID:    &projectID,
 		Fingerprint:  req.Fingerprint,
 		OS:           os,
 		OSVersion:    req.OSVersion,
@@ -230,9 +266,9 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		return nil, fmt.Errorf("generating token: %w", err)
 	}
 	d.AuthTokenHash = &tokenHash
-	// Update with token hash
+	// Update with token hash. Without it the token cannot be validated, so fail.
 	if err := s.devices.Update(ctx, d); err != nil {
-		s.logger.Warn("failed to save auth token hash", "device_id", d.ID, "error", err)
+		return nil, fmt.Errorf("saving auth token hash: %w", err)
 	}
 
 	return &RegisterResponse{
@@ -242,6 +278,57 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		TelemetryBatchSize:    defaultBatchSize,
 		MaxCacheSizeMB:        defaultMaxCacheMB,
 	}, nil
+}
+
+// verifyEnrollment returns the project of a valid enrollment key, or ErrUnauthenticated.
+func (s *Service) verifyEnrollment(ctx context.Context, key string) (uuid.UUID, error) {
+	if key == "" {
+		return uuid.Nil, fmt.Errorf("%w: enrollment_key is required to register a new device", ErrUnauthenticated)
+	}
+	if s.enrollment == nil {
+		return uuid.Nil, fmt.Errorf("%w: device enrollment is not configured on this server", ErrUnauthenticated)
+	}
+	projectID, err := s.enrollment.VerifyEnrollmentKey(ctx, key)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidKey) {
+			return uuid.Nil, fmt.Errorf("%w: invalid or revoked enrollment key", ErrUnauthenticated)
+		}
+		return uuid.Nil, fmt.Errorf("verifying enrollment key: %w", err)
+	}
+	return projectID, nil
+}
+
+// authorizeReRegister allows a known fingerprint to re-register only with its
+// current token, or with an enrollment key for the device's project (any
+// project for devices registered before enrollment keys existed).
+func (s *Service) authorizeReRegister(ctx context.Context, dev *Device, req *RegisterRequest) error {
+	if req.CurrentToken != "" && s.tokenMatchesDevice(dev, req.CurrentToken) {
+		return nil
+	}
+	if req.EnrollmentKey != "" {
+		projectID, err := s.verifyEnrollment(ctx, req.EnrollmentKey)
+		if err != nil {
+			return err
+		}
+		if dev.ProjectID == nil {
+			dev.ProjectID = &projectID
+			return nil
+		}
+		if *dev.ProjectID == projectID {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: this device is already registered; re-register with its current device token or an enrollment key for its project", ErrUnauthenticated)
+}
+
+// tokenMatchesDevice reports whether token is a valid, unexpired token issued
+// to dev and is the one currently stored for it.
+func (s *Service) tokenMatchesDevice(dev *Device, token string) bool {
+	claims, err := s.parseToken(token)
+	if err != nil || claims.DeviceID != dev.ID || dev.AuthTokenHash == nil {
+		return false
+	}
+	return auth.HashEqual(auth.HashKey(token), *dev.AuthTokenHash)
 }
 
 // Heartbeat handles periodic device check-ins.
@@ -378,27 +465,49 @@ func (s *Service) computeAssignments(ctx context.Context, device *Device, curren
 
 // ValidateToken validates a JWT token and returns the device_id claim.
 func (s *Service) ValidateToken(tokenString string) (uuid.UUID, error) {
+	claims, err := s.parseToken(tokenString)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return claims.DeviceID, nil
+}
+
+// tokenClaims are the parts of a device token the server relies on.
+type tokenClaims struct {
+	DeviceID  uuid.UUID
+	ExpiresAt time.Time
+}
+
+// parseToken checks the signature and expiry and returns the claims.
+func (s *Service) parseToken(tokenString string) (tokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(s.tokenSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid token: %w", err)
+		return tokenClaims{}, fmt.Errorf("invalid token: %w", err)
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
-		return uuid.Nil, fmt.Errorf("invalid token claims")
+		return tokenClaims{}, fmt.Errorf("invalid token claims")
 	}
 
 	deviceIDStr, ok := claims["device_id"].(string)
 	if !ok {
-		return uuid.Nil, fmt.Errorf("missing device_id claim")
+		return tokenClaims{}, fmt.Errorf("missing device_id claim")
 	}
-
-	return uuid.Parse(deviceIDStr)
+	deviceID, err := uuid.Parse(deviceIDStr)
+	if err != nil {
+		return tokenClaims{}, fmt.Errorf("invalid device_id claim: %w", err)
+	}
+	exp, err := claims.GetExpirationTime()
+	if err != nil || exp == nil {
+		return tokenClaims{}, fmt.Errorf("missing exp claim")
+	}
+	return tokenClaims{DeviceID: deviceID, ExpiresAt: exp.Time}, nil
 }
 
 // GetDevice returns a device by ID.
@@ -434,11 +543,13 @@ func (s *Service) GetDeviceClass(ctx context.Context, id uuid.UUID) (*DeviceClas
 // --- helpers ---
 
 func (s *Service) generateToken(deviceID uuid.UUID, fingerprint string) (tokenStr, tokenHash string, err error) {
+	now := time.Now()
 	claims := jwt.MapClaims{
 		"device_id":   deviceID.String(),
 		"fingerprint": fingerprint,
-		"iat":         time.Now().Unix(),
-		"exp":         time.Now().Add(tokenExpiry).Unix(),
+		"jti":         uuid.NewString(), // two tokens issued in the same second must differ
+		"iat":         now.Unix(),
+		"exp":         now.Add(tokenExpiry).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenStr, err = token.SignedString([]byte(s.tokenSecret))
@@ -446,9 +557,7 @@ func (s *Service) generateToken(deviceID uuid.UUID, fingerprint string) (tokenSt
 		return "", "", fmt.Errorf("signing token: %w", err)
 	}
 
-	h := sha256.Sum256([]byte(tokenStr))
-	tokenHash = fmt.Sprintf("%x", h)
-	return tokenStr, tokenHash, nil
+	return tokenStr, auth.HashKey(tokenStr), nil
 }
 
 func (s *Service) buildDeviceClass(d *Device, className string) *DeviceClass {

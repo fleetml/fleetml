@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Enrollment key for the sample app: `fleetml.enrollmentKey=...` in android/local.properties
+// (gitignored) or `-PfleetmlEnrollmentKey=...` on the Gradle command line.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val enrollmentKey: String = (project.findProperty("fleetmlEnrollmentKey") as String?)
+    ?: localProps.getProperty("fleetml.enrollmentKey")
+    ?: ""
 
 android {
     namespace = "com.fleetml.sample"
@@ -13,6 +25,8 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+
+        buildConfigField("String", "FLEETML_ENROLLMENT_KEY", "\"$enrollmentKey\"")
     }
 
     buildTypes {
@@ -28,6 +42,10 @@ android {
 
     kotlinOptions {
         jvmTarget = "1.8"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 }
 

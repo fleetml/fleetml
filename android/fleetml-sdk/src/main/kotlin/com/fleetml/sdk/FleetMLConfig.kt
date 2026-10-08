@@ -5,6 +5,9 @@ package com.fleetml.sdk
  *
  * @param serverHost The FleetML server hostname or IP address.
  * @param serverPort The gRPC port on the FleetML server.
+ * @param enrollmentKey Per-project enrollment key (create one with
+ *   `POST /api/v1/projects/{id}/enrollment-keys`). Required for the first registration;
+ *   afterwards the device re-registers with its own token.
  * @param useTls Whether to use TLS for gRPC connections.
  * @param heartbeatIntervalSeconds Interval between heartbeats in seconds.
  * @param maxCacheSizeMb Maximum disk cache size for downloaded models in MB.
@@ -15,6 +18,7 @@ package com.fleetml.sdk
 data class FleetMLConfig(
     val serverHost: String,
     val serverPort: Int = 19090,
+    val enrollmentKey: String = "",
     val useTls: Boolean = false,
     val heartbeatIntervalSeconds: Long = 30,
     val maxCacheSizeMb: Long = 500,

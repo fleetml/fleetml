@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/device"
 )
 
@@ -194,7 +195,7 @@ func (m *mockStorageREST) GetObjectInfo(_ context.Context, _ string) (int64, err
 
 func newDeviceTestService() *device.Service {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	return device.NewService(
+	svc := device.NewService(
 		newMockDeviceRepoREST(),
 		newMockDeviceClassRepoREST(),
 		&mockDeploymentQuerierREST{},
@@ -203,6 +204,20 @@ func newDeviceTestService() *device.Service {
 		"test-secret",
 		logger,
 	)
+	svc.SetEnrollmentVerifier(staticEnrollment{})
+	return svc
+}
+
+const restEnrollKey = "rest-test-enrollment-key"
+
+// staticEnrollment accepts restEnrollKey for a fixed project.
+type staticEnrollment struct{}
+
+func (staticEnrollment) VerifyEnrollmentKey(_ context.Context, key string) (uuid.UUID, error) {
+	if key == restEnrollKey {
+		return uuid.MustParse("33333333-3333-3333-3333-333333333333"), nil
+	}
+	return uuid.Nil, auth.ErrInvalidKey
 }
 
 func setupDeviceTestRouter(svc *device.Service) *gin.Engine {
@@ -226,10 +241,11 @@ func TestListDevices(t *testing.T) {
 	// Register some devices
 	for i := 0; i < 3; i++ {
 		_, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{
-			Fingerprint: deviceFingerprint(fmt.Sprintf("%d", i)),
-			OS:          "ANDROID",
-			RAMMB:       8192,
-			Labels:      map[string]string{"env": "prod"},
+			EnrollmentKey: restEnrollKey,
+			Fingerprint:   deviceFingerprint(fmt.Sprintf("%d", i)),
+			OS:            "ANDROID",
+			RAMMB:         8192,
+			Labels:        map[string]string{"env": "prod"},
 		})
 		require.NoError(t, err)
 	}
@@ -245,14 +261,16 @@ func TestListDevicesWithLabelFilter(t *testing.T) {
 	r := setupDeviceTestRouter(svc)
 
 	_, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{
-		Fingerprint: deviceFingerprint("prod"),
-		OS:          "ANDROID", RAMMB: 8192,
+		EnrollmentKey: restEnrollKey,
+		Fingerprint:   deviceFingerprint("prod"),
+		OS:            "ANDROID", RAMMB: 8192,
 		Labels: map[string]string{"env": "prod"},
 	})
 	require.NoError(t, err)
 	_, err = svc.RegisterDevice(context.Background(), &device.RegisterRequest{
-		Fingerprint: deviceFingerprint("staging"),
-		OS:          "ANDROID", RAMMB: 8192,
+		EnrollmentKey: restEnrollKey,
+		Fingerprint:   deviceFingerprint("staging"),
+		OS:            "ANDROID", RAMMB: 8192,
 		Labels: map[string]string{"env": "staging"},
 	})
 	require.NoError(t, err)
@@ -269,8 +287,9 @@ func TestGetDevice(t *testing.T) {
 	r := setupDeviceTestRouter(svc)
 
 	resp, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{
-		Fingerprint: deviceFingerprint("get"),
-		OS:          "ANDROID", RAMMB: 8192,
+		EnrollmentKey: restEnrollKey,
+		Fingerprint:   deviceFingerprint("get"),
+		OS:            "ANDROID", RAMMB: 8192,
 	})
 	require.NoError(t, err)
 
@@ -291,8 +310,9 @@ func TestDeleteDevice(t *testing.T) {
 	r := setupDeviceTestRouter(svc)
 
 	resp, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{
-		Fingerprint: deviceFingerprint("del"),
-		OS:          "ANDROID", RAMMB: 8192,
+		EnrollmentKey: restEnrollKey,
+		Fingerprint:   deviceFingerprint("del"),
+		OS:            "ANDROID", RAMMB: 8192,
 	})
 	require.NoError(t, err)
 
@@ -309,8 +329,9 @@ func TestListDeviceClasses(t *testing.T) {
 
 	// Register a device to auto-create a class
 	_, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{
-		Fingerprint: deviceFingerprint("class"),
-		OS:          "ANDROID", RAMMB: 12288, HasNPU: true,
+		EnrollmentKey: restEnrollKey,
+		Fingerprint:   deviceFingerprint("class"),
+		OS:            "ANDROID", RAMMB: 12288, HasNPU: true,
 	})
 	require.NoError(t, err)
 

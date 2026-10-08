@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
+	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/device"
 )
 
@@ -169,6 +170,20 @@ func (m *mockStorageClient) GetObjectInfo(_ context.Context, _ string) (int64, e
 
 // --- Test helpers ---
 
+const testEnrollKey = "test-enrollment-key"
+
+var testEnrollProject = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
+// fakeEnrollment maps enrollment keys to projects.
+type fakeEnrollment map[string]uuid.UUID
+
+func (f fakeEnrollment) VerifyEnrollmentKey(_ context.Context, key string) (uuid.UUID, error) {
+	if p, ok := f[key]; ok {
+		return p, nil
+	}
+	return uuid.Nil, auth.ErrInvalidKey
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }
@@ -186,6 +201,7 @@ func setupGRPCTest(t *testing.T) fleetmlv1.DeviceServiceClient {
 		"test-secret",
 		logger,
 	)
+	deviceSvc.SetEnrollmentVerifier(fakeEnrollment{testEnrollKey: testEnrollProject})
 
 	// Start in-memory gRPC server
 	lis, err := net.Listen("tcp", "localhost:0")
@@ -223,16 +239,17 @@ func TestRegister_Success(t *testing.T) {
 	client := setupGRPCTest(t)
 
 	resp, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{
-		Fingerprint:  validFingerprint(),
-		Os:           "ANDROID",
-		OsVersion:    "14",
-		Chipset:      "snapdragon-8-gen-3",
-		RamMb:        12288,
-		HasNpu:       true,
-		HasGpu:       true,
-		NpuTflops:    45.0,
-		AgentVersion: "0.1.0",
-		Labels:       map[string]string{"env": "staging"},
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(),
+		Os:            "ANDROID",
+		OsVersion:     "14",
+		Chipset:       "snapdragon-8-gen-3",
+		RamMb:         12288,
+		HasNpu:        true,
+		HasGpu:        true,
+		NpuTflops:     45.0,
+		AgentVersion:  "0.1.0",
+		Labels:        map[string]string{"env": "staging"},
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.DeviceId)
@@ -246,12 +263,14 @@ func TestRegister_DuplicateFingerprint(t *testing.T) {
 	fp := validFingerprint()
 
 	resp1, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{
-		Fingerprint: fp, Os: "ANDROID", RamMb: 12288, HasNpu: true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   fp, Os: "ANDROID", RamMb: 12288, HasNpu: true,
 	})
 	require.NoError(t, err)
 
 	resp2, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{
-		Fingerprint: fp, Os: "ANDROID", RamMb: 16384, HasNpu: true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   fp, Os: "ANDROID", RamMb: 16384, HasNpu: true,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, resp1.DeviceId, resp2.DeviceId)
@@ -261,7 +280,8 @@ func TestHeartbeat_WithValidToken(t *testing.T) {
 	client := setupGRPCTest(t)
 
 	regResp, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{
-		Fingerprint: validFingerprint(), Os: "ANDROID", RamMb: 12288, HasNpu: true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(), Os: "ANDROID", RamMb: 12288, HasNpu: true,
 	})
 	require.NoError(t, err)
 
@@ -292,4 +312,36 @@ func TestHeartbeat_InvalidToken(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestRegister_WithoutEnrollmentKeyIsUnauthenticated(t *testing.T) {
+	client := setupGRPCTest(t)
+	_, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: validFingerprint(), Os: "ANDROID"})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+
+	_, err = client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: validFingerprint(), Os: "ANDROID", EnrollmentKey: "nope"})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestRegister_InvalidInputIsInvalidArgument(t *testing.T) {
+	client := setupGRPCTest(t)
+	_, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: "short", Os: "ANDROID", EnrollmentKey: testEnrollKey})
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestRegister_KnownFingerprintNeedsCredentials(t *testing.T) {
+	client := setupGRPCTest(t)
+	fp := validFingerprint()
+	first, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: fp, Os: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+
+	_, err = client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: fp, Os: "ANDROID"})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err), "fingerprint alone must not return a token")
+
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer "+first.AuthToken)
+	second, err := client.Register(ctx, &fleetmlv1.RegisterRequest{Fingerprint: fp, Os: "ANDROID"})
+	require.NoError(t, err, "current token in metadata authorizes re-registration")
+	assert.Equal(t, first.DeviceId, second.DeviceId)
+	assert.NotEqual(t, first.AuthToken, second.AuthToken)
 }

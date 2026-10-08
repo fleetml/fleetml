@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity(), FleetMLCallback {
             config = FleetMLConfig(
                 serverHost = "10.0.2.2",  // Emulator -> host machine localhost
                 serverPort = 19090,
+                enrollmentKey = BuildConfig.FLEETML_ENROLLMENT_KEY,
                 useTls = false,
                 labels = mapOf("env" to "development", "app" to "sample")
             ),

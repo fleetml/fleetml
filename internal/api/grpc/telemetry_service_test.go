@@ -31,6 +31,7 @@ func setupTelemetryGRPCTest(t *testing.T) (fleetmlv1.TelemetryServiceClient, fle
 		"test-secret",
 		logger,
 	)
+	deviceSvc.SetEnrollmentVerifier(fakeEnrollment{testEnrollKey: testEnrollProject})
 
 	telemetrySvc := telemetry.NewService(nil, nil, nil)
 
@@ -61,7 +62,8 @@ func TestReportBatch_Success(t *testing.T) {
 
 	// Register device to get token
 	regResp, err := devClient.Register(context.Background(), &fleetmlv1.RegisterRequest{
-		Fingerprint: validFingerprint(), Os: "ANDROID", RamMb: 8192, HasNpu: true,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   validFingerprint(), Os: "ANDROID", RamMb: 8192, HasNpu: true,
 	})
 	require.NoError(t, err)
 
@@ -119,8 +121,9 @@ func TestReportBatch_EmptyBatch(t *testing.T) {
 	telClient, devClient := setupTelemetryGRPCTest(t)
 
 	regResp, err := devClient.Register(context.Background(), &fleetmlv1.RegisterRequest{
-		Fingerprint: device.GenerateFingerprint("ANDROID", "chip2", 4096),
-		Os:          "ANDROID", RamMb: 4096,
+		EnrollmentKey: testEnrollKey,
+		Fingerprint:   device.GenerateFingerprint("ANDROID", "chip2", 4096),
+		Os:            "ANDROID", RamMb: 4096,
 	})
 	require.NoError(t, err)
 

@@ -34,12 +34,13 @@ type Server struct {
 	driftDetector *drift.Detector
 	driftStore    drift.ResultStore
 	apiKeys       *auth.APIKeyService
+	enrollment    *auth.EnrollmentService
 	corsOrigins   string
 	logger        *slog.Logger
 }
 
 // NewServer creates a new REST server.
-func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, corsOrigins string, logger *slog.Logger) *Server {
+func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, corsOrigins string, logger *slog.Logger) *Server {
 	if apiKeys == nil {
 		panic("rest.NewServer: an API key service is required")
 	}
@@ -60,6 +61,7 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 		driftDetector: driftDetector,
 		driftStore:    driftStore,
 		apiKeys:       apiKeys,
+		enrollment:    enrollment,
 		corsOrigins:   corsOrigins,
 		logger:        logger,
 	}
@@ -81,6 +83,9 @@ func (s *Server) registerRoutes() {
 	api := s.router.Group("/api/v1", RequireAPIKey(s.apiKeys, s.logger))
 
 	NewAPIKeyHandler(s.apiKeys, s.logger).RegisterRoutes(api)
+	if s.enrollment != nil {
+		NewEnrollmentKeyHandler(s.enrollment, s.logger).RegisterRoutes(api)
+	}
 
 	NewProjectHandler(s.service, s.logger).RegisterRoutes(api)
 	NewModelHandler(s.service, s.logger).RegisterRoutes(api)

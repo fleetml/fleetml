@@ -128,3 +128,84 @@ func handleAuthError(c *gin.Context, err error) {
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred")
 	}
 }
+
+// EnrollmentKeyHandler manages per-project device enrollment keys.
+type EnrollmentKeyHandler struct {
+	keys   *auth.EnrollmentService
+	logger *slog.Logger
+}
+
+// NewEnrollmentKeyHandler creates an EnrollmentKeyHandler.
+func NewEnrollmentKeyHandler(keys *auth.EnrollmentService, logger *slog.Logger) *EnrollmentKeyHandler {
+	return &EnrollmentKeyHandler{keys: keys, logger: logger}
+}
+
+// RegisterRoutes registers enrollment key routes.
+func (h *EnrollmentKeyHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.POST("/projects/:project_id/enrollment-keys", h.create)
+	rg.GET("/projects/:project_id/enrollment-keys", h.list)
+	rg.POST("/enrollment-keys/:key_id/revoke", h.revoke)
+	rg.POST("/enrollment-keys/:key_id/rotate", h.rotate)
+}
+
+// createdEnrollmentKeyResponse is the only response that carries the plaintext key.
+type createdEnrollmentKeyResponse struct {
+	auth.EnrollmentKey
+	Key string `json:"key"`
+}
+
+func (h *EnrollmentKeyHandler) create(c *gin.Context) {
+	projectID, ok := parseUUID(c, "project_id")
+	if !ok {
+		return
+	}
+	var req createKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "name is required")
+		return
+	}
+	key, k, err := h.keys.Create(c.Request.Context(), projectID, req.Name)
+	if err != nil {
+		handleAuthError(c, err)
+		return
+	}
+	respondData(c, http.StatusCreated, createdEnrollmentKeyResponse{EnrollmentKey: *k, Key: key})
+}
+
+func (h *EnrollmentKeyHandler) list(c *gin.Context) {
+	projectID, ok := parseUUID(c, "project_id")
+	if !ok {
+		return
+	}
+	keys, err := h.keys.List(c.Request.Context(), projectID)
+	if err != nil {
+		handleAuthError(c, err)
+		return
+	}
+	respondData(c, http.StatusOK, keys)
+}
+
+func (h *EnrollmentKeyHandler) revoke(c *gin.Context) {
+	id, ok := parseUUID(c, "key_id")
+	if !ok {
+		return
+	}
+	if err := h.keys.Revoke(c.Request.Context(), id); err != nil {
+		handleAuthError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *EnrollmentKeyHandler) rotate(c *gin.Context) {
+	id, ok := parseUUID(c, "key_id")
+	if !ok {
+		return
+	}
+	key, k, err := h.keys.Rotate(c.Request.Context(), id)
+	if err != nil {
+		handleAuthError(c, err)
+		return
+	}
+	respondData(c, http.StatusCreated, createdEnrollmentKeyResponse{EnrollmentKey: *k, Key: key})
+}

@@ -58,13 +58,13 @@ func (r *DeviceRepo) Create(ctx context.Context, d *Device) error {
 	}
 
 	query := `INSERT INTO devices (device_class_id, fingerprint, os, os_version, ram_mb, chipset,
-		has_npu, has_gpu, npu_tflops, agent_version, labels_json, auth_token_hash)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		has_npu, has_gpu, npu_tflops, agent_version, labels_json, auth_token_hash, project_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, created_at, updated_at`
 
 	err = r.pool.QueryRow(ctx, query,
 		d.DeviceClassID, d.Fingerprint, d.OS, d.OSVersion, d.RAMMB, d.Chipset,
-		d.HasNPU, d.HasGPU, d.NPUTflops, d.AgentVersion, labelsJSON, d.AuthTokenHash,
+		d.HasNPU, d.HasGPU, d.NPUTflops, d.AgentVersion, labelsJSON, d.AuthTokenHash, d.ProjectID,
 	).Scan(&d.ID, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -75,7 +75,7 @@ func (r *DeviceRepo) Create(ctx context.Context, d *Device) error {
 	return nil
 }
 
-const deviceColumns = `id, device_class_id, fingerprint, os, os_version, ram_mb, chipset,
+const deviceColumns = `id, project_id, device_class_id, fingerprint, os, os_version, ram_mb, chipset,
 	has_npu, has_gpu, npu_tflops, agent_version, labels_json, auth_token_hash,
 	last_seen_at, created_at, updated_at`
 
@@ -83,7 +83,7 @@ func scanDevice(row pgx.Row) (*Device, error) {
 	d := &Device{}
 	var labelsJSON []byte
 	err := row.Scan(
-		&d.ID, &d.DeviceClassID, &d.Fingerprint, &d.OS, &d.OSVersion, &d.RAMMB, &d.Chipset,
+		&d.ID, &d.ProjectID, &d.DeviceClassID, &d.Fingerprint, &d.OS, &d.OSVersion, &d.RAMMB, &d.Chipset,
 		&d.HasNPU, &d.HasGPU, &d.NPUTflops, &d.AgentVersion, &labelsJSON, &d.AuthTokenHash,
 		&d.LastSeenAt, &d.CreatedAt, &d.UpdatedAt,
 	)
@@ -160,7 +160,7 @@ func scanDeviceRows(rows pgx.Rows) ([]Device, int, error) {
 		var d Device
 		var labelsJSON []byte
 		if err := rows.Scan(
-			&d.ID, &d.DeviceClassID, &d.Fingerprint, &d.OS, &d.OSVersion, &d.RAMMB, &d.Chipset,
+			&d.ID, &d.ProjectID, &d.DeviceClassID, &d.Fingerprint, &d.OS, &d.OSVersion, &d.RAMMB, &d.Chipset,
 			&d.HasNPU, &d.HasGPU, &d.NPUTflops, &d.AgentVersion, &labelsJSON, &d.AuthTokenHash,
 			&d.LastSeenAt, &d.CreatedAt, &d.UpdatedAt, &total,
 		); err != nil {
@@ -212,12 +212,12 @@ func (r *DeviceRepo) Update(ctx context.Context, d *Device) error {
 	}
 	query := `UPDATE devices SET device_class_id = $1, os = $2, os_version = $3, ram_mb = $4,
 		chipset = $5, has_npu = $6, has_gpu = $7, npu_tflops = $8, agent_version = $9,
-		labels_json = $10, auth_token_hash = $11, last_seen_at = NOW()
-		WHERE id = $12 RETURNING updated_at`
+		labels_json = $10, auth_token_hash = $11, project_id = $12, last_seen_at = NOW()
+		WHERE id = $13 RETURNING updated_at`
 	err = r.pool.QueryRow(ctx, query,
 		d.DeviceClassID, d.OS, d.OSVersion, d.RAMMB, d.Chipset,
 		d.HasNPU, d.HasGPU, d.NPUTflops, d.AgentVersion, labelsJSON,
-		d.AuthTokenHash, d.ID,
+		d.AuthTokenHash, d.ProjectID, d.ID,
 	).Scan(&d.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -34,20 +35,29 @@ func NewDeviceServiceServer(svc *device.Service, logger *slog.Logger) *DeviceSer
 // Register handles device registration.
 func (s *DeviceServiceServer) Register(ctx context.Context, req *fleetmlv1.RegisterRequest) (*fleetmlv1.RegisterResponse, error) {
 	resp, err := s.service.RegisterDevice(ctx, &device.RegisterRequest{
-		Fingerprint:  req.GetFingerprint(),
-		OS:           req.GetOs(),
-		OSVersion:    req.GetOsVersion(),
-		Chipset:      req.GetChipset(),
-		RAMMB:        int(req.GetRamMb()),
-		HasNPU:       req.GetHasNpu(),
-		HasGPU:       req.GetHasGpu(),
-		NPUTflops:    float64(req.GetNpuTflops()),
-		AgentVersion: req.GetAgentVersion(),
-		Labels:       req.GetLabels(),
+		Fingerprint:   req.GetFingerprint(),
+		OS:            req.GetOs(),
+		OSVersion:     req.GetOsVersion(),
+		Chipset:       req.GetChipset(),
+		RAMMB:         int(req.GetRamMb()),
+		HasNPU:        req.GetHasNpu(),
+		HasGPU:        req.GetHasGpu(),
+		NPUTflops:     float64(req.GetNpuTflops()),
+		AgentVersion:  req.GetAgentVersion(),
+		Labels:        req.GetLabels(),
+		EnrollmentKey: req.GetEnrollmentKey(),
+		CurrentToken:  bearerFromMetadata(ctx),
 	})
 	if err != nil {
-		s.logger.Error("device registration failed", "fingerprint", req.GetFingerprint(), "error", err)
-		return nil, status.Errorf(codes.Internal, "registration failed: %v", err)
+		switch {
+		case errors.Is(err, device.ErrInvalidInput):
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		case errors.Is(err, device.ErrUnauthenticated):
+			s.logger.Warn("device registration rejected", "error", err)
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
+		s.logger.Error("device registration failed", "error", err)
+		return nil, status.Error(codes.Internal, "registration failed")
 	}
 
 	return &fleetmlv1.RegisterResponse{
@@ -115,6 +125,23 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		Assignments:          protoAssignments,
 		NextHeartbeatSeconds: resp.NextHeartbeatSeconds,
 	}, nil
+}
+
+// bearerFromMetadata returns the bearer token from "authorization" metadata, or "".
+func bearerFromMetadata(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get("authorization")
+	if len(values) == 0 {
+		return ""
+	}
+	const prefix = "bearer "
+	if len(values[0]) <= len(prefix) || !strings.EqualFold(values[0][:len(prefix)], prefix) {
+		return ""
+	}
+	return strings.TrimSpace(values[0][len(prefix):])
 }
 
 // AuthInterceptor returns a gRPC unary interceptor that validates JWT tokens.
