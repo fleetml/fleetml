@@ -55,6 +55,7 @@ internal class DeviceRegistrar(
             maxCacheSizeMb = response.config.maxCacheSizeMb.toInt(),
             telemetryFlushIntervalSeconds = response.config.telemetryFlushIntervalSeconds.toInt(),
             config = response.config,
+            signingKeys = response.signingKeysList,
         )
     }
 
@@ -73,4 +74,6 @@ data class RegisterResult(
     val maxCacheSizeMb: Int,
     val telemetryFlushIntervalSeconds: Int = 0,
     val config: fleetml.device.v1.Device.DeviceConfig = fleetml.device.v1.Device.DeviceConfig.getDefaultInstance(),
+    /** The project's artifact signing keys. */
+    val signingKeys: List<fleetml.device.v1.Device.SigningKey> = emptyList(),
 )

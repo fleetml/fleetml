@@ -182,4 +182,28 @@ class ModelManagerTest {
     }
 
     private fun sha256(data: ByteArray) = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
+
+    @Test
+    fun `a model whose signature does not verify is not downloaded or activated`() = runTest {
+        val seed = ByteArray(32) { 7 }
+        val priv = org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters(seed, 0)
+        val pub = priv.generatePublicKey().encoded
+        store.setSigningKeys(listOf(com.fleetml.sdk.internal.SigningKey("k1", pub, 0)))
+        fun signed(sha: String): ModelAssignment {
+            val msg = com.fleetml.sdk.internal.ArtifactSignature.message("m", "1.0.0", sha)
+            val sig = ByteArray(64).also { priv.sign(org.bouncycastle.math.ec.rfc8032.Ed25519.Algorithm.Ed25519, null, msg, 0, msg.size, it, 0) }
+            return assign("good-v1", "1.0.0").toBuilder().setSigningKeyId("k1").setSignature(com.google.protobuf.ByteString.copyFrom(sig)).build()
+        }
+        val mm = manager()
+
+        mm.apply(listOf(signed(sha256("another file".toByteArray()))))
+        assertEquals("nothing is downloaded", 0, server.requestCount)
+        assertTrue(mm.activeModels().isEmpty())
+        assertTrue(events.single(), events.single().startsWith("failed 1.0.0: signature:"))
+        assertEquals(TelemetryEvent.EventType.SIGNATURE_INVALID, queue.peek(10).last().type)
+
+        clock += ModelStore.FAILED_COOLDOWN_MS
+        mm.apply(listOf(signed(sha256(blobs.getValue("good-v1")))))
+        assertEquals("1.0.0", mm.activeModels().single().version)
+    }
 }

@@ -1,7 +1,9 @@
 package com.fleetml.sdk.internal
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Base64
 
 /** A model version the device has (or had) running. */
 internal data class ModelRecord(
@@ -34,6 +36,7 @@ internal class ModelStore(private val file: File) {
     private val active = LinkedHashMap<String, ModelRecord>()
     private val lastKnownGood = HashMap<String, ModelRecord>()
     private val failed = HashMap<String, Long>() // variant ID -> failed at (ms)
+    private var signingKeys: List<SigningKey> = emptyList()
 
     init {
         file.parentFile?.mkdirs()
@@ -69,6 +72,16 @@ internal class ModelStore(private val file: File) {
         persist()
     }
 
+    /** The project's signing keys, as last sent by the server. */
+    fun signingKeys(): List<SigningKey> = synchronized(lock) { signingKeys }
+
+    /** Replaces the stored signing keys (from Register and every heartbeat). */
+    fun setSigningKeys(keys: List<SigningKey>) = synchronized(lock) {
+        if (keys == signingKeys) return@synchronized
+        signingKeys = keys
+        persist()
+    }
+
     fun markFailed(variantId: String, at: Long) = synchronized(lock) {
         failed[variantId] = at
         persist()
@@ -87,6 +100,9 @@ internal class ModelStore(private val file: File) {
         for ((id, rec) in lastKnownGood) if (!active.containsKey(id)) models.put(id, JSONObject().put("last_known_good", rec.toJson()))
         json.put("models", models)
         json.put("failed", JSONObject(failed.mapValues { it.value }))
+        json.put("signing_keys", JSONArray(signingKeys.map {
+            JSONObject().put("key_id", it.keyId).put("public_key", Base64.getEncoder().encodeToString(it.publicKey)).put("not_after", it.notAfter)
+        }))
         val tmp = File(file.parentFile, file.name + ".tmp")
         tmp.writeText(json.toString())
         if (!tmp.renameTo(file)) {
@@ -107,6 +123,11 @@ internal class ModelStore(private val file: File) {
             }
             val f = json.optJSONObject("failed") ?: JSONObject()
             for (v in f.keys()) failed[v] = f.getLong(v)
+            val keys = json.optJSONArray("signing_keys") ?: JSONArray()
+            signingKeys = (0 until keys.length()).map { i ->
+                val k = keys.getJSONObject(i)
+                SigningKey(k.getString("key_id"), Base64.getDecoder().decode(k.getString("public_key")), k.optLong("not_after"))
+            }
         } catch (e: Exception) {
             Logger.w("Model store unreadable, starting empty: ${e.message}")
         }

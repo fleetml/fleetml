@@ -80,6 +80,8 @@ internal class HeartbeatManager(
             setInterval(response.nextHeartbeatSeconds.toLong())
             if (response.hasConfig()) onConfig(response.config)
             telemetry?.setExperimentArms(response.experimentsList.associate { it.modelVersionId to it.armId })
+            // Keys first: an assignment may be signed by a key the device has not seen.
+            models.setSigningKeys(response.signingKeysList)
             models.apply(response.assignmentsList)
             true
         } catch (e: StatusException) {

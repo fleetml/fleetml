@@ -105,6 +105,9 @@ dependencies {
     // JSON (for metadata)
     implementation("org.json:json:20240303")
 
+    // ed25519 artifact signatures (the platform API needs API 33)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.12.1")

@@ -13,8 +13,8 @@ import fleetml.device.v1.Device.ModelStatus
 import fleetml.telemetry.v1.Telemetry.TelemetryEvent
 
 /**
- * Applies the server's assignments: download (resumable, sha256-verified),
- * validate, and only then activate. A model that fails validation never
+ * Applies the server's assignments: verify the signature, download
+ * (resumable, sha256-verified), validate, and only then activate. A model that fails validation never
  * replaces the active one; the last-known-good file is never deleted.
  */
 internal class ModelManager(
@@ -38,6 +38,10 @@ internal class ModelManager(
         cache.getModelFile(rec.variantId)?.let { rec.toActive(it) }
     }
 
+    /** Stores the project's signing keys from a Register or heartbeat response. */
+    fun setSigningKeys(keys: List<fleetml.device.v1.Device.SigningKey>) =
+        store.setSigningKeys(keys.map { SigningKey(it.keyId, it.publicKey.toByteArray(), it.notAfter) })
+
     suspend fun apply(assignments: List<ModelAssignment>) {
         // A model being replaced arrives as UPDATE(new) + UNLOAD(old). The old
         // version must stay until the new one is validated, so such UNLOADs are
@@ -57,6 +61,17 @@ internal class ModelManager(
     private suspend fun install(a: ModelAssignment) {
         if (store.isActive(a.variantId)) return
         if (store.recentlyFailed(a.variantId, now())) return
+        // The signature covers the sha256 the download is checked against, so
+        // a model that fails it is not even downloaded.
+        ArtifactSignature.verify(
+            store.signingKeys(), a.signingKeyId, a.signature.toByteArray(), a.modelId, a.version, a.blobSha256, now() / 1000,
+        )?.let { reason ->
+            Logger.w("Model ${a.modelName} ${a.version} rejected: $reason; keeping the current model")
+            store.markFailed(a.variantId, now())
+            telemetry?.reportModelStatus(a.versionId, TelemetryEvent.EventType.SIGNATURE_INVALID, errorMessage = reason)
+            callback()?.onModelLoadFailed(a.modelName, a.version, "signature: $reason")
+            return
+        }
         if (cache.getModelFile(a.variantId) == null && !canDownload(a.urgent)) {
             Logger.i("Download of ${a.modelName} ${a.version} waits for the download policy (unmetered network or charging)")
             return // the assignment is repeated on the next heartbeat

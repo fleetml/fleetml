@@ -280,6 +280,7 @@ internal class FleetMLInstance(
 
     private suspend fun register() {
         val result = registrar.register()
+        models.setSigningKeys(result.signingKeys)
         heartbeat.setInterval(result.heartbeatIntervalSeconds.toLong())
         // The server's DeviceConfig wins over the local defaults.
         applyConfig(result.config)
