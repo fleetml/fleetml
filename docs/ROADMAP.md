@@ -1,6 +1,6 @@
 # Roadmap
 
-What comes after v0.1.0, roughly in order. Nothing here is available yet;
+What comes after v0.2.0, roughly in order. Nothing here is available yet;
 the [README](../README.md#features) lists what is. Each item lands with tests
 and documentation, and the README only claims it once it runs.
 

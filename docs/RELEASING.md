@@ -42,8 +42,11 @@ Also:
 
 In `CHANGELOG.md`, replace `Unreleased` in the release's heading with today's
 date (`## [0.1.0] - YYYY-MM-DD`), and make sure the section describes every
-user-visible change since the previous release. Bump the SDK versions if
-they changed (`SDK_VERSION` in `android/fleetml-sdk/build.gradle.kts`,
+user-visible change since the previous release. The CLI (`fleetml version`
+in `internal/cli/root.go`), the Linux agent (`AgentVersion` in
+`internal/agent/agent.go`) and the dashboard (`dashboard/package.json`) carry
+the release's version. Bump the SDK versions only if the SDKs changed
+(`SDK_VERSION` in `android/fleetml-sdk/build.gradle.kts`,
 `FleetML.sdkVersion` in the iOS package). Commit:
 
 ```bash
@@ -100,11 +103,11 @@ the release commit green, and the release is listed.
 
 ## 7. Announce
 
-Post the announcement with the 60-second story (the recording of
-`scripts/demo.sh` from the README) and a link to the release. Answer issues and
+Post the announcement with the 60-second story (the README's recording of
+`scripts/demo-agent.sh`) and a link to the release. Answer issues and
 discussions from the project's maintainer account.
 
 ## After the release
 
-Add a new `## [Unreleased]` section at the top of `CHANGELOG.md` for the next
-changes.
+Add a section for the next version at the top of `CHANGELOG.md`
+(`## [0.3.0] - Unreleased`) with its compare link at the bottom.

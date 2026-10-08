@@ -5,7 +5,9 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.2.0] - Unreleased
+## [0.3.0] - Unreleased
+
+## [0.2.0] - 2026-10-08
 
 ### Added
 
@@ -143,5 +145,6 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.3.0]: https://github.com/fleetml/fleetml/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fleetml/fleetml/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fleetml/fleetml/releases/tag/v0.1.0
