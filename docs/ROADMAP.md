@@ -6,9 +6,6 @@ and documentation, and the README only claims it once it runs.
 
 ## Next
 
-- **Linux device agent.** A single static Go binary on the same protocol as the
-  SDKs, running as a systemd service, for Jetson, Raspberry Pi, x86 edge boxes,
-  kiosks and robots.
 - **More alert sinks.** Slack and email next to NATS and the signed webhook.
 - **Dashboard sign-in.** Exchange the admin API key for a session instead of
   keeping it in the browser's local storage.

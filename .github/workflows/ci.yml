@@ -49,6 +49,8 @@ jobs:
           version: v2.12.1
       - name: Test (unit and integration, race detector)
         run: go test -race -count=1 -tags integration -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Cross-compile the device agent (linux/amd64, linux/arm64)
+        run: make build-agent
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1
       - uses: actions/upload-artifact@v4

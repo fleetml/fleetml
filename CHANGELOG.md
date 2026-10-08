@@ -7,6 +7,23 @@ change APIs).
 
 ## [0.2.0] - Unreleased
 
+### Added
+
+- Linux device agent (`cmd/fleetml-agent`, `make build-agent`): a static
+  binary for linux/amd64 and linux/arm64 with a systemd unit and install
+  script (`deploy/agent`). It registers with an enrollment key and a
+  machine-ID-based fingerprint, downloads with Range resume and sha256
+  checks, validates with a configurable command, switches a `current`
+  symlink per model, keeps the last-known-good version, runs a
+  post-activate hook, queues telemetry on disk, offers a local HTTP endpoint
+  for inference events, and honours the download policy and urgent flag.
+  `docs/LINUX_AGENT.md`.
+
+### Changed
+
+- Linux devices accept `CUSTOM` model variants, and a `linux/arm64` chipset is
+  profiled as arm64.
+
 ## [0.1.0] - 2026-10-08
 
 The first release.

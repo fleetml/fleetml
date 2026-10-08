@@ -176,3 +176,13 @@ func TestClassifyDevice_AllOSTypes(t *testing.T) {
 		})
 	}
 }
+
+// The Linux agent reports GOOS/GOARCH as its chipset and accepts any runtime.
+func TestProfiler_LinuxAgent(t *testing.T) {
+	p := NewProfiler(nil)
+	arm := p.BuildProfile(&device.Device{OS: "LINUX", Chipset: "linux/arm64", RAMMB: 4096}, nil)
+	assert.Equal(t, "arm64", arm.Compute.Architecture)
+	assert.Contains(t, arm.Accelerators.SupportedRuntimes, "CUSTOM")
+	x86 := p.BuildProfile(&device.Device{OS: "LINUX", Chipset: "linux/amd64", RAMMB: 4096}, nil)
+	assert.Equal(t, "x86_64", x86.Compute.Architecture)
+}

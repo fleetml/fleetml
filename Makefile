@@ -1,4 +1,4 @@
-.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto proto-swift ios-test migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
+.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
 
 -include .env
 
@@ -20,6 +20,15 @@ build: build-server build-cli
 build-server:
 	@mkdir -p bin
 	go build -o $(BINARY) ./cmd/server
+
+# The device agent as static binaries for Linux (amd64, arm64) and macOS (local testing).
+build-agent:
+	@mkdir -p bin
+	@for target in linux/amd64 linux/arm64 darwin/arm64; do \
+		os=$${target%/*}; arch=$${target#*/}; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w" -o bin/fleetml-agent-$$os-$$arch ./cmd/fleetml-agent || exit 1; \
+	done
+	@ls -la bin/fleetml-agent-*
 
 build-cli:
 	@mkdir -p bin

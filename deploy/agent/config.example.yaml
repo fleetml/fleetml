@@ -1,0 +1,14 @@
+# /etc/fleetml-agent/config.yaml (see docs/LINUX_AGENT.md)
+server: fleetml.example.com:19090
+tls: true
+enrollment_key: "<project enrollment key>"
+labels:
+  site: factory-1
+  role: camera
+state_dir: /var/lib/fleetml-agent
+# models_dir: /var/lib/fleetml-agent/models   # <model>/current -> the active version
+# validator: "python3 /opt/inference/check_model.py {file}"   # exit 0 = valid
+# post_activate: "touch /run/inference/reload"
+# telemetry_listen: "127.0.0.1:9601"   # POST /v1/events from the inference process
+# metered: false
+# on_battery: false

@@ -163,7 +163,8 @@ func inferSupportedRuntimes(os string) []string {
 	case "IOS":
 		return []string{"COREML", "TFLITE", "GGUF"}
 	case "LINUX":
-		return []string{"TFLITE", "ONNX", "GGUF"}
+		// The device agent validates any format with a configured command.
+		return []string{"TFLITE", "ONNX", "GGUF", "CUSTOM"}
 	case "WINDOWS":
 		return []string{"ONNX", "TFLITE", "GGUF"}
 	default:
@@ -179,7 +180,8 @@ func inferArchitecture(os, chipset string) string {
 	case "IOS":
 		return "arm64"
 	case "LINUX":
-		if strings.Contains(chipLower, "jetson") || strings.Contains(chipLower, "rpi") || strings.Contains(chipLower, "raspberry") {
+		if strings.Contains(chipLower, "jetson") || strings.Contains(chipLower, "rpi") || strings.Contains(chipLower, "raspberry") ||
+			strings.Contains(chipLower, "arm64") || strings.Contains(chipLower, "aarch64") {
 			return "arm64"
 		}
 		return "x86_64"
