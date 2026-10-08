@@ -140,34 +140,6 @@ func (m *mockDeviceClassRepo) Upsert(_ context.Context, dc *device.DeviceClass) 
 	return nil
 }
 
-type mockDeploymentQuerier struct{}
-
-func (m *mockDeploymentQuerier) ListActiveForDevice(_ context.Context, _ map[string]string) ([]device.DeploymentInfo, error) {
-	return nil, nil
-}
-
-type mockVariantQuerier struct{}
-
-func (m *mockVariantQuerier) ListByVersion(_ context.Context, _ uuid.UUID) ([]device.VariantInfo, error) {
-	return nil, nil
-}
-
-type mockStorageClient struct{}
-
-func (m *mockStorageClient) GeneratePresignedUpload(_ context.Context, _ string, _ time.Duration) (string, error) {
-	return "", nil
-}
-func (m *mockStorageClient) GeneratePresignedDownload(_ context.Context, key string, _ time.Duration) (string, error) {
-	return "https://s3.example.com/" + key, nil
-}
-func (m *mockStorageClient) ObjectExists(_ context.Context, _ string) (bool, error) {
-	return true, nil
-}
-func (m *mockStorageClient) DeleteObject(_ context.Context, _ string) error { return nil }
-func (m *mockStorageClient) GetObjectInfo(_ context.Context, _ string) (int64, error) {
-	return 0, nil
-}
-
 // --- Test helpers ---
 
 const testEnrollKey = "test-enrollment-key"
@@ -201,9 +173,6 @@ func setupGRPCTestWithService(t *testing.T) (fleetmlv1.DeviceServiceClient, *dev
 	deviceSvc := device.NewService(
 		newMockDeviceRepo(),
 		newMockDeviceClassRepo(),
-		&mockDeploymentQuerier{},
-		&mockVariantQuerier{},
-		&mockStorageClient{},
 		"test-secret",
 		logger,
 	)

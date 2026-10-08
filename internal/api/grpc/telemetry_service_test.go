@@ -25,9 +25,6 @@ func setupTelemetryGRPCTest(t *testing.T) (fleetmlv1.TelemetryServiceClient, fle
 	deviceSvc := device.NewService(
 		newMockDeviceRepo(),
 		newMockDeviceClassRepo(),
-		&mockDeploymentQuerier{},
-		&mockVariantQuerier{},
-		&mockStorageClient{},
 		"test-secret",
 		logger,
 	)

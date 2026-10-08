@@ -49,6 +49,7 @@ func (b *Bridge) ComputeAssignments(ctx context.Context, dev *device.Device, cur
 	for _, a := range assignments {
 		result = append(result, device.ModelAssignment{
 			ModelID:       a.ModelID,
+			VersionID:     a.VersionID,
 			ModelName:     a.ModelName,
 			Version:       a.Version,
 			VariantID:     a.VariantID,

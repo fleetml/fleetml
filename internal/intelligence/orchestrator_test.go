@@ -255,3 +255,43 @@ func TestComputeAssignments_LabelTargetingFromStoredSelector(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, usAssignments, "region=us device must not receive a region=eu deployment")
 }
+
+func TestComputeAssignments_ModelAndVersionIDs(t *testing.T) {
+	modelID, v1, v2 := uuid.New(), uuid.New(), uuid.New()
+	v2Variant := uuid.New()
+	orch := newTestOrchestrator(map[uuid.UUID][]VariantData{
+		v2: {{ID: v2Variant, VersionID: v2, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "v2.bin", BlobSize: 1024, BlobSHA256: "sha-v2"}},
+	})
+	dev := &device.Device{ID: uuid.New(), OS: "ANDROID", RAMMB: 4096, Labels: map[string]string{}}
+	deps := []DeploymentData{{ID: uuid.New(), ModelID: modelID, ModelVersionID: v2, ModelName: "clf", VersionString: "2.0.0", Strategy: "ALL_AT_ONCE"}}
+
+	// Fresh device: LOAD, with the model ID and the version ID in separate fields.
+	got, err := orch.ComputeAssignments(context.Background(), dev, nil, deps, nil)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, modelID.String(), got[0].ModelID)
+	assert.Equal(t, v2.String(), got[0].VersionID)
+	assert.Equal(t, "2.0.0", got[0].Version)
+	assert.Equal(t, "LOAD", got[0].Action)
+
+	// Device runs v1 of the same model and reports the model ID: UPDATE to v2, and v1 is unloaded.
+	loaded := []LoadedModelInfo{{ModelID: modelID.String(), VariantID: uuid.NewString(), Version: "1.0.0"}}
+	got, err = orch.ComputeAssignments(context.Background(), dev, nil, deps, loaded)
+	require.NoError(t, err)
+	actions := map[string]string{}
+	for _, a := range got {
+		actions[a.Action] = a.VariantID
+	}
+	assert.Equal(t, v2Variant.String(), actions["UPDATE"])
+	assert.Equal(t, loaded[0].VariantID, actions["UNLOAD"])
+
+	// Older SDKs echoed the version ID as model_id: still detected as the same model.
+	legacy := []LoadedModelInfo{{ModelID: v1.String(), VariantID: uuid.NewString()}}
+	deps[0].ModelVersionID = v1
+	orch2 := newTestOrchestrator(map[uuid.UUID][]VariantData{
+		v1: {{ID: uuid.New(), VersionID: v1, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "v1.bin", BlobSize: 1024, BlobSHA256: "sha-v1"}},
+	})
+	got, err = orch2.ComputeAssignments(context.Background(), dev, nil, deps, legacy)
+	require.NoError(t, err)
+	assert.Equal(t, "UPDATE", got[0].Action)
+}

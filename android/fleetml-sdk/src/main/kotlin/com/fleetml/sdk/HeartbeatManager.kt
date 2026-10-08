@@ -137,6 +137,7 @@ internal class HeartbeatManager(
                         }
                         loadedModels[assignment.variantId] = LoadedModelInfo(
                             modelId = assignment.modelId,
+                            versionId = assignment.versionId,
                             modelName = assignment.modelName,
                             version = assignment.version,
                             variantId = assignment.variantId
@@ -168,6 +169,8 @@ internal class HeartbeatManager(
 
 internal data class LoadedModelInfo(
     val modelId: String,
+    /** Model version ID; send it as modelVersionId in telemetry. */
+    val versionId: String = "",
     val modelName: String,
     val version: String,
     val variantId: String

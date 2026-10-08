@@ -170,38 +170,11 @@ func (m *mockDeviceClassRepoREST) Upsert(_ context.Context, dc *device.DeviceCla
 	return nil
 }
 
-type mockDeploymentQuerierREST struct{}
-
-func (m *mockDeploymentQuerierREST) ListActiveForDevice(_ context.Context, _ map[string]string) ([]device.DeploymentInfo, error) {
-	return nil, nil
-}
-
-type mockVariantQuerierREST struct{}
-
-func (m *mockVariantQuerierREST) ListByVersion(_ context.Context, _ uuid.UUID) ([]device.VariantInfo, error) {
-	return nil, nil
-}
-
-type mockStorageREST struct{}
-
-func (m *mockStorageREST) GeneratePresignedUpload(_ context.Context, _ string, _ time.Duration) (string, error) {
-	return "", nil
-}
-func (m *mockStorageREST) GeneratePresignedDownload(_ context.Context, _ string, _ time.Duration) (string, error) {
-	return "", nil
-}
-func (m *mockStorageREST) ObjectExists(_ context.Context, _ string) (bool, error)   { return true, nil }
-func (m *mockStorageREST) DeleteObject(_ context.Context, _ string) error           { return nil }
-func (m *mockStorageREST) GetObjectInfo(_ context.Context, _ string) (int64, error) { return 0, nil }
-
 func newDeviceTestService() *device.Service {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	svc := device.NewService(
 		newMockDeviceRepoREST(),
 		newMockDeviceClassRepoREST(),
-		&mockDeploymentQuerierREST{},
-		&mockVariantQuerierREST{},
-		&mockStorageREST{},
 		"test-secret",
 		logger,
 	)

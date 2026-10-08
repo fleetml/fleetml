@@ -40,6 +40,7 @@ type VariantData struct {
 // DeploymentData holds deployment info for assignment computation.
 type DeploymentData struct {
 	ID             uuid.UUID
+	ModelID        uuid.UUID
 	ModelVersionID uuid.UUID
 	ModelName      string
 	VersionString  string
@@ -57,7 +58,8 @@ type LoadedModelInfo struct {
 
 // Assignment tells a device what to do with a model.
 type Assignment struct {
-	ModelID       string
+	ModelID       string // the model, stable across versions
+	VersionID     string // the model version being delivered
 	ModelName     string
 	Version       string
 	VariantID     string
@@ -177,7 +179,8 @@ func (o *Orchestrator) ComputeAssignments(
 
 		action := "LOAD"
 		for _, loaded := range currentlyLoaded {
-			if loaded.ModelID == dep.ModelVersionID.String() {
+			// Older SDKs echo the version ID as model_id; accept both.
+			if loaded.ModelID == dep.ModelID.String() || loaded.ModelID == dep.ModelVersionID.String() {
 				action = "UPDATE"
 				break
 			}
@@ -193,7 +196,8 @@ func (o *Orchestrator) ComputeAssignments(
 		}
 
 		desired = append(desired, Assignment{
-			ModelID:       dep.ModelVersionID.String(),
+			ModelID:       dep.ModelID.String(),
+			VersionID:     dep.ModelVersionID.String(),
 			ModelName:     dep.ModelName,
 			Version:       dep.VersionString,
 			VariantID:     result.VariantID.String(),

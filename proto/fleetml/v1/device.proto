@@ -83,14 +83,18 @@ message HeartbeatResponse {
 }
 
 message ModelAssignment {
+  // The model (stable across versions). Report it back in ModelStatus.model_id.
   string model_id = 1;
   string model_name = 2;
+  // Human-readable version string, e.g. "1.2.0".
   string version = 3;
   string variant_id = 4;
   string download_url = 5;
   uint64 blob_size_bytes = 6;
   string blob_sha256 = 7;
   Action action = 8;
+  // The model version this assignment delivers; use it as model_version_id in telemetry.
+  string version_id = 9;
 
   enum Action {
     ACTION_UNSPECIFIED = 0;

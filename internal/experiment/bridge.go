@@ -96,6 +96,7 @@ func (b *Bridge) ComputeExperimentAssignments(
 
 		assignments = append(assignments, device.ModelAssignment{
 			ModelID:       versionID.String(),
+			VersionID:     versionID.String(),
 			ModelName:     exp.Name,
 			Version:       cohort,
 			VariantID:     result.VariantID.String(),

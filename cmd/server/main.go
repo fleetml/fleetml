@@ -99,9 +99,7 @@ func run() error {
 	// Device repositories + service
 	deviceRepo := device.NewDeviceRepo(pool)
 	deviceClassRepo := device.NewDeviceClassRepo(pool)
-	deploymentAdapter := device.NewDeploymentAdapter(pool)
-	variantAdapter := device.NewVariantAdapter(pool)
-	deviceSvc := device.NewService(deviceRepo, deviceClassRepo, deploymentAdapter, variantAdapter, s3Client, cfg.JWTSecret, logger)
+	deviceSvc := device.NewService(deviceRepo, deviceClassRepo, cfg.JWTSecret, logger)
 	deviceSvc.SetTokenTTL(cfg.DeviceTokenTTL)
 	enrollmentSvc := auth.NewEnrollmentService(auth.NewEnrollmentKeyRepo(pool))
 	deviceSvc.SetEnrollmentVerifier(enrollmentSvc)

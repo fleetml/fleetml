@@ -2,8 +2,6 @@ package device
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fleetml/fleetml/internal/auth"
-	"github.com/fleetml/fleetml/internal/registry"
 )
 
 const (
@@ -26,7 +23,6 @@ const (
 	defaultHeartbeatSecs = 60
 	defaultBatchSize     = 100
 	defaultMaxCacheMB    = 512
-	downloadURLExpiry    = 1 * time.Hour
 )
 
 // RegisterRequest is the service-layer request for device registration.
@@ -80,9 +76,10 @@ type HeartbeatResponse struct {
 
 // ModelAssignment tells the device to load/update/unload a model.
 type ModelAssignment struct {
-	ModelID       string
+	ModelID       string // the model (stable across versions)
+	VersionID     string // the model version this assignment delivers
 	ModelName     string
-	Version       string
+	Version       string // human-readable version string, e.g. "1.2.0"
 	VariantID     string
 	DownloadURL   string
 	BlobSizeBytes uint64
@@ -108,11 +105,6 @@ type ExperimentAssigner interface {
 	ComputeExperimentAssignments(ctx context.Context, dev *Device, currentlyLoaded []ModelStatus) ([]ModelAssignment, error)
 }
 
-// DownloadURLSigner creates presigned download URLs for model blobs.
-type DownloadURLSigner interface {
-	GeneratePresignedDownload(ctx context.Context, key string, expiry time.Duration) (string, error)
-}
-
 // EnrollmentVerifier checks a per-project enrollment key and returns its project.
 type EnrollmentVerifier interface {
 	VerifyEnrollmentKey(ctx context.Context, key string) (uuid.UUID, error)
@@ -122,9 +114,6 @@ type EnrollmentVerifier interface {
 type Service struct {
 	devices        DeviceRepository
 	classes        DeviceClassRepository
-	deployments    DeploymentQuerier
-	variants       VariantQuerier
-	storage        DownloadURLSigner
 	assignmentComp AssignmentComputer
 	experimentComp ExperimentAssigner
 	enrollment     EnrollmentVerifier
@@ -137,18 +126,12 @@ type Service struct {
 func NewService(
 	devices DeviceRepository,
 	classes DeviceClassRepository,
-	deployments DeploymentQuerier,
-	variants VariantQuerier,
-	storage DownloadURLSigner,
 	tokenSecret string,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		devices:     devices,
 		classes:     classes,
-		deployments: deployments,
-		variants:    variants,
-		storage:     storage,
 		tokenSecret: tokenSecret,
 		tokenTTL:    DefaultTokenTTL,
 		logger:      logger,
@@ -364,19 +347,15 @@ func (s *Service) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*Heartb
 	}
 
 	var assignments []ModelAssignment
-
-	// Use intelligence orchestrator if available, fall back to legacy
-	if s.assignmentComp != nil {
+	if s.assignmentComp == nil {
+		s.logger.Warn("no assignment computer configured", "device_id", req.DeviceID)
+	} else {
 		assignments, err = s.assignmentComp.ComputeAssignments(ctx, dev, req.LoadedModels)
 		if err != nil {
-			s.logger.Warn("intelligence assignment failed, falling back to legacy", "device_id", req.DeviceID, "error", err)
-			assignments, err = s.computeAssignments(ctx, dev, req.LoadedModels)
+			// No assignments this round: the device keeps what it has and retries next heartbeat.
+			s.logger.Warn("failed to compute assignments", "device_id", req.DeviceID, "error", err)
+			assignments = nil
 		}
-	} else {
-		assignments, err = s.computeAssignments(ctx, dev, req.LoadedModels)
-	}
-	if err != nil {
-		s.logger.Warn("failed to compute assignments", "device_id", req.DeviceID, "error", err)
 	}
 
 	// Merge experiment assignments (experiment takes priority)
@@ -393,95 +372,6 @@ func (s *Service) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*Heartb
 		Assignments:          assignments,
 		NextHeartbeatSeconds: defaultHeartbeatSecs,
 	}, nil
-}
-
-func (s *Service) computeAssignments(ctx context.Context, device *Device, currentlyLoaded []ModelStatus) ([]ModelAssignment, error) {
-	deployments, err := s.deployments.ListActiveForDevice(ctx, device.Labels)
-	if err != nil {
-		return nil, fmt.Errorf("listing active deployments: %w", err)
-	}
-
-	// Build set of loaded variant IDs
-	loadedVariants := make(map[string]ModelStatus)
-	for _, m := range currentlyLoaded {
-		loadedVariants[m.VariantID] = m
-	}
-
-	// Track which variants should be active
-	activeVariantIDs := make(map[string]bool)
-	var assignments []ModelAssignment
-
-	for _, dep := range deployments {
-		// For canary deployments, check if device is in canary group
-		if dep.Strategy == "CANARY" && dep.CanaryPct > 0 && dep.CanaryPct < 100 {
-			if !isInCanary(device.ID, dep.ID, dep.CanaryPct) {
-				continue
-			}
-		}
-
-		variants, err := s.variants.ListByVersion(ctx, dep.ModelVersionID)
-		if err != nil {
-			s.logger.Warn("failed to list variants for deployment", "deployment_id", dep.ID, "error", err)
-			continue
-		}
-
-		// Convert to registry types for variant selection
-		regVariants := toRegistryVariants(variants)
-		caps := toDeviceCapabilities(device)
-
-		best, err := registry.SelectVariant(regVariants, caps)
-		if err != nil {
-			continue // No compatible variant for this device
-		}
-
-		activeVariantIDs[best.ID] = true
-
-		// Check if already loaded
-		if _, loaded := loadedVariants[best.ID]; loaded {
-			continue // Already has the right variant
-		}
-
-		// Check if device has a different variant for same model — that's an UPDATE
-		action := "LOAD"
-		for _, loaded := range currentlyLoaded {
-			if loaded.ModelID == dep.ModelVersionID.String() {
-				action = "UPDATE"
-				break
-			}
-		}
-
-		downloadURL := ""
-		// Find the VariantInfo to get blob key
-		for _, v := range variants {
-			if v.ID.String() == best.ID {
-				downloadURL, _ = s.storage.GeneratePresignedDownload(ctx, v.BlobKey, downloadURLExpiry)
-				break
-			}
-		}
-
-		assignments = append(assignments, ModelAssignment{
-			ModelID:       dep.ModelVersionID.String(),
-			Version:       best.VersionID,
-			VariantID:     best.ID,
-			DownloadURL:   downloadURL,
-			BlobSizeBytes: uint64(best.BlobSizeBytes),
-			BlobSHA256:    best.BlobSHA256,
-			Action:        action,
-		})
-	}
-
-	// Check for models to unload (loaded but no active deployment)
-	for variantID, loaded := range loadedVariants {
-		if !activeVariantIDs[variantID] {
-			assignments = append(assignments, ModelAssignment{
-				ModelID:   loaded.ModelID,
-				VariantID: variantID,
-				Action:    "UNLOAD",
-			})
-		}
-	}
-
-	return assignments, nil
 }
 
 // ValidateToken checks a device token's signature and expiry, and that it is
@@ -631,51 +521,5 @@ func (s *Service) buildDeviceClass(d *Device, className string) *DeviceClass {
 		HasNPU:    d.HasNPU,
 		HasGPU:    d.HasGPU,
 		NPUTflops: d.NPUTflops,
-	}
-}
-
-func isInCanary(deviceID, deploymentID uuid.UUID, canaryPct int) bool {
-	h := sha256.Sum256([]byte(deviceID.String() + deploymentID.String()))
-	bucket := int(binary.BigEndian.Uint32(h[:4])) % 100
-	return bucket < canaryPct
-}
-
-func toRegistryVariants(variants []VariantInfo) []*registry.ModelVariant {
-	result := make([]*registry.ModelVariant, len(variants))
-	for i, v := range variants {
-		result[i] = &registry.ModelVariant{
-			ID:            v.ID.String(),
-			VersionID:     v.VersionID.String(),
-			Quantization:  v.Quantization,
-			TargetRuntime: v.TargetRuntime,
-			MinRAMMB:      v.MinRAMMB,
-			MinNPUTflops:  v.MinNPUTflops,
-			BlobKey:       v.BlobKey,
-			BlobSizeBytes: v.BlobSizeBytes,
-			BlobSHA256:    v.BlobSHA256,
-		}
-	}
-	return result
-}
-
-func toDeviceCapabilities(d *Device) registry.DeviceCapabilities {
-	// Determine the runtime based on OS
-	runtime := "CUSTOM"
-	switch d.OS {
-	case "ANDROID":
-		runtime = "TFLITE"
-	case "IOS":
-		runtime = "COREML"
-	case "LINUX":
-		runtime = "ONNX"
-	case "WINDOWS":
-		runtime = "ONNX"
-	}
-	return registry.DeviceCapabilities{
-		RAMMB:     d.RAMMB,
-		HasNPU:    d.HasNPU,
-		HasGPU:    d.HasGPU,
-		NPUTflops: d.NPUTflops,
-		Runtime:   runtime,
 	}
 }

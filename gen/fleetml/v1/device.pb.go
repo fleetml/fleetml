@@ -674,15 +674,19 @@ func (x *HeartbeatResponse) GetNextHeartbeatSeconds() uint32 {
 }
 
 type ModelAssignment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ModelId       string                 `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	ModelName     string                 `protobuf:"bytes,2,opt,name=model_name,json=modelName,proto3" json:"model_name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The model (stable across versions). Report it back in ModelStatus.model_id.
+	ModelId   string `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	ModelName string `protobuf:"bytes,2,opt,name=model_name,json=modelName,proto3" json:"model_name,omitempty"`
+	// Human-readable version string, e.g. "1.2.0".
 	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	VariantId     string                 `protobuf:"bytes,4,opt,name=variant_id,json=variantId,proto3" json:"variant_id,omitempty"`
 	DownloadUrl   string                 `protobuf:"bytes,5,opt,name=download_url,json=downloadUrl,proto3" json:"download_url,omitempty"`
 	BlobSizeBytes uint64                 `protobuf:"varint,6,opt,name=blob_size_bytes,json=blobSizeBytes,proto3" json:"blob_size_bytes,omitempty"`
 	BlobSha256    string                 `protobuf:"bytes,7,opt,name=blob_sha256,json=blobSha256,proto3" json:"blob_sha256,omitempty"`
 	Action        ModelAssignment_Action `protobuf:"varint,8,opt,name=action,proto3,enum=fleetml.device.v1.ModelAssignment_Action" json:"action,omitempty"`
+	// The model version this assignment delivers; use it as model_version_id in telemetry.
+	VersionId     string `protobuf:"bytes,9,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -771,6 +775,13 @@ func (x *ModelAssignment) GetAction() ModelAssignment_Action {
 		return x.Action
 	}
 	return ModelAssignment_ACTION_UNSPECIFIED
+}
+
+func (x *ModelAssignment) GetVersionId() string {
+	if x != nil {
+		return x.VersionId
+	}
+	return ""
 }
 
 type ExperimentAssignment struct {
@@ -889,7 +900,7 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x11HeartbeatResponse\x12D\n" +
 	"\vassignments\x18\x01 \x03(\v2\".fleetml.device.v1.ModelAssignmentR\vassignments\x12I\n" +
 	"\vexperiments\x18\x02 \x03(\v2'.fleetml.device.v1.ExperimentAssignmentR\vexperiments\x124\n" +
-	"\x16next_heartbeat_seconds\x18\x03 \x01(\rR\x14nextHeartbeatSeconds\"\xf7\x02\n" +
+	"\x16next_heartbeat_seconds\x18\x03 \x01(\rR\x14nextHeartbeatSeconds\"\x96\x03\n" +
 	"\x0fModelAssignment\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12\x1d\n" +
 	"\n" +
@@ -901,7 +912,9 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x0fblob_size_bytes\x18\x06 \x01(\x04R\rblobSizeBytes\x12\x1f\n" +
 	"\vblob_sha256\x18\a \x01(\tR\n" +
 	"blobSha256\x12A\n" +
-	"\x06action\x18\b \x01(\x0e2).fleetml.device.v1.ModelAssignment.ActionR\x06action\"B\n" +
+	"\x06action\x18\b \x01(\x0e2).fleetml.device.v1.ModelAssignment.ActionR\x06action\x12\x1d\n" +
+	"\n" +
+	"version_id\x18\t \x01(\tR\tversionId\"B\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04LOAD\x10\x01\x12\n" +

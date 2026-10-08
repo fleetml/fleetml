@@ -123,6 +123,7 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		}
 		protoAssignments = append(protoAssignments, &fleetmlv1.ModelAssignment{
 			ModelId:       a.ModelID,
+			VersionId:     a.VersionID,
 			ModelName:     a.ModelName,
 			Version:       a.Version,
 			VariantId:     a.VariantID,

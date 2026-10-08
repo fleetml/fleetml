@@ -2,6 +2,7 @@ package device
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -194,54 +195,10 @@ func (m *mockDeviceClassRepo) Upsert(_ context.Context, dc *DeviceClass) error {
 	return nil
 }
 
-type mockDeploymentQuerier struct {
-	deployments []DeploymentInfo
-}
-
-func (m *mockDeploymentQuerier) ListActiveForDevice(_ context.Context, _ map[string]string) ([]DeploymentInfo, error) {
-	return m.deployments, nil
-}
-
-type mockVariantQuerier struct {
-	variants map[uuid.UUID][]VariantInfo
-}
-
-func newMockVariantQuerier() *mockVariantQuerier {
-	return &mockVariantQuerier{variants: make(map[uuid.UUID][]VariantInfo)}
-}
-
-func (m *mockVariantQuerier) ListByVersion(_ context.Context, versionID uuid.UUID) ([]VariantInfo, error) {
-	return m.variants[versionID], nil
-}
-
-type mockStorage struct{}
-
-func (m *mockStorage) GeneratePresignedUpload(_ context.Context, key string, _ time.Duration) (string, error) {
-	return "https://s3.example.com/upload/" + key, nil
-}
-
-func (m *mockStorage) GeneratePresignedDownload(_ context.Context, key string, _ time.Duration) (string, error) {
-	return "https://s3.example.com/download/" + key, nil
-}
-
-func (m *mockStorage) ObjectExists(_ context.Context, _ string) (bool, error)   { return true, nil }
-func (m *mockStorage) DeleteObject(_ context.Context, _ string) error           { return nil }
-func (m *mockStorage) GetObjectInfo(_ context.Context, _ string) (int64, error) { return 0, nil }
-
 // --- Test helpers ---
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-}
-
-func newTestService() (*Service, *mockDeviceRepo, *mockDeploymentQuerier, *mockVariantQuerier) {
-	dr := newMockDeviceRepo()
-	dcr := newMockDeviceClassRepo()
-	dq := &mockDeploymentQuerier{}
-	vq := newMockVariantQuerier()
-	svc := NewService(dr, dcr, dq, vq, &mockStorage{}, "test-secret", testLogger())
-	svc.SetEnrollmentVerifier(fakeEnrollment{testEnrollKey: testProjectID, otherEnrollKey: otherProjectID})
-	return svc, dr, dq, vq
 }
 
 const (
@@ -264,6 +221,13 @@ func (f fakeEnrollment) VerifyEnrollmentKey(_ context.Context, key string) (uuid
 	return uuid.Nil, auth.ErrInvalidKey
 }
 
+func newTestService() (*Service, *mockDeviceRepo) {
+	dr := newMockDeviceRepo()
+	svc := NewService(dr, newMockDeviceClassRepo(), "test-secret", testLogger())
+	svc.SetEnrollmentVerifier(fakeEnrollment{testEnrollKey: testProjectID, otherEnrollKey: otherProjectID})
+	return svc, dr
+}
+
 func validFingerprint() string {
 	return GenerateFingerprint("ANDROID", "snapdragon-8-gen-3", 12288)
 }
@@ -271,7 +235,7 @@ func validFingerprint() string {
 // --- Tests ---
 
 func TestRegisterDevice_New(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
@@ -296,7 +260,7 @@ func TestRegisterDevice_New(t *testing.T) {
 }
 
 func TestRegisterDevice_ReRegister(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 	fp := validFingerprint()
 
@@ -327,7 +291,7 @@ func TestRegisterDevice_ReRegister(t *testing.T) {
 }
 
 func TestRegisterDevice_InvalidFingerprint(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	_, err := svc.RegisterDevice(context.Background(), &RegisterRequest{
 		EnrollmentKey: testEnrollKey,
 		Fingerprint:   "too-short",
@@ -337,7 +301,7 @@ func TestRegisterDevice_InvalidFingerprint(t *testing.T) {
 }
 
 func TestRegisterDevice_InvalidOS(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	_, err := svc.RegisterDevice(context.Background(), &RegisterRequest{
 		EnrollmentKey: testEnrollKey,
 		Fingerprint:   validFingerprint(),
@@ -347,7 +311,7 @@ func TestRegisterDevice_InvalidOS(t *testing.T) {
 }
 
 func TestRegisterDevice_Classification(t *testing.T) {
-	svc, devices, _, _ := newTestService()
+	svc, devices := newTestService()
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
@@ -367,7 +331,7 @@ func TestRegisterDevice_Classification(t *testing.T) {
 }
 
 func TestHeartbeat_NoDeployments(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 
 	// Register device
@@ -389,108 +353,8 @@ func TestHeartbeat_NoDeployments(t *testing.T) {
 	assert.Equal(t, uint32(60), resp.NextHeartbeatSeconds)
 }
 
-func TestHeartbeat_WithDeployment(t *testing.T) {
-	svc, _, deployments, variants := newTestService()
-	ctx := context.Background()
-
-	// Register device
-	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		EnrollmentKey: testEnrollKey,
-		Fingerprint:   validFingerprint(),
-		OS:            "ANDROID",
-		RAMMB:         12288,
-		HasNPU:        true,
-	})
-	require.NoError(t, err)
-
-	// Setup deployment and variant
-	versionID := uuid.New()
-	variantID := uuid.New()
-	deployments.deployments = []DeploymentInfo{
-		{ID: uuid.New(), ModelVersionID: versionID, Strategy: "ALL_AT_ONCE", Status: "COMPLETE"},
-	}
-	variants.variants[versionID] = []VariantInfo{
-		{
-			ID: variantID, VersionID: versionID, Quantization: "INT8",
-			TargetRuntime: "TFLITE", MinRAMMB: 2048, BlobKey: "test.bin",
-			BlobSizeBytes: 1024, BlobSHA256: "abc",
-		},
-	}
-
-	deviceID, _ := uuid.Parse(regResp.DeviceID)
-	resp, err := svc.Heartbeat(ctx, &HeartbeatRequest{DeviceID: deviceID})
-	require.NoError(t, err)
-	require.Len(t, resp.Assignments, 1)
-	assert.Equal(t, "LOAD", resp.Assignments[0].Action)
-	assert.Equal(t, variantID.String(), resp.Assignments[0].VariantID)
-}
-
-func TestHeartbeat_UnloadRemovedModel(t *testing.T) {
-	svc, _, _, _ := newTestService()
-	ctx := context.Background()
-
-	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		EnrollmentKey: testEnrollKey,
-		Fingerprint:   validFingerprint(),
-		OS:            "ANDROID",
-		RAMMB:         12288,
-		HasNPU:        true,
-	})
-	require.NoError(t, err)
-	deviceID, _ := uuid.Parse(regResp.DeviceID)
-
-	// Device reports it has a model loaded, but there are no active deployments
-	resp, err := svc.Heartbeat(ctx, &HeartbeatRequest{
-		DeviceID: deviceID,
-		LoadedModels: []ModelStatus{
-			{ModelID: uuid.New().String(), VariantID: uuid.New().String(), Status: "loaded"},
-		},
-	})
-	require.NoError(t, err)
-	require.Len(t, resp.Assignments, 1)
-	assert.Equal(t, "UNLOAD", resp.Assignments[0].Action)
-}
-
-func TestHeartbeat_AlreadyLoaded(t *testing.T) {
-	svc, _, deployments, variants := newTestService()
-	ctx := context.Background()
-
-	regResp, err := svc.RegisterDevice(ctx, &RegisterRequest{
-		EnrollmentKey: testEnrollKey,
-		Fingerprint:   validFingerprint(),
-		OS:            "ANDROID",
-		RAMMB:         12288,
-		HasNPU:        true,
-	})
-	require.NoError(t, err)
-
-	versionID := uuid.New()
-	variantID := uuid.New()
-	deployments.deployments = []DeploymentInfo{
-		{ID: uuid.New(), ModelVersionID: versionID, Strategy: "ALL_AT_ONCE", Status: "COMPLETE"},
-	}
-	variants.variants[versionID] = []VariantInfo{
-		{
-			ID: variantID, VersionID: versionID, Quantization: "INT8",
-			TargetRuntime: "TFLITE", MinRAMMB: 2048, BlobKey: "test.bin",
-			BlobSizeBytes: 1024, BlobSHA256: "abc",
-		},
-	}
-
-	deviceID, _ := uuid.Parse(regResp.DeviceID)
-	// Device already has this variant loaded
-	resp, err := svc.Heartbeat(ctx, &HeartbeatRequest{
-		DeviceID: deviceID,
-		LoadedModels: []ModelStatus{
-			{VariantID: variantID.String(), Status: "loaded"},
-		},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, resp.Assignments) // No new assignments needed
-}
-
 func TestValidateToken(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
@@ -515,7 +379,7 @@ func TestValidateToken(t *testing.T) {
 }
 
 func TestValidateToken_OldTokenRejectedAfterReRegister(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 	fp := validFingerprint()
 
@@ -531,9 +395,9 @@ func TestValidateToken_OldTokenRejectedAfterReRegister(t *testing.T) {
 }
 
 func TestValidateToken_TokenFromOtherSecretRejected(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
-	other, _, _, _ := newTestService()
+	other, _ := newTestService()
 	other.tokenSecret = "a-different-secret"
 	resp, err := other.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
 	require.NoError(t, err)
@@ -545,7 +409,7 @@ func TestRefreshToken(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("too early", func(t *testing.T) {
-		svc, _, _, _ := newTestService()
+		svc, _ := newTestService()
 		resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
 		require.NoError(t, err)
 		id, exp, err := svc.ValidateToken(ctx, resp.AuthToken)
@@ -557,7 +421,7 @@ func TestRefreshToken(t *testing.T) {
 	})
 
 	t.Run("within window", func(t *testing.T) {
-		svc, _, _, _ := newTestService()
+		svc, _ := newTestService()
 		svc.SetTokenTTL(3 * 24 * time.Hour) // inside the 7-day window from the start
 		resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
 		require.NoError(t, err)
@@ -579,7 +443,7 @@ func TestRefreshToken(t *testing.T) {
 }
 
 func TestRevokeDeviceToken(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 	fp := validFingerprint()
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
@@ -600,24 +464,8 @@ func TestRevokeDeviceToken(t *testing.T) {
 	assert.ErrorIs(t, svc.RevokeDeviceToken(ctx, uuid.New()), ErrNotFound)
 }
 
-func TestCanaryHashing(t *testing.T) {
-	deviceID := uuid.New()
-	deploymentID := uuid.New()
-
-	// isInCanary should be deterministic
-	result1 := isInCanary(deviceID, deploymentID, 50)
-	result2 := isInCanary(deviceID, deploymentID, 50)
-	assert.Equal(t, result1, result2)
-
-	// 0% canary = nobody in
-	assert.False(t, isInCanary(deviceID, deploymentID, 0))
-
-	// 100% canary = everybody in
-	assert.True(t, isInCanary(deviceID, deploymentID, 100))
-}
-
 func TestListDevices(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
@@ -638,7 +486,7 @@ func TestListDevices(t *testing.T) {
 }
 
 func TestDeleteDevice(t *testing.T) {
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	ctx := context.Background()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{
@@ -659,7 +507,7 @@ func TestDeleteDevice(t *testing.T) {
 
 func TestRegisterDevice_RequiresEnrollmentKey(t *testing.T) {
 	ctx := context.Background()
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 
 	_, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID"})
 	assert.ErrorIs(t, err, ErrUnauthenticated, "no key")
@@ -667,14 +515,14 @@ func TestRegisterDevice_RequiresEnrollmentKey(t *testing.T) {
 	_, err = svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: "wrong"})
 	assert.ErrorIs(t, err, ErrUnauthenticated, "unknown key")
 
-	unconfigured := NewService(newMockDeviceRepo(), newMockDeviceClassRepo(), &mockDeploymentQuerier{}, newMockVariantQuerier(), &mockStorage{}, "s", testLogger())
+	unconfigured := NewService(newMockDeviceRepo(), newMockDeviceClassRepo(), "s", testLogger())
 	_, err = unconfigured.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: testEnrollKey})
 	assert.ErrorIs(t, err, ErrUnauthenticated, "no verifier configured: fail closed")
 }
 
 func TestRegisterDevice_EnrollsIntoKeyProject(t *testing.T) {
 	ctx := context.Background()
-	svc, devices, _, _ := newTestService()
+	svc, devices := newTestService()
 
 	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: validFingerprint(), OS: "ANDROID", EnrollmentKey: otherEnrollKey})
 	require.NoError(t, err)
@@ -685,7 +533,7 @@ func TestRegisterDevice_EnrollsIntoKeyProject(t *testing.T) {
 
 func TestRegisterDevice_ReRegisterNeedsCredentials(t *testing.T) {
 	ctx := context.Background()
-	svc, _, _, _ := newTestService()
+	svc, _ := newTestService()
 	fp := validFingerprint()
 
 	first, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
@@ -728,7 +576,7 @@ func TestRegisterDevice_ReRegisterNeedsCredentials(t *testing.T) {
 
 func TestRegisterDevice_LegacyDeviceAdoptsProject(t *testing.T) {
 	ctx := context.Background()
-	svc, devices, _, _ := newTestService()
+	svc, devices := newTestService()
 	legacy := &Device{Fingerprint: validFingerprint(), OS: "ANDROID", Labels: map[string]string{}}
 	require.NoError(t, devices.Create(ctx, legacy))
 
@@ -748,4 +596,34 @@ func (m *mockDeviceRepo) SetAuthTokenHash(_ context.Context, id uuid.UUID, hash 
 	}
 	d.AuthTokenHash = hash
 	return nil
+}
+
+// fakeComputer returns fixed assignments, or an error.
+type fakeComputer struct {
+	out []ModelAssignment
+	err error
+}
+
+func (f fakeComputer) ComputeAssignments(context.Context, *Device, []ModelStatus) ([]ModelAssignment, error) {
+	return f.out, f.err
+}
+
+func TestHeartbeat_UsesAssignmentComputer(t *testing.T) {
+	svc, _ := newTestService()
+	ctx := context.Background()
+	reg, err := svc.RegisterDevice(ctx, &RegisterRequest{EnrollmentKey: testEnrollKey, Fingerprint: validFingerprint(), OS: "ANDROID"})
+	require.NoError(t, err)
+	id := uuid.MustParse(reg.DeviceID)
+
+	want := ModelAssignment{ModelID: "m", VersionID: "v", Version: "1.0.0", VariantID: "x", Action: "LOAD"}
+	svc.SetAssignmentComputer(fakeComputer{out: []ModelAssignment{want}})
+	resp, err := svc.Heartbeat(ctx, &HeartbeatRequest{DeviceID: id})
+	require.NoError(t, err)
+	assert.Equal(t, []ModelAssignment{want}, resp.Assignments)
+
+	// A failing computer yields no actions (never spurious UNLOADs); the device retries next heartbeat.
+	svc.SetAssignmentComputer(fakeComputer{err: errors.New("db down")})
+	resp, err = svc.Heartbeat(ctx, &HeartbeatRequest{DeviceID: id})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Assignments)
 }
