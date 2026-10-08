@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -164,4 +165,13 @@ func (s *S3Client) GetObjectInfo(ctx context.Context, key string) (int64, error)
 		return 0, fmt.Errorf("getting object info: %w", err)
 	}
 	return info.Size, nil
+}
+
+// PutObject uploads a small object (such as a model delta) from memory.
+func (s *S3Client) PutObject(ctx context.Context, key string, data []byte) error {
+	_, err := s.client.PutObject(ctx, s.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/octet-stream"})
+	if err != nil {
+		return fmt.Errorf("uploading object: %w", err)
+	}
+	return nil
 }

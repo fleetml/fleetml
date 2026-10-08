@@ -21,6 +21,7 @@ import (
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 	"github.com/fleetml/fleetml/internal/artifact"
+	"github.com/fleetml/fleetml/internal/delta"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -263,4 +264,46 @@ func TestLocalEventsBinFeatures(t *testing.T) {
 	require.Len(t, last.Features, 1)
 	assert.Equal(t, "petal_length", last.Features[0].Name)
 	assert.Equal(t, []uint32{1, 2, 1}, last.Features[0].Counts)
+}
+
+// An UPDATE with a delta from the active version is built from the delta,
+// without downloading the full model; a delta that does not match falls back.
+func TestInstallFromDelta(t *testing.T) {
+	v1 := bytes.Repeat([]byte("weights-"), 20000)
+	v2 := append(append([]byte(nil), v1[:150000]...), []byte("a retrained head")...)
+	d, err := delta.Diff(v1, v2)
+	require.NoError(t, err)
+	served := map[string]int{}
+	files := map[string][]byte{"/v1": v1, "/v2": v2, "/d": d, "/bad": []byte("FMLDLT01 not really")}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served[r.URL.Path]++
+		_, _ = w.Write(files[r.URL.Path])
+	}))
+	defer srv.Close()
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: t.TempDir()}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	ctx := context.Background()
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1",
+		VariantId: "var-1", DownloadUrl: srv.URL + "/v1", BlobSha256: shaHex(v1), Action: fleetmlv1.ModelAssignment_LOAD}})
+
+	update := &fleetmlv1.ModelAssignment{ModelId: "m1", ModelName: "iris", Version: "2.0.0", VersionId: "ver-2", VariantId: "var-2",
+		DownloadUrl: srv.URL + "/v2", BlobSha256: shaHex(v2), Action: fleetmlv1.ModelAssignment_UPDATE,
+		DeltaUrl: srv.URL + "/d", DeltaSha256: shaHex(d), DeltaBaseSha256: shaHex(v1)}
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{update})
+	got, err := os.ReadFile(filepath.Join(a.currentLink("iris"), "model.bin"))
+	require.NoError(t, err)
+	assert.Equal(t, v2, got)
+	assert.Equal(t, 1, served["/d"])
+	assert.Zero(t, served["/v2"], "the full model is not downloaded")
+
+	// A third version whose "delta" is garbage (but has the right sha256 for its bytes) falls back to the full file.
+	v3 := append(append([]byte(nil), v2...), '!')
+	files["/v3"] = v3
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "3.0.0", VersionId: "ver-3", VariantId: "var-3",
+		DownloadUrl: srv.URL + "/v3", BlobSha256: shaHex(v3), Action: fleetmlv1.ModelAssignment_UPDATE,
+		DeltaUrl: srv.URL + "/bad", DeltaSha256: shaHex(files["/bad"]), DeltaBaseSha256: shaHex(v2)}})
+	got, _ = os.ReadFile(filepath.Join(a.currentLink("iris"), "model.bin"))
+	assert.Equal(t, v3, got)
+	assert.Equal(t, 1, served["/v3"])
 }

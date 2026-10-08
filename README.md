@@ -67,6 +67,7 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
 | **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1`; a Grafana dashboard (compose profile `observability`); telemetry delivered at least once through NATS JetStream and stored once per event ID | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
+| **Delta updates.** A new version is diffed against the previous one when it is published; devices that have the previous version download only the delta (a 20 MB model with a retrained head: 440 KB) and check the result's sha256 | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#delta-updates) |
 | **Artifact signing.** Per-project ed25519 keys sign each model when it is published; the Android and iOS SDKs and the Linux agent verify the signature before downloading, and keys rotate with a grace period | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
 
 The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.

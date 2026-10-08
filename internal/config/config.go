@@ -62,6 +62,9 @@ type Config struct {
 	DeviceTelemetryBatchSize          int           `envconfig:"DEVICE_TELEMETRY_BATCH_SIZE" default:"100"`
 	DeviceTelemetryFlushInterval      time.Duration `envconfig:"DEVICE_TELEMETRY_FLUSH_INTERVAL" default:"30s"`
 	DeviceDownloadPolicy              string        `envconfig:"DEVICE_DOWNLOAD_POLICY" default:"unmetered_or_charging"`
+	// DeltaMaxSizeMB: models up to this size get a delta from their previous
+	// version (diffing needs about ten times the model size in memory); 0 disables.
+	DeltaMaxSizeMB int `envconfig:"DELTA_MAX_SIZE_MB" default:"128"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
 }
@@ -159,6 +162,9 @@ func (c Config) validate() error {
 		if u, err := url.Parse(c.AlertWebhookURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			fail("ALERT_WEBHOOK_URL must be an http(s) URL, got %q", c.AlertWebhookURL)
 		}
+	}
+	if c.DeltaMaxSizeMB < 0 {
+		fail("DELTA_MAX_SIZE_MB must be 0 (no deltas) or more, got %d", c.DeltaMaxSizeMB)
 	}
 	if c.SessionTTL < 5*time.Minute {
 		fail("SESSION_TTL must be at least 5m, got %s", c.SessionTTL)

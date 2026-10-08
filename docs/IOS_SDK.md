@@ -90,7 +90,9 @@ For each assignment in a heartbeat the SDK:
    `SIGNATURE_INVALID` is reported ([artifact signing](ROLLOUTS.md#artifact-signing)).
 2. **Downloads** the model from the presigned URL, writing each chunk to a
    `.part` file as it arrives. An interrupted download resumes with an HTTP
-   Range request.
+   Range request. When the server offers a delta from the
+   version the device has, only the delta is downloaded and applied
+   ([delta updates](ROLLOUTS.md#delta-updates)).
 3. **Verifies** the sha256 before moving the file into place.
 4. **Validates** it with a `ModelValidator`.
 5. **Activates** it only if validation passed: the model becomes active, the

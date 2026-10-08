@@ -944,10 +944,19 @@ type ModelAssignment struct {
 	// "fleetml-artifact-v1\n" + model_id + "\n" + version + "\n" + blob_sha256
 	// (lowercase hex). Verify it before activating the model; on failure report
 	// SIGNATURE_INVALID and keep the current version.
-	Signature     []byte `protobuf:"bytes,11,opt,name=signature,proto3" json:"signature,omitempty"`
-	SigningKeyId  string `protobuf:"bytes,12,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Signature    []byte `protobuf:"bytes,11,opt,name=signature,proto3" json:"signature,omitempty"`
+	SigningKeyId string `protobuf:"bytes,12,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
+	// A delta from the version the device has loaded (its file's sha256 is
+	// delta_base_sha256) to this one. If the device has that file, it may
+	// download the delta instead (check delta_sha256), apply it, and must then
+	// check blob_sha256 as usual; on any failure it downloads download_url.
+	// Format: internal/delta (bsdiff, raw DEFLATE sections).
+	DeltaUrl        string `protobuf:"bytes,13,opt,name=delta_url,json=deltaUrl,proto3" json:"delta_url,omitempty"`
+	DeltaSizeBytes  uint64 `protobuf:"varint,14,opt,name=delta_size_bytes,json=deltaSizeBytes,proto3" json:"delta_size_bytes,omitempty"`
+	DeltaSha256     string `protobuf:"bytes,15,opt,name=delta_sha256,json=deltaSha256,proto3" json:"delta_sha256,omitempty"`
+	DeltaBaseSha256 string `protobuf:"bytes,16,opt,name=delta_base_sha256,json=deltaBaseSha256,proto3" json:"delta_base_sha256,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ModelAssignment) Reset() {
@@ -1060,6 +1069,34 @@ func (x *ModelAssignment) GetSignature() []byte {
 func (x *ModelAssignment) GetSigningKeyId() string {
 	if x != nil {
 		return x.SigningKeyId
+	}
+	return ""
+}
+
+func (x *ModelAssignment) GetDeltaUrl() string {
+	if x != nil {
+		return x.DeltaUrl
+	}
+	return ""
+}
+
+func (x *ModelAssignment) GetDeltaSizeBytes() uint64 {
+	if x != nil {
+		return x.DeltaSizeBytes
+	}
+	return 0
+}
+
+func (x *ModelAssignment) GetDeltaSha256() string {
+	if x != nil {
+		return x.DeltaSha256
+	}
+	return ""
+}
+
+func (x *ModelAssignment) GetDeltaBaseSha256() string {
+	if x != nil {
+		return x.DeltaBaseSha256
 	}
 	return ""
 }
@@ -1207,7 +1244,7 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\vexperiments\x18\x02 \x03(\v2'.fleetml.device.v1.ExperimentAssignmentR\vexperiments\x124\n" +
 	"\x16next_heartbeat_seconds\x18\x03 \x01(\rR\x14nextHeartbeatSeconds\x127\n" +
 	"\x06config\x18\x04 \x01(\v2\x1f.fleetml.device.v1.DeviceConfigR\x06config\x12@\n" +
-	"\fsigning_keys\x18\x05 \x03(\v2\x1d.fleetml.device.v1.SigningKeyR\vsigningKeys\"\xf2\x03\n" +
+	"\fsigning_keys\x18\x05 \x03(\v2\x1d.fleetml.device.v1.SigningKeyR\vsigningKeys\"\x88\x05\n" +
 	"\x0fModelAssignment\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12\x1d\n" +
 	"\n" +
@@ -1225,7 +1262,11 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x06urgent\x18\n" +
 	" \x01(\bR\x06urgent\x12\x1c\n" +
 	"\tsignature\x18\v \x01(\fR\tsignature\x12$\n" +
-	"\x0esigning_key_id\x18\f \x01(\tR\fsigningKeyId\"B\n" +
+	"\x0esigning_key_id\x18\f \x01(\tR\fsigningKeyId\x12\x1b\n" +
+	"\tdelta_url\x18\r \x01(\tR\bdeltaUrl\x12(\n" +
+	"\x10delta_size_bytes\x18\x0e \x01(\x04R\x0edeltaSizeBytes\x12!\n" +
+	"\fdelta_sha256\x18\x0f \x01(\tR\vdeltaSha256\x12*\n" +
+	"\x11delta_base_sha256\x18\x10 \x01(\tR\x0fdeltaBaseSha256\"B\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04LOAD\x10\x01\x12\n" +

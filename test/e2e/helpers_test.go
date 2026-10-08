@@ -84,11 +84,10 @@ type idOnly struct {
 	ID string `json:"id"`
 }
 
-func randomBlob(n int) (blob []byte, sha string) {
-	blob = make([]byte, n)
+func randomBlob(n int) []byte {
+	blob := make([]byte, n)
 	_, _ = rand.Read(blob)
-	sum := sha256.Sum256(blob)
-	return blob, hex.EncodeToString(sum[:])
+	return blob
 }
 
 type fixture struct {
@@ -112,11 +111,19 @@ func (e *env) newFixture(t *testing.T) fixture {
 // It returns the version ID, the blob's real sha256 and the finalize status code.
 func (e *env) newVersion(t *testing.T, f fixture, version, declaredSHA string) (versionID, sha string, finalize int) {
 	t.Helper()
+	blob := randomBlob(4096)
+	return e.newVersionOf(t, f, version, blob, declaredSHA)
+}
+
+// newVersionOf is newVersion with the given model file.
+func (e *env) newVersionOf(t *testing.T, f fixture, version string, blob []byte, declaredSHA string) (versionID, sha string, finalize int) {
+	t.Helper()
 	var v idOnly
 	require.Equal(t, 201, e.call(t, "POST", "/api/v1/models/"+f.model+"/versions", map[string]string{"version": version}, &v))
-	blob, sum := randomBlob(4096)
+	sum := sha256.Sum256(blob)
+	sha = hex.EncodeToString(sum[:])
 	if declaredSHA == "" {
-		declaredSHA = sum
+		declaredSHA = sha
 	}
 	var created struct {
 		Variant   idOnly `json:"variant"`
@@ -131,7 +138,7 @@ func (e *env) newVersion(t *testing.T, f fixture, version, declaredSHA string) (
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 	require.Less(t, resp.StatusCode, 300)
-	return v.ID, sum, e.call(t, "POST", "/api/v1/variants/"+created.Variant.ID+"/finalize", nil, nil)
+	return v.ID, sha, e.call(t, "POST", "/api/v1/variants/"+created.Variant.ID+"/finalize", nil, nil)
 }
 
 func (e *env) deploy(t *testing.T, body map[string]any) string {

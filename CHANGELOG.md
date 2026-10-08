@@ -24,6 +24,13 @@ change APIs).
   feature (metric `feature:<name>`) with the usual deduplication and alerts.
   Every check's PSI is kept (`GET /drift/{id}/points`) and the Drift page draws
   it over time.
+- Delta updates: when a variant becomes READY the server builds a binary delta
+  (bsdiff with raw DEFLATE sections, `internal/delta`) from the previous READY
+  variant of the same model, runtime and quantization; assignments carry
+  `delta_url`, `delta_size_bytes`, `delta_sha256` and `delta_base_sha256`, and
+  the Linux agent and the Android and iOS SDKs download and apply the delta when
+  they have the base version, falling back to the full model.
+  `DELTA_MAX_SIZE_MB` (128) bounds the models that get one.
 - At-least-once telemetry: accepted batches go into a NATS JetStream stream
   (`FLEETML_TELEMETRY`, file storage) before the device is answered, and a
   durable consumer acknowledges them only after the database commit. Events

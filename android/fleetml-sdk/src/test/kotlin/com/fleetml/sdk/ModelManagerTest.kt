@@ -206,4 +206,33 @@ class ModelManagerTest {
         mm.apply(listOf(signed(sha256(blobs.getValue("good-v1")))))
         assertEquals("1.0.0", mm.activeModels().single().version)
     }
+
+    @Test
+    fun `an update with a delta from the active version is built from it`() = runTest {
+        val dir = File("../../internal/delta/testdata")
+        val old = dir.resolve("old.bin").readBytes()
+        val new = dir.resolve("new.bin").readBytes()
+        val patch = dir.resolve("patch.fmldelta").readBytes()
+        val served = mutableMapOf("d-old" to old, "d-new" to new, "d-patch" to patch)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                served[request.path!!.trimStart('/')]?.let { MockResponse().setBody(Buffer().write(it)) } ?: MockResponse().setResponseCode(404)
+        }
+        fun assignment(variant: String, version: String, body: ByteArray, action: ModelAssignment.Action) =
+            ModelAssignment.newBuilder().setModelId("m").setModelName("iris").setVersion(version).setVersionId("ver-$version")
+                .setVariantId(variant).setDownloadUrl(server.url("/$variant").toString()).setBlobSha256(sha256(body))
+                .setBlobSizeBytes(body.size.toLong()).setAction(action)
+        val mm = manager()
+        mm.apply(listOf(assignment("d-old", "1.0.0", old, ModelAssignment.Action.LOAD).build()))
+        assertEquals("1.0.0", mm.activeModels().single().version)
+
+        mm.apply(listOf(assignment("d-new", "2.0.0", new, ModelAssignment.Action.UPDATE)
+            .setDeltaUrl(server.url("/d-patch").toString()).setDeltaSha256(sha256(patch)).setDeltaSizeBytes(patch.size.toLong())
+            .setDeltaBaseSha256(sha256(old)).build()))
+        val active = mm.activeModels().single()
+        assertEquals("2.0.0", active.version)
+        assertTrue(active.file.readBytes().contentEquals(new))
+        val paths = (0 until server.requestCount).map { server.takeRequest().path }
+        assertEquals("1.0.0 in full, then only the delta", listOf("/d-old", "/d-patch"), paths)
+    }
 }

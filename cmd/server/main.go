@@ -23,6 +23,7 @@ import (
 	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/config"
 	"github.com/fleetml/fleetml/internal/db"
+	"github.com/fleetml/fleetml/internal/deltabuild"
 	"github.com/fleetml/fleetml/internal/deploy"
 	"github.com/fleetml/fleetml/internal/device"
 	"github.com/fleetml/fleetml/internal/drift"
@@ -157,6 +158,8 @@ func run() error {
 		return err
 	}
 	registrySvc.SetSigner(keyring)
+	deltas := deltabuild.New(pool, s3Client, int64(cfg.DeltaMaxSizeMB)<<20, logger)
+	registrySvc.SetReadyHook(deltas.BuildFor)
 	if n, err := keyring.Backfill(ctx); err != nil {
 		return fmt.Errorf("signing published variants: %w", err)
 	} else if n > 0 {
@@ -244,6 +247,7 @@ func run() error {
 	}, 10*time.Second)
 	deviceGRPC := grpcapi.NewDeviceServiceServer(deviceSvc, logger)
 	deviceGRPC.SetSigning(keyring)
+	deviceGRPC.SetDeltas(deltas)
 	deviceGRPC.SetFeatures(drift.NewAdapter(pool))
 	fleetmlv1.RegisterDeviceServiceServer(grpcServer.GRPCServer(), deviceGRPC)
 	telemetryGRPC := grpcapi.NewTelemetryServiceServer(telemetrySvc, logger)

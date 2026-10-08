@@ -89,7 +89,9 @@ For each assignment the agent:
    it does not verify, reports `SIGNATURE_INVALID` and downloads nothing
    ([artifact signing](ROLLOUTS.md#artifact-signing));
 2. downloads to `state_dir/downloads/<variant>.part`, resuming with an HTTP
-   `Range` request after an interruption, and checks the sha256;
+   `Range` request after an interruption, and checks the sha256; when the
+   server offers a delta from the version the agent has, only the delta is
+   downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates));
 3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,
    `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` in its environment;
 4. if it passes, switches the `current` symlink, keeps the previous version as

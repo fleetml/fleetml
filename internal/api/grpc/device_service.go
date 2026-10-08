@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
+	"github.com/fleetml/fleetml/internal/deltabuild"
 	"github.com/fleetml/fleetml/internal/device"
 	"github.com/fleetml/fleetml/internal/drift"
 	"github.com/fleetml/fleetml/internal/signing"
@@ -32,7 +33,44 @@ type DeviceServiceServer struct {
 	service  *device.Service
 	signing  SigningSource
 	features FeatureSource
+	deltas   DeltaSource
 	logger   *slog.Logger
+}
+
+// DeltaSource finds deltas between variants (implemented by *deltabuild.Builder).
+type DeltaSource interface {
+	Lookup(ctx context.Context, baseVariantID, targetVariantID string) (*deltabuild.Delta, error)
+}
+
+// SetDeltas offers devices deltas from the variant they have loaded.
+func (s *DeviceServiceServer) SetDeltas(src DeltaSource) { s.deltas = src }
+
+// attachDeltas adds a delta to each LOAD or UPDATE of a model the device
+// already has another variant of. A missing delta is not an error.
+func (s *DeviceServiceServer) attachDeltas(ctx context.Context, loaded []*fleetmlv1.ModelStatus, as []*fleetmlv1.ModelAssignment) {
+	if s.deltas == nil {
+		return
+	}
+	have := map[string]string{}
+	for _, m := range loaded {
+		if _, err := uuid.Parse(m.GetVariantId()); err == nil {
+			have[m.GetModelId()] = m.GetVariantId()
+		}
+	}
+	for _, a := range as {
+		base, ok := have[a.ModelId]
+		if !ok || base == a.VariantId || (a.Action != fleetmlv1.ModelAssignment_LOAD && a.Action != fleetmlv1.ModelAssignment_UPDATE) {
+			continue
+		}
+		d, err := s.deltas.Lookup(ctx, base, a.VariantId)
+		if err != nil {
+			s.logger.Warn("looking up a model delta failed; the device downloads the full model", "error", err)
+			continue
+		}
+		if d != nil {
+			a.DeltaUrl, a.DeltaSizeBytes, a.DeltaSha256, a.DeltaBaseSha256 = d.URL, uint64(d.Size), d.SHA256, d.BaseSHA256
+		}
+	}
 }
 
 // FeatureSource lists the features a device's models report (implemented
@@ -230,6 +268,7 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		s.logger.Error("loading signatures failed", "device_id", deviceID, "error", err)
 		return nil, status.Error(codes.Internal, "heartbeat failed")
 	}
+	s.attachDeltas(ctx, req.GetLoadedModels(), protoAssignments)
 
 	protoExperiments := make([]*fleetmlv1.ExperimentAssignment, 0, len(resp.Experiments))
 	for _, e := range resp.Experiments {

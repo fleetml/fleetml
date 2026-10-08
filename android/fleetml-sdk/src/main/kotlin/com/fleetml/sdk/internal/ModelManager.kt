@@ -77,7 +77,7 @@ internal class ModelManager(
             return // the assignment is repeated on the next heartbeat
         }
 
-        val file = when (val r = downloader.download(a.variantId, a.downloadUrl, a.blobSha256, a.blobSizeBytes, store.protectedVariants())) {
+        val file = fromDelta(a) ?: when (val r = downloader.download(a.variantId, a.downloadUrl, a.blobSha256, a.blobSizeBytes, store.protectedVariants())) {
             is DownloadResult.Downloaded -> r.file
             is DownloadResult.Cached -> r.file
             is DownloadResult.Failed -> {
@@ -108,6 +108,44 @@ internal class ModelManager(
                 Logger.i("Model ${a.modelName} ${a.version} is active")
                 callback()?.onModelReady(candidate)
             }
+        }
+    }
+
+    /**
+     * Builds the model from the assignment's delta and the version this device
+     * has (active or last-known-good). Returns null when there is no usable
+     * delta or anything fails; the full model is downloaded then.
+     */
+    private suspend fun fromDelta(a: ModelAssignment): java.io.File? {
+        if (a.deltaUrl.isEmpty() || cache.getModelFile(a.variantId) != null) return null
+        val base = listOfNotNull(store.active(a.modelId), store.lastKnownGood(a.modelId))
+            .firstOrNull { it.sha256.equals(a.deltaBaseSha256, ignoreCase = true) }
+            ?.let { cache.getModelFile(it.variantId) } ?: return null
+        val deltaId = "delta-${a.variantId}"
+        try {
+            val deltaFile = when (val r = downloader.download(deltaId, a.deltaUrl, a.deltaSha256, a.deltaSizeBytes, store.protectedVariants())) {
+                is DownloadResult.Downloaded -> r.file
+                is DownloadResult.Cached -> r.file
+                is DownloadResult.Failed -> {
+                    Logger.w("Delta for ${a.modelName} ${a.version} failed (${r.reason}); downloading the full model")
+                    return null
+                }
+            }
+            val out = ModelDelta.patch(base.readBytes(), deltaFile.readBytes())
+            val part = cache.partFile(a.variantId)
+            part.writeBytes(out)
+            val file = cache.commit(a.variantId, part, a.blobSha256)
+            if (file == null) {
+                Logger.w("Model ${a.modelName} ${a.version} built from a delta does not match its sha256; downloading the full model")
+                return null
+            }
+            Logger.i("Model ${a.modelName} ${a.version} built from a ${deltaFile.length()}-byte delta instead of ${a.blobSizeBytes} bytes")
+            return file
+        } catch (e: Exception) {
+            Logger.w("Delta for ${a.modelName} ${a.version} unusable (${e.message}); downloading the full model")
+            return null
+        } finally {
+            cache.delete(deltaId)
         }
     }
 

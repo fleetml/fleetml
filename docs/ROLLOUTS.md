@@ -37,6 +37,26 @@ right bytes and finalize again. Only `READY` variants are ever assigned, and a
 deployment or experiment for a version without a READY variant is rejected with
 `422 NOT_DEPLOYABLE`.
 
+### Delta updates
+
+When a variant becomes READY, the server diffs it against the previous READY
+variant of the same model, runtime and quantization (bsdiff, with raw DEFLATE
+sections; `internal/delta`) and keeps the delta if it is under half the
+model's size. A heartbeat that sends a device a model it already has another
+version of includes `delta_url`, `delta_size_bytes`, `delta_sha256` and
+`delta_base_sha256`. If the device has the base version (its active or
+last-known-good file has that sha256), the SDK or agent downloads the delta,
+checks its sha256, applies it and checks the result against `blob_sha256`;
+on any failure it downloads the full model. The signature check is unchanged,
+since it covers `blob_sha256`.
+
+A 20 MB model whose last 2% changed (a retrained head) goes over the wire as a
+440 KB delta. A model retrained end to end changes nearly every byte, so its
+delta is skipped and devices download the full file. Deltas are built for
+models up to `DELTA_MAX_SIZE_MB` (128 MB by default; building one needs about
+ten times the model's size in memory, and `0` turns deltas off), one at a time
+in the background; a delta is offered only once it is built.
+
 ### Artifact signing
 
 Every project has an ed25519 signing key, created with its first published

@@ -65,6 +65,7 @@ flowchart LR
 | `internal/drift` | PSI drift checks and history |
 | `internal/alert` | Rollback and drift alerts on NATS and to per-project sinks (webhook, Slack, email) with retries and a delivery log |
 | `internal/auth` | Admin API keys, dashboard sessions and enrollment keys |
+| `internal/delta`, `internal/deltabuild` | Binary deltas between consecutive model versions: the format, and building them on the server |
 | `internal/signing`, `internal/artifact` | Per-project ed25519 artifact signing keys; what is signed and how a device verifies it |
 | `internal/health`, `internal/metrics` | Readiness checks and Prometheus metrics |
 | `internal/agent`, `cmd/fleetml-agent` | The Linux device agent (a client of the gRPC API, built separately) |
@@ -283,7 +284,11 @@ device agent) must too:
   (`UNMETERED_OR_CHARGING` by default: an unmetered network, or any network
   while charging; `UNMETERED_ONLY`; `ANY_NETWORK`), unless the assignment is
   `urgent`, which needs only a connection. Resume interrupted downloads with an
-  HTTP `Range` request and check the sha256 before using the file.
+  HTTP `Range` request and check the sha256 before using the file. If the
+  assignment has a `delta_url` and the device has a file whose sha256 is
+  `delta_base_sha256`, it may download the delta (check `delta_sha256`),
+  apply it (`internal/delta`, test files in `internal/delta/testdata`) and
+  check the result against `blob_sha256`, falling back to `download_url`.
 - **Signatures.** Keep the `signing_keys` from `Register` and every heartbeat
   (replace the stored set each time) and, before downloading an assignment,
   verify its `signature` with the key `signing_key_id` over

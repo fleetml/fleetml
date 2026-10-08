@@ -63,6 +63,7 @@ type Service struct {
 	audit    AuditLogger
 	logger   *slog.Logger
 	signer   VariantSigner
+	onReady  func(variantID string)
 }
 
 // VariantSigner signs a verified variant (implemented by *signing.Keyring).
@@ -72,6 +73,9 @@ type VariantSigner interface {
 
 // SetSigner makes FinalizeVariant sign every variant before it becomes READY.
 func (s *Service) SetSigner(signer VariantSigner) { s.signer = signer }
+
+// SetReadyHook is called with every variant that becomes READY (to build its delta).
+func (s *Service) SetReadyHook(f func(variantID string)) { s.onReady = f }
 
 // NewService creates a new registry service.
 func NewService(
@@ -499,6 +503,9 @@ func (s *Service) FinalizeVariant(ctx context.Context, id uuid.UUID) (*RegistryV
 		return nil, fmt.Errorf("marking variant ready: %w", err)
 	}
 	v.Status = VariantReady
+	if s.onReady != nil {
+		s.onReady(v.ID.String())
+	}
 
 	s.audit.Log(ctx, "system", "finalize", "model_variant", v.ID.String(), //nolint:errcheck // audit logging is best-effort
 		map[string]any{"blob_key": v.BlobKey, "size": size, "sha256": actual})

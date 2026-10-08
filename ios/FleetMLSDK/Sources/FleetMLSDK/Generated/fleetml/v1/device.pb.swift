@@ -366,6 +366,19 @@ nonisolated struct Fleetml_Device_V1_ModelAssignment: Sendable {
 
   var signingKeyID: String = String()
 
+  /// A delta from the version the device has loaded (its file's sha256 is
+  /// delta_base_sha256) to this one. If the device has that file, it may
+  /// download the delta instead (check delta_sha256), apply it, and must then
+  /// check blob_sha256 as usual; on any failure it downloads download_url.
+  /// Format: internal/delta (bsdiff, raw DEFLATE sections).
+  var deltaURL: String = String()
+
+  var deltaSizeBytes: UInt64 = 0
+
+  var deltaSha256: String = String()
+
+  var deltaBaseSha256: String = String()
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -959,7 +972,7 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
 
 nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ModelAssignment"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}model_name\0\u{1}version\0\u{3}variant_id\0\u{3}download_url\0\u{3}blob_size_bytes\0\u{3}blob_sha256\0\u{1}action\0\u{3}version_id\0\u{1}urgent\0\u{1}signature\0\u{3}signing_key_id\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}model_name\0\u{1}version\0\u{3}variant_id\0\u{3}download_url\0\u{3}blob_size_bytes\0\u{3}blob_sha256\0\u{1}action\0\u{3}version_id\0\u{1}urgent\0\u{1}signature\0\u{3}signing_key_id\0\u{3}delta_url\0\u{3}delta_size_bytes\0\u{3}delta_sha256\0\u{3}delta_base_sha256\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -979,6 +992,10 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
       case 10: try { try decoder.decodeSingularBoolField(value: &self.urgent) }()
       case 11: try { try decoder.decodeSingularBytesField(value: &self.signature) }()
       case 12: try { try decoder.decodeSingularStringField(value: &self.signingKeyID) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.deltaURL) }()
+      case 14: try { try decoder.decodeSingularUInt64Field(value: &self.deltaSizeBytes) }()
+      case 15: try { try decoder.decodeSingularStringField(value: &self.deltaSha256) }()
+      case 16: try { try decoder.decodeSingularStringField(value: &self.deltaBaseSha256) }()
       default: break
       }
     }
@@ -1021,6 +1038,18 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
     if !self.signingKeyID.isEmpty {
       try visitor.visitSingularStringField(value: self.signingKeyID, fieldNumber: 12)
     }
+    if !self.deltaURL.isEmpty {
+      try visitor.visitSingularStringField(value: self.deltaURL, fieldNumber: 13)
+    }
+    if self.deltaSizeBytes != 0 {
+      try visitor.visitSingularUInt64Field(value: self.deltaSizeBytes, fieldNumber: 14)
+    }
+    if !self.deltaSha256.isEmpty {
+      try visitor.visitSingularStringField(value: self.deltaSha256, fieldNumber: 15)
+    }
+    if !self.deltaBaseSha256.isEmpty {
+      try visitor.visitSingularStringField(value: self.deltaBaseSha256, fieldNumber: 16)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1037,6 +1066,10 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
     if lhs.urgent != rhs.urgent {return false}
     if lhs.signature != rhs.signature {return false}
     if lhs.signingKeyID != rhs.signingKeyID {return false}
+    if lhs.deltaURL != rhs.deltaURL {return false}
+    if lhs.deltaSizeBytes != rhs.deltaSizeBytes {return false}
+    if lhs.deltaSha256 != rhs.deltaSha256 {return false}
+    if lhs.deltaBaseSha256 != rhs.deltaBaseSha256 {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

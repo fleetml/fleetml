@@ -2,7 +2,10 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -25,6 +28,7 @@ import (
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 	"github.com/fleetml/fleetml/internal/artifact"
+	"github.com/fleetml/fleetml/internal/delta"
 	"github.com/fleetml/fleetml/internal/features"
 )
 
@@ -389,9 +393,12 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 			return
 		}
 		part := filepath.Join(a.cfg.StateDir, "downloads", safeName(as.VariantId)+".part")
-		if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256); err != nil {
-			a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
-			return // retried on the next heartbeat
+		if !a.fromDelta(ctx, as, part) {
+			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256); err != nil {
+				a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
+				return // retried on the next heartbeat
+			}
+			a.log.Info("model downloaded", "model", as.ModelName, "version", as.Version, "bytes", as.BlobSizeBytes)
 		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			a.log.Error("creating model directory failed", "error", err)
@@ -590,4 +597,56 @@ func signingKeys(in []*fleetmlv1.SigningKey) []artifact.Key {
 		out = append(out, artifact.Key{KeyID: k.KeyId, PublicKey: k.PublicKey, NotAfter: k.NotAfter})
 	}
 	return out
+}
+
+// fromDelta builds the model file at part from the assignment's delta and the
+// base version the agent has. It returns false if there is no usable delta
+// or anything fails; the full model is downloaded then.
+func (a *Agent) fromDelta(ctx context.Context, as *fleetmlv1.ModelAssignment, part string) bool {
+	if as.DeltaUrl == "" {
+		return false
+	}
+	var base string
+	a.store.Read(func(s *State) {
+		if m := s.Models[as.ModelId]; m != nil {
+			for _, v := range []*Version{m.Active, m.LastKnownGood} {
+				if v != nil && strings.EqualFold(v.SHA256, as.DeltaBaseSha256) {
+					base = filepath.Join(v.Dir, modelFile)
+				}
+			}
+		}
+	})
+	if base == "" {
+		return false
+	}
+	dpart := filepath.Join(a.cfg.StateDir, "downloads", safeName(as.VariantId)+".delta")
+	defer func() { _ = os.Remove(dpart) }()
+	fail := func(err error) bool {
+		a.log.Warn("model delta unusable; downloading the full model", "model", as.ModelName, "version", as.Version, "error", err)
+		return false
+	}
+	if err := download(ctx, a.http, as.DeltaUrl, dpart, as.DeltaSha256); err != nil {
+		return fail(err)
+	}
+	old, err := os.ReadFile(base)
+	if err != nil {
+		return fail(err)
+	}
+	patch, err := os.ReadFile(dpart)
+	if err != nil {
+		return fail(err)
+	}
+	out, err := delta.Patch(old, patch)
+	if err != nil {
+		return fail(err)
+	}
+	if sum := sha256.Sum256(out); !strings.EqualFold(hex.EncodeToString(sum[:]), as.BlobSha256) {
+		return fail(errors.New("the patched model does not match its sha256"))
+	}
+	if err := os.WriteFile(part, out, 0o644); err != nil {
+		return fail(err)
+	}
+	a.log.Info("model built from a delta", "model", as.ModelName, "version", as.Version,
+		"delta_bytes", len(patch), "model_bytes", len(out))
+	return true
 }

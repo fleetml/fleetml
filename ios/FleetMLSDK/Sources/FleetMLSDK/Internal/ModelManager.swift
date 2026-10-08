@@ -80,12 +80,16 @@ final class ModelManager {
         guard let url = URL(string: a.downloadURL) else { return }
 
         let file: URL
-        switch await downloader.download(variant: a.variantID, url: url, sha256: a.blobSha256,
-                                         expectedSize: Int64(a.blobSizeBytes), protected: store.protectedVariants) {
-        case .downloaded(let f), .cached(let f): file = f
-        case .failed(let reason):
-            delegate()?.fleetML(modelLoadFailed: a.modelName, version: a.version, reason: reason)
-            return
+        if let built = await fromDelta(a) {
+            file = built
+        } else {
+            switch await downloader.download(variant: a.variantID, url: url, sha256: a.blobSha256,
+                                             expectedSize: Int64(a.blobSizeBytes), protected: store.protectedVariants) {
+            case .downloaded(let f), .cached(let f): file = f
+            case .failed(let reason):
+                delegate()?.fleetML(modelLoadFailed: a.modelName, version: a.version, reason: reason)
+                return
+            }
         }
 
         let record = ModelRecord(modelID: a.modelID, modelName: a.modelName, version: a.version,
@@ -104,6 +108,38 @@ final class ModelManager {
             telemetry?.reportModelEvent(versionID: a.versionID, .load, latencyMs: Int(now().timeIntervalSince(started) * 1000))
             Log.sdk.info("Model \(a.modelName) \(a.version) is active")
             delegate()?.fleetML(modelReady: candidate)
+        }
+    }
+
+    /// Builds the model from the assignment's delta and the version this device has (active or
+    /// last-known-good). Returns nil when there is no usable delta or anything fails; the full
+    /// model is downloaded then.
+    private func fromDelta(_ a: Fleetml_Device_V1_ModelAssignment) async -> URL? {
+        guard !a.deltaURL.isEmpty, cache.cachedFile(a.variantID) == nil, let deltaURL = URL(string: a.deltaURL),
+              let base = [store.active(a.modelID), store.lastKnownGood(a.modelID)].compactMap({ $0 })
+                .first(where: { $0.sha256.caseInsensitiveCompare(a.deltaBaseSha256) == .orderedSame }),
+              let baseFile = cache.cachedFile(base.variantID) else { return nil }
+        let deltaID = "delta-\(a.variantID)"
+        defer { cache.delete(deltaID) }
+        guard case .downloaded(let deltaFile) = await downloader.download(variant: deltaID, url: deltaURL, sha256: a.deltaSha256,
+                                                                          expectedSize: Int64(a.deltaSizeBytes), protected: store.protectedVariants) else {
+            Log.sdk.warning("Delta for \(a.modelName) \(a.version) failed; downloading the full model")
+            return nil
+        }
+        do {
+            let patch = try Data(contentsOf: deltaFile)
+            let out = try ModelDelta.patch(old: try Data(contentsOf: baseFile), patch: patch)
+            let part = cache.partFile(a.variantID)
+            try out.write(to: part)
+            guard let file = cache.commit(a.variantID, part: part, sha256: a.blobSha256) else {
+                Log.sdk.warning("Model \(a.modelName) \(a.version) built from a delta does not match its sha256; downloading the full model")
+                return nil
+            }
+            Log.sdk.info("Model \(a.modelName) \(a.version) built from a \(patch.count)-byte delta instead of \(a.blobSizeBytes) bytes")
+            return file
+        } catch {
+            Log.sdk.warning("Delta for \(a.modelName) \(a.version) unusable (\(String(describing: error))); downloading the full model")
+            return nil
         }
     }
 

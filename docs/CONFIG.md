@@ -40,6 +40,7 @@ and NATS, so it can start together with them.
 | Variable | Default | Description |
 |---|---|---|
 | `FLEETML_ADMIN_KEY` | *(unset)* | Stored as the `bootstrap` admin API key on first start if no key exists yet (at least 32 characters). If unset, the server generates one and logs it once (`admin_api_key`) |
+| `DELTA_MAX_SIZE_MB` | `128` | Models up to this size get a delta from their previous version ([delta updates](ROLLOUTS.md#delta-updates)); building one needs about ten times the model's size in memory. `0` turns deltas off |
 | `SESSION_TTL` | `12h` | How long a dashboard login lasts (at least `5m`). Sessions end earlier when revoked or when their API key is revoked |
 | `DEVICE_TOKEN_TTL` | `720h` | Device token lifetime, at least `24h`; devices refresh tokens in their last 7 days |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
