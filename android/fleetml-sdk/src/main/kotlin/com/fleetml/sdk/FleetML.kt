@@ -140,6 +140,7 @@ internal class FleetMLInstance(
         validator = validator,
         telemetry = telemetryReporter,
         callback = { callback },
+        canDownload = { !config.downloadOnWifiOnly || !stats.isNetworkMetered() },
     )
 
     private val heartbeat = HeartbeatManager(

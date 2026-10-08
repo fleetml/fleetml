@@ -131,6 +131,19 @@ class ModelManagerTest {
     }
 
     @Test
+    fun `downloads wait for an unmetered network when downloadOnWifiOnly is set`() = runTest {
+        var unmetered = false
+        val reporter = TelemetryReporter(queue, { _, _, e -> e.size }, { null }, 50, 30)
+        val mm = ModelManager(store, cache, ModelDownloader(cache), validator, reporter, { callback }, canDownload = { unmetered })
+        mm.apply(listOf(assign("good-v1", "1.0.0")))
+        assertEquals(0, server.requestCount)
+        assertTrue(mm.loadedStatuses().isEmpty())
+        unmetered = true
+        mm.apply(listOf(assign("good-v1", "1.0.0")))
+        assertEquals("ready 1.0.0", events.single())
+    }
+
+    @Test
     fun `a plain UNLOAD removes the model`() = runTest {
         val mm = manager()
         mm.apply(listOf(assign("good-v1", "1.0.0")))

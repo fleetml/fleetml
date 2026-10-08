@@ -12,7 +12,8 @@ package com.fleetml.sdk
  * @param heartbeatIntervalSeconds Interval between heartbeats in seconds.
  * @param maxCacheSizeMb Maximum disk cache size for downloaded models in MB.
  * @param labels Custom device labels sent to the server (e.g., environment, region).
- * @param downloadOnWifiOnly If true, model downloads are restricted to WiFi connections.
+ * @param downloadOnWifiOnly If true, new models are downloaded only on an unmetered network
+ *   (Wi-Fi); assignments wait until then. Models already cached are activated regardless.
  * @param autoStart If true, registration and heartbeat start immediately on init.
  * @param telemetryBatchSize Events per telemetry request (the server's DeviceConfig overrides it).
  * @param telemetryFlushIntervalSeconds How often queued telemetry is sent (the server's DeviceConfig overrides it).

@@ -25,6 +25,8 @@ internal class ModelManager(
     private val telemetry: TelemetryReporter?,
     private val callback: () -> FleetMLCallback?,
     private val now: () -> Long = System::currentTimeMillis,
+    /** False while downloads must wait (downloadOnWifiOnly on a metered network). */
+    private val canDownload: () -> Boolean = { true },
 ) {
     /** What the device reports in its heartbeat: the active (validated) models only. */
     fun loadedStatuses(): List<ModelStatus> = store.activeModels().map {
@@ -55,6 +57,10 @@ internal class ModelManager(
     private suspend fun install(a: ModelAssignment) {
         if (store.isActive(a.variantId)) return
         if (store.recentlyFailed(a.variantId, now())) return
+        if (cache.getModelFile(a.variantId) == null && !canDownload()) {
+            Logger.d("Waiting for an unmetered network to download ${a.modelName} ${a.version}")
+            return // the assignment is repeated on the next heartbeat
+        }
 
         val file = when (val r = downloader.download(a.variantId, a.downloadUrl, a.blobSha256, a.blobSizeBytes, store.protectedVariants())) {
             is DownloadResult.Downloaded -> r.file

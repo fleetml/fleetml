@@ -17,6 +17,13 @@ internal class DeviceStats(private val context: Context) {
         0
     }
 
+    /** True on a metered network (mobile data); downloadOnWifiOnly waits for an unmetered one. */
+    fun isNetworkMetered(): Boolean = try {
+        (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+    } catch (_: Exception) {
+        false
+    }
+
     fun batteryPercent(): Float = try {
         val status = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = status?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
