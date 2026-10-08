@@ -9,11 +9,6 @@ and documentation, and the README only claims it once it runs.
 - **Linux device agent.** A single static Go binary on the same protocol as the
   SDKs, running as a systemd service, for Jetson, Raspberry Pi, x86 edge boxes,
   kiosks and robots.
-- **Battery and background policy in the SDKs.** Heartbeats on a foreground
-  timer, background checks through WorkManager (Android) and
-  BGAppRefreshTask (iOS), downloads on an unmetered network or while
-  charging unless a deployment is marked urgent, all tunable from the
-  server's device configuration.
 - **More alert sinks.** Slack and email next to NATS and the signed webhook.
 - **Dashboard sign-in.** Exchange the admin API key for a session instead of
   keeping it in the browser's local storage.

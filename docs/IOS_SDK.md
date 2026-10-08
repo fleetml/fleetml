@@ -52,10 +52,11 @@ final class AppModel: FleetMLDelegate {
 | `enrollmentKey` | `""` | Per-project key for the first registration (`POST /api/v1/projects/{id}/enrollment-keys`) |
 | `useTLS` | `false` | TLS for gRPC (put the server behind a TLS proxy in production) |
 | `labels` | `[:]` | Labels deployments and experiments target (`target_selector`) |
-| `heartbeatIntervalSeconds` | `30` | Until the server sends its own interval |
+| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own |
+| `backgroundHeartbeatIntervalSeconds` | `3600` | Earliest interval of the background refresh, until the server sends its own (at least 15 minutes) |
 | `telemetryBatchSize`, `telemetryFlushIntervalSeconds` | `50`, `30` | Until the server's `DeviceConfig` overrides them |
 | `maxCacheSizeMB` | `500` | Disk budget for models; the active and last-known-good models are never evicted |
-| `downloadOnWiFiOnly` | `true` | New models wait for a network that is not expensive (cellular, personal hotspot) |
+| `downloadPolicy` | `.unmeteredOrCharging` | Which networks non-urgent downloads may use, until the server sends its own ([Battery and data](#battery-and-data)) |
 | `autoStart` | `true` | Call `FleetML.start()` yourself if `false` |
 
 `FleetML.stop()` stops background work so `initialize` can be called again
@@ -131,6 +132,38 @@ small models in the version's metadata:
 {"version": "1.0.0", "metadata": {"fleetml_requirements": {"min_ram_mb": 64, "min_score": 0}}}
 ```
 
+## Battery and data
+
+| | In the foreground | In the background |
+|---|---|---|
+| Heartbeat | every `heartbeat_interval_seconds` (server default 60 s) | one per background refresh |
+| Telemetry | batches of `telemetry_batch_size` (100), every `telemetry_flush_interval_seconds` (30 s) and when a batch fills | one flush when the app goes to the background, one per background refresh |
+| Background refresh | not scheduled | a `BGAppRefreshTask` no earlier than `background_heartbeat_interval_seconds` (1 h, at least 15 min); iOS decides the exact time |
+| Model downloads | per `download_policy` | per `download_policy` |
+
+- **Foreground only timers.** The SDK stops its timers when the app enters the
+  background and starts them when it returns. To get the background refresh,
+  add `com.fleetml.sdk.refresh` (`FleetML.backgroundTaskIdentifier`) to
+  `BGTaskSchedulerPermittedIdentifiers` in your `Info.plist`, enable the
+  "Background fetch" mode (`UIBackgroundModes`: `fetch`), and call
+  `FleetML.registerBackgroundTask()` and `FleetML.initialize` before the app
+  finishes launching (the sample app does both in its `App` initializer).
+  `FleetML.syncNow()` runs one heartbeat and one telemetry flush on demand.
+- **Downloads.** `.unmeteredOrCharging` (the default): a network that is
+  neither expensive (cellular, personal hotspot) nor constrained (Low Data
+  Mode), or any network while the device charges. `.unmeteredOnly` and
+  `.anyNetwork` are the alternatives. A waiting assignment is retried on the
+  next heartbeat. Assignments of an
+  [urgent deployment](ROLLOUTS.md#urgent-deployments-and-the-download-policy),
+  and every rollback, download on any connected network.
+- **Telemetry** is always batched; no event is sent on its own.
+- The server sets all of these for every device with the `DEVICE_*`
+  variables ([CONFIG.md](CONFIG.md#devices)); `FleetMLConfig` only provides
+  the values used before the first response.
+- The iOS Simulator cannot run background tasks (`BGTaskScheduler` reports
+  it unavailable); test the background refresh on a device with Xcode's
+  `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.fleetml.sdk.refresh"]`.
+
 ## Offline behaviour
 
 Models activated in an earlier run are delivered through
@@ -159,16 +192,22 @@ device's arm ID automatically.
 ## Tests
 
 ```bash
-make ios-test                     # swift test: 36 XCTests on macOS
+make ios-test                     # swift test: 43 XCTests on macOS
 cd ios/FleetMLSDK && xcodebuild test -scheme FleetMLSDK \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator
+FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh            # live test against make dev
 ```
+
+`scripts/ios-e2e.sh` creates a non-urgent deployment and runs
+`LiveServerTests` on the simulator: a device on an expensive network and on
+battery registers, its model waits, then an urgent deployment downloads and
+activates. Without the script's environment the live test is skipped.
 
 The suite covers the telemetry queue and reporter, the model store, the
 downloader (including an interrupted transfer resumed with Range), cache
 eviction, the model manager (activation, last-known-good, UPDATE + UNLOAD,
 restart), the token refresh policy, the heartbeat loop and the Core ML
-validator on the real Iris model. `make proto-swift` regenerates the gRPC
+validator on the real Iris model, and the battery and data policy. `make proto-swift` regenerates the gRPC
 client code from `proto/`.
 
 ## Simulator runbook

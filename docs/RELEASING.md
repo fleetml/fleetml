@@ -80,7 +80,9 @@ Once, right before the repository becomes public (after v0.3.0), in **Settings â
 branch protection rule** (or a ruleset) for `main`:
 
 - require a pull request before merging;
-- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`, `iOS SDK`);
+- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`); not
+  `iOS SDK`, which runs only when `ios/` changes and would otherwise block other
+  pull requests;
 - block force pushes and deletion of the branch.
 
 From then on every change to `main` goes through a pull request.

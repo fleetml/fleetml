@@ -62,10 +62,11 @@ class MyApp : Application(), FleetMLCallback {
 | `enrollmentKey` | `""` | Per-project key for the first registration (`POST /api/v1/projects/{id}/enrollment-keys`) |
 | `useTls` | `false` | TLS for gRPC (put the server behind a TLS proxy in production) |
 | `labels` | `{}` | Labels deployments and experiments target (`target_selector`) |
-| `heartbeatIntervalSeconds` | `30` | Until the server sends its own interval |
+| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own |
+| `backgroundHeartbeatIntervalSeconds` | `3600` | Background check interval, until the server sends its own (at least 15 minutes) |
 | `telemetryBatchSize`, `telemetryFlushIntervalSeconds` | `50`, `30` | Until the server's `DeviceConfig` overrides them |
 | `maxCacheSizeMb` | `500` | Disk budget for models; the active and last-known-good models are never evicted |
-| `downloadOnWifiOnly` | `true` | New models wait for an unmetered network |
+| `downloadPolicy` | `UNMETERED_OR_CHARGING` | Which networks non-urgent downloads may use, until the server sends its own ([Battery and data](#battery-and-data)) |
 | `autoStart` | `true` | Call `FleetML.start()` yourself if `false` |
 
 `FleetML.stop()` stops background work and clears the singleton, so `init` can
@@ -140,11 +141,37 @@ Override them for small models in the version's metadata:
 `POST /api/v1/intelligence/preview` with a `device_id` and `deployment_id`
 explains the choice for one device.
 
+## Battery and data
+
+| | In the foreground | In the background |
+|---|---|---|
+| Heartbeat | every `heartbeat_interval_seconds` (server default 60 s) | one per background check |
+| Telemetry | batches of `telemetry_batch_size` (100), every `telemetry_flush_interval_seconds` (30 s) and when a batch fills | one flush when the app goes to the background, one per background check |
+| Background check | not scheduled | a WorkManager job every `background_heartbeat_interval_seconds` (1 h, at least 15 min), only with a network connection |
+| Model downloads | per `download_policy` | per `download_policy` |
+
+- **Foreground only timers.** The SDK follows the app's process lifecycle
+  (`ProcessLifecycleOwner`): its timers stop when the app leaves the
+  foreground and start again when it returns. Initialize FleetML in
+  `Application.onCreate()` so the background job finds it when WorkManager
+  starts your app. `FleetML.syncNow()` runs one heartbeat and one telemetry
+  flush on demand.
+- **Downloads.** `UNMETERED_OR_CHARGING` (the default): an unmetered network
+  (Wi-Fi, Ethernet), or any network while the device charges.
+  `UNMETERED_ONLY` and `ANY_NETWORK` are the alternatives. A waiting
+  assignment is retried on the next heartbeat. Assignments of an
+  [urgent deployment](ROLLOUTS.md#urgent-deployments-and-the-download-policy),
+  and every rollback, download on any connected network.
+- **Telemetry** is always batched; no event is sent on its own.
+- The server sets all of these for every device with the `DEVICE_*`
+  variables ([CONFIG.md](CONFIG.md#devices)); `FleetMLConfig` only provides
+  the values used before the first response.
+
 ## Offline behaviour
 
 Models activated in an earlier run are delivered through `onModelReady` (and
 `FleetML.activeModels()`) as soon as `start()` runs, before the server is
-reached. A registered device starts heartbeating straight away; until the
+reached. A registered device in the foreground starts heartbeating straight away; until the
 server answers it keeps using its cached models, and `onConnectionStatusChanged`
 reports reachability.
 
@@ -229,6 +256,26 @@ FLEETML_API_KEY=$FLEETML_API_KEY ./scripts/android-e2e.sh
 
 It needs a device or emulator and a running stack, so it is not part of the
 hosted CI; the unit tests (`./gradlew :fleetml-sdk:testDebugUnitTest`) are.
+The test process has no activity, so the SDK counts as being in the
+background and the test drives it with `FleetML.syncNow()`.
+
+### Battery and data on the emulator
+
+With the sample app connected and showing its model:
+
+```bash
+adb shell input keyevent KEYCODE_HOME                     # background: heartbeats stop
+adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"   # JOB #u0aNNN/<id>
+adb shell cmd jobscheduler run -f com.fleetml.sample <id> # one background check: one heartbeat
+adb shell svc wifi disable                                # mobile data only (metered)
+adb shell dumpsys battery unplug && adb shell dumpsys battery set status 3   # on battery
+```
+
+Deploy a new version without `urgent`, run the job again (the job ID changes
+after each run): logcat shows `Download of iris 2.0.0 waits for the download
+policy`. Deploy it with `"urgent": true` and run the job: the model is
+activated. Restore with `adb shell svc wifi enable` and
+`adb shell dumpsys battery reset`.
 
 ## Sample app
 

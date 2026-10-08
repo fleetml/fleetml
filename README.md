@@ -54,8 +54,7 @@ and jq; 47 seconds from a fresh stack):
 | **Alerts.** Rollback and drift alerts on NATS and to an HMAC-signed webhook with retries | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alerts) |
 | **Android SDK.** Kotlin, minSdk 26: resumable verified downloads, validation before activation, last-known-good, offline start, persistent telemetry | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
 | **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md) |
-| **Battery and data.** Telemetry batched in a persistent queue, model downloads on Wi-Fi only by default, heartbeat and telemetry intervals set by the server | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md#telemetry), [IOS_SDK.md](docs/IOS_SDK.md#telemetry) |
-| **Background scheduling and charging-aware downloads** in the SDKs | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
+| **Battery and data.** Heartbeats and telemetry on a timer only in the foreground; in the background one check per hour (WorkManager, BGAppRefreshTask); telemetry batched in a persistent queue; models download on an unmetered network or while charging unless the deployment is urgent; all tunable from the server | DONE | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data), e2e `TestE2E_UrgentAndDeviceConfig`, `LiveServerTests` |
 | **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
 | **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
