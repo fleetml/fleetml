@@ -17,7 +17,8 @@ FleetML is an open-source, runtime-agnostic, self-hosted-first platform for mana
 - **Alerts**: rollback and drift alerts on NATS (`fleetml.alerts.*`) and an HMAC-signed, retried webhook
 - **Dashboard**: React UI for monitoring devices, deployments, experiments, telemetry, drift
 - **CLI**: `fleetml push`, `fleetml deploy`, `fleetml experiment`, `fleetml drift`
-- **Android SDK**: Kotlin library: fingerprint, register with an enrollment key, heartbeat, token refresh, download with sha256 check, cache, telemetry
+- **Android SDK** ([guide](docs/ANDROID_SDK.md)): Kotlin, minSdk 26: register with an enrollment key, resumable sha256-verified downloads, validation before activation, last-known-good, offline start, persistent telemetry queue
+- **iOS SDK** ([guide](docs/IOS_SDK.md)): Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials
 - **Security**: admin API keys on the REST API, per-project device enrollment keys, revocable and refreshable device tokens, locked-down CORS (see [SECURITY.md](SECURITY.md))
 
 ## Quick Start
@@ -77,7 +78,7 @@ go run ./cmd/fleetml config set-key "$FLEETML_API_KEY"   # or keep FLEETML_API_K
 go run ./cmd/fleetml project list
 ```
 
-In the Android SDK, pass the enrollment key as `FleetMLConfig(enrollmentKey = ...)`; the sample app reads `fleetml.enrollmentKey` from `android/local.properties`.
+In the Android SDK, pass the enrollment key as `FleetMLConfig(enrollmentKey = ...)`; the sample app reads `fleetml.enrollmentKey` from `android/local.properties`. In the iOS SDK it is `FleetMLConfig(serverHost:enrollmentKey:)`; see [docs/IOS_SDK.md](docs/IOS_SDK.md).
 
 **Containers only** (server + dashboard): `docker compose -f deploy/docker-compose.prod.yml up -d --build`. The API is on `:18080` and the dashboard on `:80`. Set `FLEETML_ADMIN_KEY` in your shell before the first start, or read the generated key with `docker compose -f deploy/docker-compose.prod.yml logs server | grep admin_api_key`.
 
@@ -124,7 +125,7 @@ Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_S3_PORT
 ## Architecture
 
 ```
-Android    : gRPC --> Go Server ──NATS--> TimescaleDB
+Android/iOS: gRPC --> Go Server ──NATS--> TimescaleDB
 Dashboard  : REST --> (REST+gRPC)        S3 (SeaweedFS)
 CLI        : REST -->
 ```
