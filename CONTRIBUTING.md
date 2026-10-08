@@ -38,6 +38,7 @@ the ones that cover your change before pushing:
 | `cd dashboard && npx tsc && npm run build` | Dashboard type-check and build |
 | `cd android && ./gradlew :fleetml-sdk:testDebugUnitTest` | Android SDK unit tests |
 | `make ios-test` | iOS SDK tests |
+| `make docs-site` | The documentation site in `site/` (MkDocs Material in Docker, strict) and an offline check of its links |
 
 A change in behaviour should come with a test that fails without it. The
 Android and iOS guides ([docs/ANDROID_SDK.md](docs/ANDROID_SDK.md),

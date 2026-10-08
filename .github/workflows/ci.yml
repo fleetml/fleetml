@@ -97,3 +97,15 @@ jobs:
         with:
           name: android-test-reports
           path: android/fleetml-sdk/build/reports/tests/
+
+  docs:
+    name: Docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (strict) and check links
+        run: make docs-site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: site/

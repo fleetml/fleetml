@@ -23,6 +23,9 @@ vendor/
 # Environment
 .env
 
+# Documentation site (make docs-site)
+site/
+
 # Node / dashboard build output
 node_modules/
 dist/

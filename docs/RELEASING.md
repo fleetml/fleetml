@@ -23,6 +23,7 @@ make e2e                             # end-to-end suite against a fresh server
 (cd dashboard && npm ci && npx tsc && npm run build)
 (cd android && ./gradlew :fleetml-sdk:testDebugUnitTest)
 make ios-test
+make docs-site                       # docs site builds (strict) and its links resolve
 ./scripts/demo.sh                    # the 60-second story, from a fresh dev stack
 ```
 
@@ -80,7 +81,7 @@ Once, right before the repository becomes public (after v0.3.0), in **Settings â
 branch protection rule** (or a ruleset) for `main`:
 
 - require a pull request before merging;
-- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`); not
+- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`, `Docs site`); not
   `iOS SDK`, which runs only when `ios/` changes and would otherwise block other
   pull requests;
 - block force pushes and deletion of the branch.

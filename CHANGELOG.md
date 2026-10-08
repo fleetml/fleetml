@@ -18,6 +18,10 @@ change APIs).
   post-activate hook, queues telemetry on disk, offers a local HTTP endpoint
   for inference events, and honours the download policy and urgent flag.
   `docs/LINUX_AGENT.md`.
+- Documentation site: `make docs-site` builds the guides, README and
+  changelog with MkDocs Material (pinned, in Docker, strict) into `site/` and
+  checks every internal link and anchor offline; CI builds it on every pull
+  request.
 - Alert sinks per project (webhook with HMAC signing, Slack Block Kit,
   SMTP email), managed over REST (`/projects/{id}/alert-sinks`,
   `/alert-sinks/{id}`) and on the dashboard's Alerts page, with a test-send

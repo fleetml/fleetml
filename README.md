@@ -56,12 +56,12 @@ and jq; 47 seconds from a fresh stack):
 | **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md) |
 | **Linux device agent.** A static binary (amd64, arm64) and systemd service for Jetson, Raspberry Pi and x86 edge boxes: the same rollout, validation and last-known-good rules, models behind a `current` symlink, a command validator, a post-activate hook, and a local HTTP endpoint for inference telemetry | DONE | [LINUX_AGENT.md](docs/LINUX_AGENT.md), `go test ./internal/agent` |
 | **Battery and data.** Heartbeats and telemetry on a timer only in the foreground; in the background one check per hour (WorkManager, BGAppRefreshTask); telemetry batched in a persistent queue; models download on an unmetered network or while charging unless the deployment is urgent; all tunable from the server | DONE | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data), e2e `TestE2E_UrgentAndDeviceConfig`, `LiveServerTests` |
-| **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
+| **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; alert sinks; login with server-side sessions (the API key is not kept in the browser); works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
 | **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
 | **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1` | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
-| **Artifact signing** verified on the device | PLANNED | [Roadmap](docs/ROADMAP.md#later) |
-| **Feature-level drift** from device-side input histograms | PLANNED | [Roadmap](docs/ROADMAP.md#later) |
+| **Artifact signing** verified on the device | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
+| **Feature-level drift** from device-side input histograms | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
 
 The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
@@ -142,11 +142,14 @@ invalid variable.
 | | |
 |---|---|
 | [Quickstart and tour](docs/QUICKSTART.md) | Run it, then every feature step by step |
-| [Rollouts, experiments and alerts](docs/ROLLOUTS.md) | Strategies, the health gate, statistics, webhooks |
+| [Rollouts, experiments and alerts](docs/ROLLOUTS.md) | Strategies, the health gate, statistics, alert sinks |
 | [Architecture](docs/ARCHITECTURE.md) | Components, request paths, data model, trust boundaries |
 | [Configuration](docs/CONFIG.md) | Every environment variable |
 | [Android SDK](docs/ANDROID_SDK.md), [iOS SDK](docs/IOS_SDK.md), [Linux agent](docs/LINUX_AGENT.md) | Integration guides and device runbooks |
 | [Roadmap](docs/ROADMAP.md) | What comes next |
+
+`make docs-site` builds these pages, with this README and the changelog, into
+a static site in `site/` (MkDocs Material in Docker).
 
 ## Contributing, security and license
 

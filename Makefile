@@ -1,4 +1,4 @@
-.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
+.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev docs-site
 
 -include .env
 
@@ -29,6 +29,13 @@ build-agent:
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w" -o bin/fleetml-agent-$$os-$$arch ./cmd/fleetml-agent || exit 1; \
 	done
 	@ls -la bin/fleetml-agent-*
+
+# The documentation site into site/ (MkDocs Material, pinned, in Docker), then
+# an offline check of every internal link and anchor. Nothing is deployed.
+MKDOCS_IMAGE := squidfunk/mkdocs-material:9.6.14@sha256:eb04b60c566a8862be6b553157c16a92fbbfc45d71b7e4e8593526aecca63f52
+docs-site:
+	docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -u "$$(id -u):$$(id -g)" -v "$(CURDIR)":/docs $(MKDOCS_IMAGE) build
+	docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -u "$$(id -u):$$(id -g)" -v "$(CURDIR)":/docs --entrypoint python3 $(MKDOCS_IMAGE) scripts/check-site-links.py site
 
 build-cli:
 	@mkdir -p bin
@@ -106,4 +113,4 @@ dev: env-file docker-up
 	env $$(grep -v '^\#' .env | xargs) go run ./cmd/server
 
 clean:
-	rm -rf bin/ gen/
+	rm -rf bin/ gen/ site/

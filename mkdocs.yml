@@ -1,0 +1,63 @@
+# Documentation site: `make docs-site` builds it into site/ (not committed).
+site_name: FleetML
+site_description: Open-source rollouts, A/B tests and drift detection for on-device ML models.
+repo_url: https://github.com/fleetml/fleetml
+repo_name: fleetml/fleetml
+edit_uri: blob/main/docs/
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: { icon: material/weather-sunny, name: Light mode }
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+# README.md becomes the home page and CHANGELOG.md the changelog; links that
+# leave docs/ point to the repository.
+hooks:
+  - scripts/mkdocs_hooks.py
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Home: index.md
+  - Quickstart: QUICKSTART.md
+  - Rollouts: ROLLOUTS.md
+  - Android SDK: ANDROID_SDK.md
+  - iOS SDK: IOS_SDK.md
+  - Linux agent: LINUX_AGENT.md
+  - Config: CONFIG.md
+  - Architecture: ARCHITECTURE.md
+  - Releasing: RELEASING.md
+  - Roadmap: ROADMAP.md
+  - Changelog: CHANGELOG.md

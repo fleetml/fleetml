@@ -6,12 +6,13 @@ and four dependencies, plus device SDKs, a CLI and a web dashboard.
 ```mermaid
 flowchart LR
   subgraph clients[Operators]
-    dash[Dashboard<br/>React]
+    dash[Dashboard<br/>React, session cookie]
     cli[CLI<br/>fleetml]
   end
   subgraph devices[Devices]
     android[Android SDK]
     ios[iOS SDK]
+    agent[Linux agent]
   end
   subgraph server[FleetML server]
     rest[REST API :18080<br/>Gin]
@@ -29,12 +30,14 @@ flowchart LR
   nats[[NATS]]
   hook([Webhook, Slack, email])
 
-  dash -- admin API key --> rest
+  dash -- session --> rest
   cli -- admin API key --> rest
   android -- device token --> grpc
   ios -- device token --> grpc
+  agent -- device token --> grpc
   android -. presigned GET .-> s3
   ios -. presigned GET .-> s3
+  agent -. presigned GET .-> s3
   cli -. presigned PUT .-> s3
   rest --> reg & dep & exp & drift
   grpc --> intel & exp & tel
@@ -61,8 +64,9 @@ flowchart LR
 | `internal/telemetry` | Ingest, NATS pipeline, queries |
 | `internal/drift` | PSI drift checks and history |
 | `internal/alert` | Rollback and drift alerts on NATS and to per-project sinks (webhook, Slack, email) with retries and a delivery log |
-| `internal/auth` | Admin API keys and enrollment keys |
+| `internal/auth` | Admin API keys, dashboard sessions and enrollment keys |
 | `internal/health`, `internal/metrics` | Readiness checks and Prometheus metrics |
+| `internal/agent`, `cmd/fleetml-agent` | The Linux device agent (a client of the gRPC API, built separately) |
 
 ## Request paths
 
