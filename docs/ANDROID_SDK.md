@@ -167,16 +167,17 @@ automatically, so results are attributed per arm.
 ## Emulator runbook
 
 This is how the SDK and sample app were verified, against the dev stack on the
-host machine (the emulator reaches it at `10.0.2.2`).
+host machine (the emulator reaches the host's gRPC port at `10.0.2.2`).
 
-1. Start the server so presigned download URLs point at `10.0.2.2`:
-
-   ```bash
-   S3_PUBLIC_ENDPOINT=10.0.2.2:19000 make dev
-   ```
+1. Start the server: `make dev`.
 
 2. Start an emulator (API 26 or later), e.g. from Android Studio or
-   `emulator -avd <name>`.
+   `emulator -avd <name>`, and forward the object store port so the
+   presigned download URLs (`localhost:19000`) work inside it:
+
+   ```bash
+   adb reverse tcp:19000 tcp:19000
+   ```
 
 3. Upload the sample models, create an enrollment key and deploy v1 to the
    sample app's label (`app=sample`):

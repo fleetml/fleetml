@@ -108,6 +108,17 @@ func run() error {
 	if err := waitFor(ctx, "s3", dependencyTimeout, func() error { return s3Client.EnsureBucket(ctx) }); err != nil {
 		return fmt.Errorf("preparing s3 bucket: %w", err)
 	}
+	// Upload and download URLs are signed for the address clients use.
+	if cfg.S3PublicEndpoint != "" {
+		signer, err := storage.NewPublicSigner(storage.S3Config{
+			AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL, Bucket: cfg.S3Bucket,
+		}, cfg.S3PublicEndpoint)
+		if err != nil {
+			return fmt.Errorf("creating s3 public signer: %w", err)
+		}
+		s3Client.SetPublicSigner(signer)
+		slog.Info("presigned URLs use S3_PUBLIC_ENDPOINT", "endpoint", cfg.S3PublicEndpoint)
+	}
 
 	var nc *nats.Conn
 	err = waitFor(ctx, "nats", dependencyTimeout, func() (err error) {
@@ -169,19 +180,7 @@ func run() error {
 	profiler := intelligence.NewProfiler(logger)
 	selector := intelligence.NewSelector(logger)
 	intelVariantRepo := intelligence.NewVariantRepoAdapter(pool)
-	// Device download URLs are signed for the address devices use.
-	var deviceURLs intelligence.StorageClient = s3Client
-	if cfg.S3PublicEndpoint != "" {
-		signer, err := storage.NewDownloadSigner(storage.S3Config{
-			AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL, Bucket: cfg.S3Bucket,
-		}, cfg.S3PublicEndpoint)
-		if err != nil {
-			return fmt.Errorf("creating device download signer: %w", err)
-		}
-		deviceURLs = signer
-		slog.Info("device download URLs use S3_PUBLIC_ENDPOINT", "endpoint", cfg.S3PublicEndpoint)
-	}
-	orchestrator := intelligence.NewOrchestrator(profiler, selector, intelVariantRepo, deviceURLs, logger)
+	orchestrator := intelligence.NewOrchestrator(profiler, selector, intelVariantRepo, s3Client, logger)
 
 	// Wire intelligence into device service
 	intelDeployRepo := intelligence.NewDeploymentRepoAdapter(pool)

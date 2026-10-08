@@ -23,6 +23,7 @@ type S3Config struct {
 type S3Client struct {
 	client *minio.Client
 	bucket string
+	public *PublicSigner // signs client-facing URLs when the public address differs
 }
 
 func NewS3Client(cfg S3Config) (*S3Client, error) {
@@ -40,36 +41,31 @@ func NewS3Client(cfg S3Config) (*S3Client, error) {
 	}, nil
 }
 
-// DownloadSigner presigns download URLs for a host other than the one the
-// server uses, e.g. the address devices reach the object store at.
-type DownloadSigner struct {
+// PublicSigner presigns URLs for the address clients (devices, the CLI,
+// browsers) reach the object store at, when it differs from the one the
+// server uses (e.g. a public hostname in front of a private container).
+type PublicSigner struct {
 	client *minio.Client
 	bucket string
 }
 
-// NewDownloadSigner returns a signer for publicEndpoint ("host:port").
+// NewPublicSigner returns a signer for publicEndpoint ("host:port").
 // Presigning is computed locally (the region is fixed), so the server never
 // needs to reach publicEndpoint itself.
-func NewDownloadSigner(cfg S3Config, publicEndpoint string) (*DownloadSigner, error) {
+func NewPublicSigner(cfg S3Config, publicEndpoint string) (*PublicSigner, error) {
 	client, err := minio.New(publicEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: cfg.UseSSL,
 		Region: "us-east-1",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("creating s3 download signer: %w", err)
+		return nil, fmt.Errorf("creating s3 public signer: %w", err)
 	}
-	return &DownloadSigner{client: client, bucket: cfg.Bucket}, nil
+	return &PublicSigner{client: client, bucket: cfg.Bucket}, nil
 }
 
-// GeneratePresignedDownload returns a presigned GET URL for publicEndpoint.
-func (d *DownloadSigner) GeneratePresignedDownload(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	u, err := d.client.PresignedGetObject(ctx, d.bucket, key, expiry, url.Values{})
-	if err != nil {
-		return "", fmt.Errorf("generating presigned download URL: %w", err)
-	}
-	return u.String(), nil
-}
+// SetPublicSigner makes every presigned URL point at the signer's address.
+func (s *S3Client) SetPublicSigner(p *PublicSigner) { s.public = p }
 
 // EnsureBucket creates the configured bucket if it does not exist yet, so the
 // server works against a fresh S3-compatible store without an init container.
@@ -106,7 +102,11 @@ func (s *S3Client) HealthCheck(ctx context.Context) error {
 
 // GeneratePresignedUpload returns a pre-signed PUT URL for uploading a model blob.
 func (s *S3Client) GeneratePresignedUpload(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, key, expiry)
+	c := s.client
+	if s.public != nil {
+		c = s.public.client
+	}
+	u, err := c.PresignedPutObject(ctx, s.bucket, key, expiry)
 	if err != nil {
 		return "", fmt.Errorf("generating presigned upload URL: %w", err)
 	}
@@ -115,8 +115,11 @@ func (s *S3Client) GeneratePresignedUpload(ctx context.Context, key string, expi
 
 // GeneratePresignedDownload returns a pre-signed GET URL for downloading a model blob.
 func (s *S3Client) GeneratePresignedDownload(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	reqParams := make(url.Values)
-	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, reqParams)
+	c := s.client
+	if s.public != nil {
+		c = s.public.client
+	}
+	u, err := c.PresignedGetObject(ctx, s.bucket, key, expiry, url.Values{})
 	if err != nil {
 		return "", fmt.Errorf("generating presigned download URL: %w", err)
 	}

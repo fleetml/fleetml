@@ -2,8 +2,9 @@
 # Runs the Android SDK's instrumented test (LiveServerTest) on a connected
 # emulator against the local dev server:
 #
-#   1. start the server so devices can download: S3_PUBLIC_ENDPOINT=10.0.2.2:19000 make dev
-#   2. start an emulator (Android Studio, or: emulator -avd <name>)
+#   1. start the server: make dev
+#   2. start an emulator (Android Studio, or: emulator -avd <name>); the script
+#      forwards the object store port so download URLs (localhost:19000) work
 #   3. FLEETML_API_KEY=<admin key> ./scripts/android-e2e.sh
 #
 # The script creates a project, a model version with the Iris v2 model, an
@@ -32,6 +33,9 @@ EK=$(api POST "/api/v1/projects/$P/enrollment-keys" '{"name":"android-e2e"}' | j
 D=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V\",\"target_selector\":{\"e2e-run\":\"$LABEL\"}}" | jq -r .data.id)
 api POST "/api/v1/deployments/$D/start" >/dev/null
 echo "fixtures: project $P, version $V, deployment $D, label e2e-run=$LABEL"
+
+ADB=$(command -v adb || echo "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb")
+"$ADB" reverse tcp:19000 tcp:19000 >/dev/null
 
 cd android
 JAVA_HOME=${JAVA_HOME_17:-/opt/homebrew/opt/openjdk@17} ./gradlew :fleetml-sdk:connectedDebugAndroidTest \
