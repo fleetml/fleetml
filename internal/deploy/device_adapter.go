@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,9 +12,11 @@ import (
 
 // DeviceDirectory finds the devices a deployment targets.
 type DeviceDirectory interface {
-	CountMatchingDevices(ctx context.Context, selector map[string]string) (int, error)
 	// ListMatchingDevices returns the IDs of devices whose labels contain the selector.
 	ListMatchingDevices(ctx context.Context, selector map[string]string) ([]uuid.UUID, error)
+	// CountUnavailable counts devices among ids that were seen since a time
+	// but did not report any variant of the version loaded.
+	CountUnavailable(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID, seenSince time.Time) (int, error)
 }
 
 // DeviceCountAdapter implements DeviceCounter using pgxpool.
@@ -24,28 +27,6 @@ type DeviceCountAdapter struct {
 // NewDeviceCountAdapter creates a new DeviceCountAdapter.
 func NewDeviceCountAdapter(pool *pgxpool.Pool) *DeviceCountAdapter {
 	return &DeviceCountAdapter{pool: pool}
-}
-
-func (a *DeviceCountAdapter) CountMatchingDevices(ctx context.Context, selector map[string]string) (int, error) {
-	if len(selector) == 0 {
-		var count int
-		err := a.pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices`).Scan(&count)
-		if err != nil {
-			return 0, fmt.Errorf("deviceCount: %w", err)
-		}
-		return count, nil
-	}
-
-	selectorJSON, err := json.Marshal(selector)
-	if err != nil {
-		return 0, fmt.Errorf("deviceCount: marshalling: %w", err)
-	}
-	var count int
-	err = a.pool.QueryRow(ctx, `SELECT COUNT(*) FROM devices WHERE labels_json @> $1::jsonb`, selectorJSON).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("deviceCount: %w", err)
-	}
-	return count, nil
 }
 
 func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, selector map[string]string) ([]uuid.UUID, error) {
@@ -70,4 +51,20 @@ func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, selector m
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+func (a *DeviceCountAdapter) CountUnavailable(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID, seenSince time.Time) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := a.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM devices d
+		WHERE d.id = ANY($1) AND d.last_seen_at >= $3
+		  AND NOT (d.loaded_variant_ids ?| ARRAY(SELECT id::text FROM model_variants WHERE version_id = $2))`,
+		ids, versionID, seenSince).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("deviceCount.CountUnavailable: %w", err)
+	}
+	return n, nil
 }

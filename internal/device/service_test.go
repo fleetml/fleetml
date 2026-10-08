@@ -99,7 +99,7 @@ func (m *mockDeviceRepo) ListByLabels(_ context.Context, labels map[string]strin
 	return filtered[offset:end], total, nil
 }
 
-func (m *mockDeviceRepo) UpdateLastSeen(_ context.Context, id uuid.UUID) error {
+func (m *mockDeviceRepo) RecordHeartbeat(_ context.Context, id uuid.UUID, _ []string) error {
 	d, ok := m.devices[id]
 	if !ok {
 		return fmt.Errorf("device.UpdateLastSeen: %w", ErrNotFound)

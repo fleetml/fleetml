@@ -101,9 +101,10 @@ func (m *mockDeployTelemetry) VersionP95(context.Context, uuid.UUID, time.Time) 
 // mockDeployFleet is a fixed set of targeted devices.
 type mockDeployFleet struct{}
 
-func (mockDeployFleet) CountMatchingDevices(context.Context, map[string]string) (int, error) {
-	return 3, nil
+func (mockDeployFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID, time.Time) (int, error) {
+	return 0, nil
 }
+
 func (mockDeployFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
 	return []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}, nil
 }

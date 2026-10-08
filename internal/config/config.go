@@ -26,6 +26,10 @@ type Config struct {
 	CORSOrigins    string        `envconfig:"CORS_ORIGINS" default:"http://localhost:5173,http://localhost:18080"`
 	// AdminKey is stored as the "bootstrap" admin API key if no key exists yet.
 	AdminKey string `envconfig:"FLEETML_ADMIN_KEY"`
+	// Background loop intervals. Short values are for tests and demos.
+	DeployTickInterval     time.Duration `envconfig:"DEPLOY_TICK_INTERVAL" default:"30s"`
+	ExperimentTickInterval time.Duration `envconfig:"EXPERIMENT_TICK_INTERVAL" default:"60s"`
+	DriftTickInterval      time.Duration `envconfig:"DRIFT_TICK_INTERVAL" default:"5m"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
 }
@@ -55,6 +59,13 @@ func (c Config) validate() error {
 	}
 	if c.RESTPort < 1 || c.RESTPort > 65535 {
 		return fmt.Errorf("REST_PORT must be between 1 and 65535, got %d", c.RESTPort)
+	}
+	for name, d := range map[string]time.Duration{
+		"DEPLOY_TICK_INTERVAL": c.DeployTickInterval, "EXPERIMENT_TICK_INTERVAL": c.ExperimentTickInterval, "DRIFT_TICK_INTERVAL": c.DriftTickInterval,
+	} {
+		if d < time.Second {
+			return fmt.Errorf("%s must be at least 1s, got %s", name, d)
+		}
 	}
 	if c.DeviceTokenTTL < 24*time.Hour {
 		return fmt.Errorf("DEVICE_TOKEN_TTL must be at least 24h, got %s", c.DeviceTokenTTL)

@@ -102,7 +102,9 @@ func (m *mockDeviceRepoREST) ListByLabels(_ context.Context, labels map[string]s
 	return filtered[offset:end], total, nil
 }
 
-func (m *mockDeviceRepoREST) UpdateLastSeen(_ context.Context, _ uuid.UUID) error { return nil }
+func (m *mockDeviceRepoREST) RecordHeartbeat(_ context.Context, _ uuid.UUID, _ []string) error {
+	return nil
+}
 func (m *mockDeviceRepoREST) UpdateLabels(_ context.Context, _ uuid.UUID, _ map[string]string) error {
 	return nil
 }

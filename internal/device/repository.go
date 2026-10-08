@@ -19,7 +19,8 @@ type DeviceRepository interface {
 	GetByFingerprint(ctx context.Context, fingerprint string) (*Device, error)
 	List(ctx context.Context, limit, offset int) ([]Device, int, error)
 	ListByLabels(ctx context.Context, labels map[string]string, limit, offset int) ([]Device, int, error)
-	UpdateLastSeen(ctx context.Context, id uuid.UUID) error
+	// RecordHeartbeat sets last_seen_at and the variants the device reports loaded.
+	RecordHeartbeat(ctx context.Context, id uuid.UUID, loadedVariantIDs []string) error
 	UpdateLabels(ctx context.Context, id uuid.UUID, labels map[string]string) error
 	Update(ctx context.Context, d *Device) error
 	// SetAuthTokenHash replaces the stored token hash; nil revokes the token.
@@ -181,13 +182,20 @@ func scanDeviceRows(rows pgx.Rows) ([]Device, int, error) {
 	return devices, total, nil
 }
 
-func (r *DeviceRepo) UpdateLastSeen(ctx context.Context, id uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx, `UPDATE devices SET last_seen_at = NOW() WHERE id = $1`, id)
+func (r *DeviceRepo) RecordHeartbeat(ctx context.Context, id uuid.UUID, loadedVariantIDs []string) error {
+	if loadedVariantIDs == nil {
+		loadedVariantIDs = []string{}
+	}
+	loaded, err := json.Marshal(loadedVariantIDs)
 	if err != nil {
-		return fmt.Errorf("device.UpdateLastSeen: %w", err)
+		return fmt.Errorf("device.RecordHeartbeat: marshalling: %w", err)
+	}
+	tag, err := r.pool.Exec(ctx, `UPDATE devices SET last_seen_at = NOW(), loaded_variant_ids = $2 WHERE id = $1`, id, loaded)
+	if err != nil {
+		return fmt.Errorf("device.RecordHeartbeat: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("device.UpdateLastSeen: %w", ErrNotFound)
+		return fmt.Errorf("device.RecordHeartbeat: %w", ErrNotFound)
 	}
 	return nil
 }

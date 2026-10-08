@@ -342,8 +342,14 @@ func (s *Service) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*Heartb
 		return nil, fmt.Errorf("getting device: %w", err)
 	}
 
-	if err := s.devices.UpdateLastSeen(ctx, req.DeviceID); err != nil {
-		s.logger.Warn("failed to update last_seen_at", "device_id", req.DeviceID, "error", err)
+	loaded := make([]string, 0, len(req.LoadedModels))
+	for _, m := range req.LoadedModels {
+		if m.VariantID != "" {
+			loaded = append(loaded, m.VariantID)
+		}
+	}
+	if err := s.devices.RecordHeartbeat(ctx, req.DeviceID, loaded); err != nil {
+		s.logger.Warn("failed to record heartbeat", "device_id", req.DeviceID, "error", err)
 	}
 
 	var assignments []ModelAssignment

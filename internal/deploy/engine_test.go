@@ -108,7 +108,10 @@ func (m *mockTelemetry) VersionP95(context.Context, uuid.UUID, time.Time) (p95 f
 }
 
 // mockFleet is a fixed set of targeted devices.
-type mockFleet struct{ ids []uuid.UUID }
+type mockFleet struct {
+	ids         []uuid.UUID
+	unavailable int
+}
 
 func newMockFleet(n int) *mockFleet {
 	f := &mockFleet{}
@@ -118,8 +121,8 @@ func newMockFleet(n int) *mockFleet {
 	return f
 }
 
-func (f *mockFleet) CountMatchingDevices(context.Context, map[string]string) (int, error) {
-	return len(f.ids), nil
+func (f *mockFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID, time.Time) (int, error) {
+	return f.unavailable, nil
 }
 
 func (f *mockFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
@@ -340,24 +343,106 @@ func TestEngine_ProgressComplete_NoOp(t *testing.T) {
 	assert.Equal(t, "COMPLETE", result.Status) // No-op
 }
 
-func TestEngine_Rolling_Start(t *testing.T) {
-	repo := newMockRepo()
-	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, newMockFleet(50), nil)
+func createRollingDep(repo *mockRepo, rc *RollingConfig) *Deployment {
+	d := createPendingDep(repo, "ROLLING", nil, nil)
+	d.RollingConfig = rc
+	return d
+}
 
-	dep := &Deployment{
-		ProjectID:      uuid.New(),
-		ModelVersionID: uuid.New(),
-		Strategy:       "ROLLING",
-		Status:         "PENDING",
-		RollingConfig:  &RollingConfig{BatchSize: 10, BatchInterval: "1m", MaxUnavailable: 10},
-		TargetSelector: map[string]string{},
-		CreatedBy:      "test",
+// exposedCount counts the fleet devices a deployment currently delivers to.
+func exposedCount(d *Deployment, fleet *mockFleet) int {
+	n := 0
+	for _, id := range fleet.ids {
+		if d.Exposes(id) {
+			n++
+		}
 	}
-	_ = repo.Create(context.Background(), dep)
+	return n
+}
 
-	result, err := engine.StartDeployment(context.Background(), dep.ID)
+// 20 devices, batch_size 5: successive stages expose exactly 5, 10, 15, 20.
+func TestEngine_Rolling_CountBatches(t *testing.T) {
+	repo := newMockRepo()
+	fleet := newMockFleet(20)
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, fleet, nil)
+	dep := createRollingDep(repo, &RollingConfig{BatchSize: 5, BatchInterval: "0s"})
+
+	got, err := engine.StartDeployment(context.Background(), dep.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "ROLLING_OUT", result.Status)
+	assert.Equal(t, "ROLLING_OUT", got.Status)
+	var seen []int
+	seen = append(seen, exposedCount(got, fleet))
+	for i := 0; i < 3; i++ {
+		got, err = engine.ProgressDeployment(context.Background(), dep.ID)
+		require.NoError(t, err)
+		seen = append(seen, exposedCount(got, fleet))
+	}
+	assert.Equal(t, []int{5, 10, 15, 20}, seen)
+	assert.Equal(t, "ROLLING_OUT", got.Status, "the last batch still gets its interval")
+	got, err = engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "COMPLETE", got.Status)
+}
+
+func TestEngine_Rolling_PercentBatchesAndInterval(t *testing.T) {
+	repo := newMockRepo()
+	fleet := newMockFleet(1000)
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, fleet, nil)
+	dep := createRollingDep(repo, &RollingConfig{BatchSizePercent: 30, BatchInterval: "1h"})
+
+	got, err := engine.StartDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.InDelta(t, 300, exposedCount(got, fleet), 60)
+	assert.Equal(t, 30, got.EffectiveCanaryPercent())
+
+	got, err = engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.CurrentStage, "batch_interval not elapsed: no advance")
+
+	past := time.Now().Add(-2 * time.Hour)
+	repo.deployments[dep.ID].StageStartedAt = &past
+	got, err = engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, got.CurrentStage)
+	assert.Equal(t, 60, got.EffectiveCanaryPercent())
+}
+
+func TestEngine_Rolling_MaxUnavailableHolds(t *testing.T) {
+	repo := newMockRepo()
+	fleet := newMockFleet(20)
+	fleet.unavailable = 3
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, fleet, nil)
+	dep := createRollingDep(repo, &RollingConfig{BatchSize: 5, BatchInterval: "0s", MaxUnavailable: 2})
+	_, err := engine.StartDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+
+	got, err := engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.CurrentStage, "3 unavailable > max 2: held")
+
+	fleet.unavailable = 2
+	got, err = engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, got.CurrentStage)
+}
+
+func TestEngine_Rolling_GateFailureRollsBack(t *testing.T) {
+	repo := newMockRepo()
+	tel := &mockTelemetry{stats: &DeploymentStats{}}
+	engine := NewEngine(repo, tel, newMockFleet(20), nil)
+	dep := createRollingDep(repo, &RollingConfig{BatchSize: 5, BatchInterval: "0s"})
+	dep.HealthGate = DefaultHealthGate()
+	_, err := engine.StartDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	got, err := engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, got.CurrentStage)
+
+	tel.stats = &DeploymentStats{TotalEvents: 40, ErrorCount: 20, ErrorRate: 0.5}
+	got, err = engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "ROLLED_BACK", got.Status)
+	assert.Equal(t, 2, got.CurrentStage, "stopped in stage 2")
 }
 
 func TestEngine_HealthGate_DefaultWhenNoGate(t *testing.T) {

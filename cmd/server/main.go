@@ -113,7 +113,7 @@ func run() error {
 	deploySvc.SetEngine(deployEngine)
 	versionChecker := deploy.NewVersionAdapter(pool)
 	deploySvc.SetVersionChecker(versionChecker)
-	deployTicker := deploy.NewTicker(deployEngine, deployRepo, 30*time.Second, logger)
+	deployTicker := deploy.NewTicker(deployEngine, deployRepo, cfg.DeployTickInterval, logger)
 	go deployTicker.Start(ctx)
 
 	// Intelligence layer
@@ -154,7 +154,7 @@ func run() error {
 	experimentRepo := experiment.NewRepository(pool)
 	experimentSvc := experiment.NewService(experimentRepo, logger)
 	experimentSvc.SetVersionChecker(versionChecker)
-	experimentTicker := experiment.NewTicker(experimentSvc, 60*time.Second, logger)
+	experimentTicker := experiment.NewTicker(experimentSvc, cfg.ExperimentTickInterval, logger)
 	go experimentTicker.Start(ctx)
 	experimentBridge := experiment.NewBridge(experimentSvc, orchestrator, logger)
 	deviceSvc.SetExperimentAssigner(experimentBridge)
@@ -162,7 +162,7 @@ func run() error {
 	// Drift detection
 	driftAdapter := drift.NewAdapter(pool)
 	driftDetector := drift.NewDetector(driftAdapter, driftAdapter, logger)
-	driftTicker := drift.NewTicker(driftDetector, driftAdapter, 5*time.Minute, logger)
+	driftTicker := drift.NewTicker(driftDetector, driftAdapter, cfg.DriftTickInterval, logger)
 	go driftTicker.Start(ctx)
 
 	// Admin API keys: make sure a fresh install has one.

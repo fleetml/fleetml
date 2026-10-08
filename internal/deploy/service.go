@@ -153,14 +153,23 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 
 	// Rolling config
 	if strategy == "ROLLING" {
-		if input.RollingConfig == nil {
-			d.RollingConfig = &RollingConfig{BatchSize: 10, BatchInterval: "1m", MaxUnavailable: 10}
-		} else {
-			if input.RollingConfig.BatchSize <= 0 {
-				return nil, fmt.Errorf("%w: batch_size must be > 0", ErrInvalidInput)
-			}
-			d.RollingConfig = input.RollingConfig
+		rc := input.RollingConfig
+		if rc == nil {
+			rc = DefaultRollingConfig()
 		}
+		if (rc.BatchSize > 0) == (rc.BatchSizePercent > 0) {
+			return nil, fmt.Errorf("%w: set exactly one of batch_size (devices) or batch_size_percent", ErrInvalidInput)
+		}
+		if rc.BatchSize < 0 || rc.BatchSizePercent < 0 || rc.BatchSizePercent > 100 || rc.MaxUnavailable < 0 {
+			return nil, fmt.Errorf("%w: batch_size, batch_size_percent (1-100) and max_unavailable must not be negative", ErrInvalidInput)
+		}
+		if rc.BatchInterval == "" {
+			rc.BatchInterval = DefaultRollingConfig().BatchInterval
+		}
+		if _, err := time.ParseDuration(rc.BatchInterval); err != nil {
+			return nil, fmt.Errorf("%w: invalid batch_interval %q: %v", ErrInvalidInput, rc.BatchInterval, err)
+		}
+		d.RollingConfig = rc
 	}
 
 	// Health gate: canary and rolling deployments always get one.

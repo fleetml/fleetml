@@ -33,7 +33,8 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 
 const deployColumns = `id, project_id, model_version_id, name, target_selector, strategy,
 	canary_percentage, canary_stages, current_stage, rolling_config, health_gate,
-	previous_version_id, rollback_reason, status, created_by, created_at, updated_at, completed_at`
+	previous_version_id, rollback_reason, status, created_by, created_at, updated_at, completed_at,
+	stage_started_at, rollout_threshold`
 
 func (r *Repo) Create(ctx context.Context, d *Deployment) error {
 	selectorJSON, _ := json.Marshal(d.TargetSelector)
@@ -70,7 +71,7 @@ func scanDeployment(row pgx.Row) (*Deployment, error) {
 		&d.ID, &d.ProjectID, &d.ModelVersionID, &d.Name, &selectorJSON, &d.Strategy,
 		&d.CanaryPercentage, &stagesJSON, &d.CurrentStage, &rollingJSON, &gateJSON,
 		&d.PreviousVersionID, &d.RollbackReason, &d.Status, &d.CreatedBy,
-		&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt,
+		&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &d.StageStartedAt, &d.RolloutThreshold,
 	)
 	if err != nil {
 		return nil, err
@@ -122,7 +123,7 @@ func (r *Repo) List(ctx context.Context, limit, offset int) ([]Deployment, int, 
 			&d.ID, &d.ProjectID, &d.ModelVersionID, &d.Name, &selectorJSON, &d.Strategy,
 			&d.CanaryPercentage, &stagesJSON, &d.CurrentStage, &rollingJSON, &gateJSON,
 			&d.PreviousVersionID, &d.RollbackReason, &d.Status, &d.CreatedBy,
-			&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &total,
+			&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &d.StageStartedAt, &d.RolloutThreshold, &total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("deployment.List: scanning: %w", err)
 		}
@@ -178,12 +179,13 @@ func (r *Repo) Update(ctx context.Context, d *Deployment) error {
 	query := `UPDATE deployments SET
 		status = $1, canary_stages = $2, current_stage = $3, rolling_config = $4,
 		health_gate = $5, previous_version_id = $6, rollback_reason = $7,
-		target_selector = $8, completed_at = $9
-		WHERE id = $10 RETURNING updated_at`
+		target_selector = $8, completed_at = $9, stage_started_at = $10, rollout_threshold = $11
+		WHERE id = $12 RETURNING updated_at`
 
 	err := r.pool.QueryRow(ctx, query,
 		d.Status, stagesJSON, d.CurrentStage, rollingJSON, gateJSON,
-		d.PreviousVersionID, d.RollbackReason, selectorJSON, d.CompletedAt, d.ID,
+		d.PreviousVersionID, d.RollbackReason, selectorJSON, d.CompletedAt,
+		d.StageStartedAt, d.RolloutThreshold, d.ID,
 	).Scan(&d.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

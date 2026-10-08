@@ -104,7 +104,8 @@ func TestCreateDeployment(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.NotNil(t, d.RollingConfig)
-		assert.Equal(t, 10, d.RollingConfig.BatchSize)
+		assert.Equal(t, 10, d.RollingConfig.BatchSizePercent)
+		assert.Equal(t, "5m", d.RollingConfig.BatchInterval)
 	})
 
 	t.Run("rolling invalid batch size", func(t *testing.T) {

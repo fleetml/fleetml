@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/fleetml/fleetml/internal/rollout"
 )
 
 // TelemetryQuerier provides telemetry for health gate evaluation.
@@ -49,7 +52,9 @@ var validTransitions = map[string]map[string]bool{
 	"COMPLETE":    {"ROLLED_BACK": true},
 }
 
-const defaultMaxRollingBatches = 10
+// unavailableSeenWithin limits max_unavailable to devices that are online:
+// an offline device must not hold a rollout forever.
+const unavailableSeenWithin = 5 * time.Minute
 
 // Engine manages the lifecycle of deployments.
 type Engine struct {
@@ -87,9 +92,18 @@ func (e *Engine) StartDeployment(ctx context.Context, deploymentID uuid.UUID) (*
 			now := time.Now()
 			dep.CanaryStages[0].Status = "ACTIVE"
 			dep.CanaryStages[0].StartedAt = &now
+			dep.StageStartedAt = &now
 		}
 	case "ROLLING":
 		dep.Status = "ROLLING_OUT"
+		dep.CurrentStage = 1
+		now := time.Now()
+		dep.StageStartedAt = &now
+		threshold, err := e.rollingThreshold(ctx, dep, 1)
+		if err != nil {
+			return nil, fmt.Errorf("computing first batch: %w", err)
+		}
+		dep.RolloutThreshold = &threshold
 	default:
 		dep.Status = "COMPLETE"
 		now := time.Now()
@@ -175,6 +189,7 @@ func (e *Engine) progressCanary(ctx context.Context, dep *Deployment) (*Deployme
 		nextStage := &dep.CanaryStages[dep.CurrentStage]
 		nextStage.Status = "ACTIVE"
 		nextStage.StartedAt = &now
+		dep.StageStartedAt = &now
 	}
 
 	if err := e.repo.Update(ctx, dep); err != nil {
@@ -186,36 +201,96 @@ func (e *Engine) progressCanary(ctx context.Context, dep *Deployment) (*Deployme
 	return dep, nil
 }
 
+// progressRolling advances a rolling deployment by one batch once the batch
+// interval has elapsed since the stage started (the health gate has already
+// passed), unless more than max_unavailable exposed devices have not yet
+// reported the new version loaded. When every targeted device is exposed
+// and the interval has elapsed again, the deployment completes.
 func (e *Engine) progressRolling(ctx context.Context, dep *Deployment) (*Deployment, error) {
-	batchSize := 10
-	maxBatches := defaultMaxRollingBatches
-	if dep.RollingConfig != nil && dep.RollingConfig.BatchSize > 0 {
-		batchSize = dep.RollingConfig.BatchSize
+	rc := dep.RollingConfig
+	if rc == nil {
+		rc = DefaultRollingConfig()
+	}
+	interval, err := time.ParseDuration(rc.BatchInterval)
+	if err != nil {
+		interval = 0
+	}
+	if dep.StageStartedAt != nil && time.Since(*dep.StageStartedAt) < interval {
+		return dep, nil
 	}
 
-	// Determine total batches needed
-	if e.devices != nil {
-		total, err := e.devices.CountMatchingDevices(ctx, dep.TargetSelector)
-		if err == nil && total > 0 {
-			maxBatches = (total + batchSize - 1) / batchSize
+	if rc.MaxUnavailable > 0 {
+		cohort, err := e.cohort(ctx, dep)
+		if err != nil {
+			return dep, nil // hold: cannot tell which devices are exposed
+		}
+		unavailable, err := e.devices.CountUnavailable(ctx, cohort, dep.ModelVersionID, time.Now().Add(-unavailableSeenWithin))
+		if err != nil {
+			return dep, nil // hold
+		}
+		if unavailable > rc.MaxUnavailable {
+			if e.logger != nil {
+				e.logger.Info("rolling deployment held: too many unavailable devices",
+					"deployment_id", dep.ID, "unavailable", unavailable, "max_unavailable", rc.MaxUnavailable)
+			}
+			return dep, nil
 		}
 	}
 
-	// Advance batch
-	dep.CurrentStage++
-	if dep.CurrentStage >= maxBatches {
-		now := time.Now()
+	now := time.Now()
+	if dep.RolloutThreshold != nil && *dep.RolloutThreshold >= rollout.RingSize {
 		dep.Status = "COMPLETE"
 		dep.CompletedAt = &now
+	} else {
+		next := dep.CurrentStage + 1
+		threshold, err := e.rollingThreshold(ctx, dep, next)
+		if err != nil {
+			return dep, nil // hold until the device list can be read
+		}
+		dep.CurrentStage = next
+		dep.RolloutThreshold = &threshold
+		dep.StageStartedAt = &now
 	}
 
 	if err := e.repo.Update(ctx, dep); err != nil {
 		return nil, fmt.Errorf("progressing rolling: %w", err)
 	}
 	if e.logger != nil {
-		e.logger.Info("rolling progressed", "deployment_id", dep.ID, "batch", dep.CurrentStage, "status", dep.Status)
+		e.logger.Info("rolling progressed", "deployment_id", dep.ID, "stage", dep.CurrentStage,
+			"exposed_pct", dep.EffectiveCanaryPercent(), "status", dep.Status)
 	}
 	return dep, nil
+}
+
+// rollingThreshold is the ring threshold that exposes stage batches.
+// Percentage batches map directly onto the ring. Device-count batches sort
+// the targeted devices by ring position and cut after stage x batch_size
+// devices, so exactly that many current devices are exposed.
+func (e *Engine) rollingThreshold(ctx context.Context, dep *Deployment, stage int) (int64, error) {
+	rc := dep.RollingConfig
+	if rc == nil {
+		rc = DefaultRollingConfig()
+	}
+	if rc.BatchSizePercent > 0 {
+		return rollout.PercentThreshold(stage * rc.BatchSizePercent), nil
+	}
+	if e.devices == nil {
+		return 0, fmt.Errorf("no device directory configured")
+	}
+	targeted, err := e.devices.ListMatchingDevices(ctx, dep.TargetSelector)
+	if err != nil {
+		return 0, err
+	}
+	want := stage * rc.BatchSize
+	if want >= len(targeted) {
+		return rollout.RingSize, nil
+	}
+	positions := make([]int64, len(targeted))
+	for i, id := range targeted {
+		positions[i] = int64(rollout.Position(id, dep.ID))
+	}
+	sort.Slice(positions, func(i, j int) bool { return positions[i] < positions[j] })
+	return positions[want-1] + 1, nil
 }
 
 // PauseDeployment freezes a rollout.
@@ -442,10 +517,7 @@ func (e *Engine) GetHealthStatus(ctx context.Context, deploymentID uuid.UUID) (m
 
 	gate := e.EvaluateHealthGate(ctx, dep)
 
-	stagePct := 100
-	if dep.Strategy == "CANARY" && dep.CurrentStage < len(dep.CanaryStages) {
-		stagePct = dep.CanaryStages[dep.CurrentStage].Percentage
-	}
+	stagePct := dep.EffectiveCanaryPercent()
 
 	canProgress := dep.Status == "ROLLING_OUT" && gate.Healthy && !gate.Hold
 	result := map[string]interface{}{

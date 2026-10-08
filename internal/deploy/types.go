@@ -32,12 +32,16 @@ type Deployment struct {
 	RollingConfig     *RollingConfig    `json:"rolling_config,omitempty"`
 	HealthGate        *HealthGate       `json:"health_gate,omitempty"`
 	PreviousVersionID *uuid.UUID        `json:"previous_version_id,omitempty"`
-	RollbackReason    string            `json:"rollback_reason,omitempty"`
-	Status            string            `json:"status"`
-	CreatedBy         string            `json:"created_by"`
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
-	CompletedAt       *time.Time        `json:"completed_at,omitempty"`
+	StageStartedAt    *time.Time        `json:"stage_started_at,omitempty"`
+	// RolloutThreshold is the hash-ring position below which a rolling
+	// deployment's devices are exposed (see internal/rollout).
+	RolloutThreshold *int64     `json:"-"`
+	RollbackReason   string     `json:"rollback_reason,omitempty"`
+	Status           string     `json:"status"`
+	CreatedBy        string     `json:"created_by"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
 }
 
 // CanaryStage defines a stage in a canary rollout.
@@ -49,11 +53,22 @@ type CanaryStage struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
-// RollingConfig configures rolling deployments.
+// RollingConfig configures rolling deployments. Stage N exposes N batches:
+// either N x BatchSizePercent percent of the targeted devices, or
+// N x BatchSize devices. Set exactly one of the two.
 type RollingConfig struct {
-	BatchSize      int    `json:"batch_size"`
-	BatchInterval  string `json:"batch_interval"`
-	MaxUnavailable int    `json:"max_unavailable"`
+	BatchSize        int    `json:"batch_size,omitempty"`
+	BatchSizePercent int    `json:"batch_size_percent,omitempty"`
+	BatchInterval    string `json:"batch_interval"`
+	// MaxUnavailable holds the rollout while more than this many exposed,
+	// recently seen devices have not yet reported the new version loaded.
+	// 0 disables the check.
+	MaxUnavailable int `json:"max_unavailable"`
+}
+
+// DefaultRollingConfig is used when a rolling deployment has no config.
+func DefaultRollingConfig() *RollingConfig {
+	return &RollingConfig{BatchSizePercent: 10, BatchInterval: "5m"}
 }
 
 // HealthGate defines conditions that must be met to continue a rollout.
@@ -88,6 +103,9 @@ func (d *Deployment) Exposes(deviceID uuid.UUID) bool {
 		pct := d.EffectiveCanaryPercent()
 		return pct <= 0 || pct >= 100 || rollout.InCanary(deviceID, d.ID, pct)
 	}
+	if d.Strategy == "ROLLING" {
+		return d.RolloutThreshold != nil && rollout.Exposed(deviceID, d.ID, *d.RolloutThreshold)
+	}
 	return true
 }
 
@@ -95,6 +113,9 @@ func (d *Deployment) Exposes(deviceID uuid.UUID) bool {
 func (d *Deployment) stageStartedAt() time.Time {
 	if d.Strategy == "CANARY" && d.CurrentStage < len(d.CanaryStages) && d.CanaryStages[d.CurrentStage].StartedAt != nil {
 		return *d.CanaryStages[d.CurrentStage].StartedAt
+	}
+	if d.StageStartedAt != nil {
+		return *d.StageStartedAt
 	}
 	return d.UpdatedAt
 }
@@ -116,10 +137,13 @@ func (d *Deployment) EffectiveCanaryPercent() int {
 		}
 		return 100
 	case "ROLLING":
-		if d.Status == "COMPLETE" {
-			return 100
+		if d.Status == "COMPLETE" || d.RolloutThreshold == nil {
+			if d.Status == "COMPLETE" {
+				return 100
+			}
+			return 0
 		}
-		return 100 // Rolling uses batch logic, not percentage
+		return int((*d.RolloutThreshold*100 + rollout.RingSize/2) / rollout.RingSize)
 	default:
 		return 100
 	}

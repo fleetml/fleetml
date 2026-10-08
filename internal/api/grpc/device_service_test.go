@@ -71,7 +71,7 @@ func (m *mockDeviceRepo) List(_ context.Context, _, _ int) ([]device.Device, int
 func (m *mockDeviceRepo) ListByLabels(_ context.Context, _ map[string]string, _, _ int) ([]device.Device, int, error) {
 	return nil, 0, nil
 }
-func (m *mockDeviceRepo) UpdateLastSeen(_ context.Context, id uuid.UUID) error {
+func (m *mockDeviceRepo) RecordHeartbeat(_ context.Context, id uuid.UUID, _ []string) error {
 	if _, ok := m.devices[id]; !ok {
 		return device.ErrNotFound
 	}

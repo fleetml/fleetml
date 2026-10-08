@@ -47,6 +47,9 @@ type DeploymentData struct {
 	Strategy       string
 	Status         string // ROLLING_OUT or COMPLETE
 	CanaryPercent  int
+	// RolloutThreshold is the ring position below which a rolling
+	// deployment's devices are exposed.
+	RolloutThreshold int64
 }
 
 // exposes reports whether the deployment currently delivers to this device.
@@ -58,6 +61,9 @@ func (d DeploymentData) exposes(deviceID uuid.UUID) bool {
 	}
 	if d.Strategy == "CANARY" && d.CanaryPercent > 0 && d.CanaryPercent < 100 {
 		return rollout.InCanary(deviceID, d.ID, d.CanaryPercent)
+	}
+	if d.Strategy == "ROLLING" {
+		return rollout.Exposed(deviceID, d.ID, d.RolloutThreshold)
 	}
 	return true
 }

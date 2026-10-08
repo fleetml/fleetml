@@ -65,7 +65,7 @@ func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]De
 	query := `SELECT d.id, COALESCE(mv.model_id, '00000000-0000-0000-0000-000000000000'::uuid), d.model_version_id,
 		COALESCE(m.name, ''), COALESCE(mv.version, ''),
 		d.target_selector, d.strategy, d.status, COALESCE(d.canary_percentage, 0),
-		COALESCE(d.canary_stages, '[]'::jsonb), COALESCE(d.current_stage, 0)
+		COALESCE(d.canary_stages, '[]'::jsonb), COALESCE(d.current_stage, 0), COALESCE(d.rollout_threshold, 0)
 		FROM deployments d
 		LEFT JOIN model_versions mv ON mv.id = d.model_version_id
 		LEFT JOIN models m ON m.id = mv.model_id
@@ -84,7 +84,7 @@ func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]De
 		var selectorJSON, stagesJSON []byte
 		var currentStage int
 		if err := rows.Scan(&d.ID, &d.ModelID, &d.ModelVersionID, &d.ModelName, &d.VersionString,
-			&selectorJSON, &d.Strategy, &d.Status, &d.CanaryPercent, &stagesJSON, &currentStage); err != nil {
+			&selectorJSON, &d.Strategy, &d.Status, &d.CanaryPercent, &stagesJSON, &currentStage, &d.RolloutThreshold); err != nil {
 			return nil, fmt.Errorf("deploymentRepoAdapter.ListActive: scanning: %w", err)
 		}
 		selector, err := ParseTargetSelector(selectorJSON)
