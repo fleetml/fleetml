@@ -32,6 +32,7 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
   const [minEvents, setMinEvents] = useState('20')
   const [onFailure, setOnFailure] = useState('ROLLBACK')
   const [start, setStart] = useState(true)
+  const [urgent, setUrgent] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -43,6 +44,7 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
       project_id: v.project.id, model_version_id: v.id, strategy, target_selector: parseLabels(labels),
       name: `${v.label} ${strategy.toLowerCase().replace(/_/g, ' ')}`,
       health_gate: { max_error_rate: Number(maxErrorRate) / 100, min_events: Number(minEvents), on_failure: onFailure },
+      urgent,
     }
     if (strategy === 'CANARY') {
       body.canary_stages = stages.split(',').map(s => Number(s.trim())).filter(n => n > 0).map(percentage => ({ percentage, min_duration: stageTime }))
@@ -98,6 +100,10 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
             </Field>
           </div>
         )}
+        <label className="flex items-center gap-2 text-sm text-gray-700 mb-2">
+          <input type="checkbox" name="urgent" checked={urgent} onChange={e => setUrgent(e.target.checked)} />
+          Urgent: devices download on any network, ignoring their download policy
+        </label>
         <label className="flex items-center gap-2 text-sm text-gray-700 mb-2">
           <input type="checkbox" checked={start} onChange={e => setStart(e.target.checked)} /> Start the rollout now
         </label>
@@ -163,7 +169,7 @@ export default function Deployments() {
       <Table head={['Model', 'Strategy', 'Status', 'Progress', 'Target', 'Created', '']} empty={deps.length === 0 ? 'No deployments' : undefined}
         mobile={deps.map(d => (
           <Card key={d.id} title={name(d)} subtitle={d.name !== name(d) ? d.name : undefined} badge={<StatusBadge status={d.status} />}
-            lines={[['Strategy', d.strategy.replace(/_/g, ' ')], ['Progress', progress(d)], ['Target', formatLabels(d.target_selector)], ['Created', shortDate(d.created_at)],
+            lines={[['Strategy', d.strategy.replace(/_/g, ' ') + (d.urgent ? ' (urgent)' : '')], ['Progress', progress(d)], ['Target', formatLabels(d.target_selector)], ['Created', shortDate(d.created_at)],
               ...(d.rollback_reason ? [['Reason', d.rollback_reason] as [string, string]] : [])]}
             actions={actions(d)} />
         ))}>
@@ -173,7 +179,10 @@ export default function Deployments() {
               {name(d)}
               {d.name && d.name !== name(d) && <div className="text-xs font-normal text-gray-500">{d.name}</div>}
             </td>
-            <td className="px-4 py-3 text-sm text-gray-700">{d.strategy.replace(/_/g, ' ')}</td>
+            <td className="px-4 py-3 text-sm text-gray-700">
+              {d.strategy.replace(/_/g, ' ')}
+              {d.urgent && <div className="text-xs font-medium text-amber-700">urgent</div>}
+            </td>
             <td className="px-4 py-3">
               <StatusBadge status={d.status} />
               {d.rollback_reason && <div className="mt-1 max-w-56 text-xs text-gray-500">{d.rollback_reason}</div>}

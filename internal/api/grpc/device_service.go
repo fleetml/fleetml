@@ -68,13 +68,28 @@ func (s *DeviceServiceServer) Register(ctx context.Context, req *fleetmlv1.Regis
 		DeviceId:       resp.DeviceID,
 		AuthToken:      resp.AuthToken,
 		TokenExpiresAt: resp.TokenExpiresAt.Unix(),
-		Config: &fleetmlv1.DeviceConfig{
-			HeartbeatIntervalSeconds:      resp.HeartbeatIntervalSecs,
-			TelemetryBatchSize:            resp.TelemetryBatchSize,
-			TelemetryFlushIntervalSeconds: resp.TelemetryFlushSecs,
-			MaxCacheSizeMb:                resp.MaxCacheSizeMB,
-		},
+		Config:         deviceConfigProto(resp.Config),
 	}, nil
+}
+
+func deviceConfigProto(c device.Config) *fleetmlv1.DeviceConfig {
+	policy := fleetmlv1.DownloadPolicy_DOWNLOAD_POLICY_UNSPECIFIED
+	switch c.DownloadPolicy {
+	case device.DownloadUnmeteredOrCharging:
+		policy = fleetmlv1.DownloadPolicy_UNMETERED_OR_CHARGING
+	case device.DownloadUnmeteredOnly:
+		policy = fleetmlv1.DownloadPolicy_UNMETERED_ONLY
+	case device.DownloadAnyNetwork:
+		policy = fleetmlv1.DownloadPolicy_ANY_NETWORK
+	}
+	return &fleetmlv1.DeviceConfig{
+		HeartbeatIntervalSeconds:           c.HeartbeatSecs,
+		BackgroundHeartbeatIntervalSeconds: c.BackgroundHeartbeatSecs,
+		TelemetryBatchSize:                 c.TelemetryBatchSize,
+		TelemetryFlushIntervalSeconds:      c.TelemetryFlushSecs,
+		MaxCacheSizeMb:                     c.MaxCacheMB,
+		DownloadPolicy:                     policy,
+	}
 }
 
 // Heartbeat handles device heartbeat.
@@ -132,6 +147,7 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 			BlobSizeBytes: a.BlobSizeBytes,
 			BlobSha256:    a.BlobSHA256,
 			Action:        action,
+			Urgent:        a.Urgent,
 		})
 	}
 
@@ -149,6 +165,7 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		Assignments:          protoAssignments,
 		Experiments:          protoExperiments,
 		NextHeartbeatSeconds: resp.NextHeartbeatSeconds,
+		Config:               deviceConfigProto(resp.Config),
 	}, nil
 }
 

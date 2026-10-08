@@ -73,6 +73,7 @@ type CreateInput struct {
 	CanaryStages   []CanaryStageInput
 	RollingConfig  *RollingConfig
 	HealthGate     *HealthGate
+	Urgent         bool
 	CreatedBy      string
 }
 
@@ -120,6 +121,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 		Status:            "PENDING",
 		CreatedBy:         input.CreatedBy,
 		PreviousVersionID: previous,
+		Urgent:            input.Urgent,
 	}
 
 	// Build canary stages

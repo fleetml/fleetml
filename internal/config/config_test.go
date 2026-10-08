@@ -68,17 +68,19 @@ func TestLoad_MissingRequired(t *testing.T) {
 func TestLoad_Invalid(t *testing.T) {
 	minimalEnv(t)
 	setEnv(t, map[string]string{
-		"JWT_SECRET":         "short",
-		"S3_ENDPOINT":        "http://localhost:19000",
-		"S3_PUBLIC_ENDPOINT": "10.0.2.2:19000/bucket",
-		"LOG_LEVEL":          "verbose",
-		"LOG_FORMAT":         "xml",
-		"ALERT_WEBHOOK_URL":  "hooks.example.com/x",
+		"JWT_SECRET":                           "short",
+		"S3_ENDPOINT":                          "http://localhost:19000",
+		"S3_PUBLIC_ENDPOINT":                   "10.0.2.2:19000/bucket",
+		"LOG_LEVEL":                            "verbose",
+		"LOG_FORMAT":                           "xml",
+		"ALERT_WEBHOOK_URL":                    "hooks.example.com/x",
+		"DEVICE_BACKGROUND_HEARTBEAT_INTERVAL": "5m",
+		"DEVICE_DOWNLOAD_POLICY":               "wifi",
 	})
 	_, err := Load()
 	require.Error(t, err)
 	for _, name := range []string{"JWT_SECRET must be at least 32", "S3_ENDPOINT must be host:port", "S3_PUBLIC_ENDPOINT must be host:port",
-		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL"} {
+		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL", "DEVICE_BACKGROUND_HEARTBEAT_INTERVAL", "DEVICE_DOWNLOAD_POLICY"} {
 		assert.ErrorContains(t, err, name)
 	}
 }

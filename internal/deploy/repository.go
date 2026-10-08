@@ -34,7 +34,7 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 const deployColumns = `id, project_id, model_version_id, name, target_selector, strategy,
 	canary_percentage, canary_stages, current_stage, rolling_config, health_gate,
 	previous_version_id, rollback_reason, status, created_by, created_at, updated_at, completed_at,
-	stage_started_at, rollout_threshold`
+	stage_started_at, rollout_threshold, urgent`
 
 func (r *Repo) Create(ctx context.Context, d *Deployment) error {
 	selectorJSON, _ := json.Marshal(d.TargetSelector)
@@ -49,14 +49,14 @@ func (r *Repo) Create(ctx context.Context, d *Deployment) error {
 
 	query := `INSERT INTO deployments (project_id, model_version_id, name, target_selector, strategy,
 		canary_percentage, canary_stages, current_stage, rolling_config, health_gate,
-		previous_version_id, rollback_reason, status, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		previous_version_id, rollback_reason, status, created_by, urgent)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		RETURNING id, created_at, updated_at`
 
 	err := r.pool.QueryRow(ctx, query,
 		d.ProjectID, d.ModelVersionID, d.Name, selectorJSON, d.Strategy,
 		d.CanaryPercentage, stagesJSON, d.CurrentStage, rollingJSON, gateJSON,
-		d.PreviousVersionID, d.RollbackReason, d.Status, d.CreatedBy,
+		d.PreviousVersionID, d.RollbackReason, d.Status, d.CreatedBy, d.Urgent,
 	).Scan(&d.ID, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("deployment.Create: %w", err)
@@ -71,7 +71,7 @@ func scanDeployment(row pgx.Row) (*Deployment, error) {
 		&d.ID, &d.ProjectID, &d.ModelVersionID, &d.Name, &selectorJSON, &d.Strategy,
 		&d.CanaryPercentage, &stagesJSON, &d.CurrentStage, &rollingJSON, &gateJSON,
 		&d.PreviousVersionID, &d.RollbackReason, &d.Status, &d.CreatedBy,
-		&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &d.StageStartedAt, &d.RolloutThreshold,
+		&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &d.StageStartedAt, &d.RolloutThreshold, &d.Urgent,
 	)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (r *Repo) List(ctx context.Context, limit, offset int) ([]Deployment, int, 
 			&d.ID, &d.ProjectID, &d.ModelVersionID, &d.Name, &selectorJSON, &d.Strategy,
 			&d.CanaryPercentage, &stagesJSON, &d.CurrentStage, &rollingJSON, &gateJSON,
 			&d.PreviousVersionID, &d.RollbackReason, &d.Status, &d.CreatedBy,
-			&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &d.StageStartedAt, &d.RolloutThreshold, &total,
+			&d.CreatedAt, &d.UpdatedAt, &d.CompletedAt, &d.StageStartedAt, &d.RolloutThreshold, &d.Urgent, &total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("deployment.List: scanning: %w", err)
 		}

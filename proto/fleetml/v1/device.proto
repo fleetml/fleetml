@@ -50,12 +50,31 @@ message RefreshTokenResponse {
   int64 token_expires_at = 2;
 }
 
-// Settings the SDK applies after registering.
+// Settings the device applies; sent at registration and with every heartbeat.
 message DeviceConfig {
+  // Heartbeat interval while the app is in the foreground.
   uint32 heartbeat_interval_seconds = 1;
   uint32 telemetry_batch_size = 2;
   uint32 max_cache_size_mb = 3;
   uint32 telemetry_flush_interval_seconds = 4;
+  // Interval of the background check (one heartbeat and one telemetry flush)
+  // while the app is in the background; the OS enforces at least 15 minutes.
+  uint32 background_heartbeat_interval_seconds = 5;
+  // Which networks non-urgent model downloads may use.
+  DownloadPolicy download_policy = 6;
+}
+
+// When a device may download a model that is not marked urgent. Urgent
+// assignments download on any connected network.
+enum DownloadPolicy {
+  // The device keeps its own default (UNMETERED_OR_CHARGING in the SDKs).
+  DOWNLOAD_POLICY_UNSPECIFIED = 0;
+  // An unmetered network (Wi-Fi, Ethernet), or any network while charging.
+  UNMETERED_OR_CHARGING = 1;
+  // Only an unmetered network.
+  UNMETERED_ONLY = 2;
+  // Any connected network.
+  ANY_NETWORK = 3;
 }
 
 message HeartbeatRequest {
@@ -82,6 +101,8 @@ message HeartbeatResponse {
   repeated ModelAssignment assignments = 1;
   repeated ExperimentAssignment experiments = 2;
   uint32 next_heartbeat_seconds = 3;
+  // The current device settings; apply them like the ones from Register.
+  DeviceConfig config = 4;
 }
 
 message ModelAssignment {
@@ -97,6 +118,9 @@ message ModelAssignment {
   Action action = 8;
   // The model version this assignment delivers; use it as model_version_id in telemetry.
   string version_id = 9;
+  // Download now on any connected network, ignoring the download policy
+  // (set by the deployment, and on rollbacks).
+  bool urgent = 10;
 
   enum Action {
     ACTION_UNSPECIFIED = 0;

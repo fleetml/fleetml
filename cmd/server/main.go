@@ -156,6 +156,14 @@ func run() error {
 	deviceClassRepo := device.NewDeviceClassRepo(pool)
 	deviceSvc := device.NewService(deviceRepo, deviceClassRepo, cfg.JWTSecret, logger)
 	deviceSvc.SetTokenTTL(cfg.DeviceTokenTTL)
+	deviceSvc.SetConfig(device.Config{
+		HeartbeatSecs:           uint32(cfg.DeviceHeartbeatInterval.Seconds()),
+		BackgroundHeartbeatSecs: uint32(cfg.DeviceBackgroundHeartbeatInterval.Seconds()),
+		TelemetryBatchSize:      uint32(cfg.DeviceTelemetryBatchSize),
+		TelemetryFlushSecs:      uint32(cfg.DeviceTelemetryFlushInterval.Seconds()),
+		MaxCacheMB:              device.DefaultConfig().MaxCacheMB,
+		DownloadPolicy:          cfg.DeviceDownloadPolicy,
+	})
 	enrollmentSvc := auth.NewEnrollmentService(auth.NewEnrollmentKeyRepo(pool))
 	deviceSvc.SetEnrollmentVerifier(enrollmentSvc)
 

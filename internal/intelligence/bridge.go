@@ -64,6 +64,7 @@ func (b *Bridge) ComputeAssignments(ctx context.Context, dev *device.Device, cur
 			BlobSizeBytes: uint64(a.BlobSizeBytes),
 			BlobSHA256:    a.BlobSHA256,
 			Action:        a.Action,
+			Urgent:        a.Urgent,
 		})
 	}
 	return result, nil

@@ -67,6 +67,7 @@ func TestE2E_RollbackFromComplete(t *testing.T) {
 		}
 	}
 	require.NotNil(t, update, "rollback sends an UPDATE, not a bare UNLOAD")
+	assert.True(t, update.Urgent, "a rollback downloads on any network")
 	assert.Equal(t, v1, update.VersionId)
 	assert.Equal(t, sha1, update.BlobSha256)
 	assert.Equal(t, sha1, fetchSHA(t, update.DownloadUrl))
@@ -264,4 +265,21 @@ func TestE2E_TelemetryStaysInItsProject(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	assert.Equal(t, uint32(1), ack.AcceptedCount)
+}
+
+// An urgent deployment's assignments say so, and every heartbeat carries the
+// device config with the download policy for everything else.
+func TestE2E_UrgentAndDeviceConfig(t *testing.T) {
+	e := newEnv(t)
+	f := e.newFixture(t)
+	v1, _, _ := e.newVersion(t, f, "1.0.0", "")
+	labels := map[string]string{"suite": randHex(4)}
+	e.deploy(t, map[string]any{"project_id": f.project, "model_version_id": v1, "target_selector": labels, "urgent": true})
+	d := e.register(t, f.enrollKey, labels)
+	resp := e.heartbeat(t, d)
+	require.Len(t, resp.Assignments, 1)
+	assert.True(t, resp.Assignments[0].Urgent)
+	assert.Equal(t, fleetmlv1.DownloadPolicy_UNMETERED_OR_CHARGING, resp.Config.GetDownloadPolicy())
+	assert.GreaterOrEqual(t, resp.Config.GetBackgroundHeartbeatIntervalSeconds(), uint32(900))
+	assert.Positive(t, resp.Config.GetTelemetryBatchSize())
 }

@@ -21,6 +21,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// When a device may download a model that is not marked urgent. Urgent
+// assignments download on any connected network.
+type DownloadPolicy int32
+
+const (
+	// The device keeps its own default (UNMETERED_OR_CHARGING in the SDKs).
+	DownloadPolicy_DOWNLOAD_POLICY_UNSPECIFIED DownloadPolicy = 0
+	// An unmetered network (Wi-Fi, Ethernet), or any network while charging.
+	DownloadPolicy_UNMETERED_OR_CHARGING DownloadPolicy = 1
+	// Only an unmetered network.
+	DownloadPolicy_UNMETERED_ONLY DownloadPolicy = 2
+	// Any connected network.
+	DownloadPolicy_ANY_NETWORK DownloadPolicy = 3
+)
+
+// Enum value maps for DownloadPolicy.
+var (
+	DownloadPolicy_name = map[int32]string{
+		0: "DOWNLOAD_POLICY_UNSPECIFIED",
+		1: "UNMETERED_OR_CHARGING",
+		2: "UNMETERED_ONLY",
+		3: "ANY_NETWORK",
+	}
+	DownloadPolicy_value = map[string]int32{
+		"DOWNLOAD_POLICY_UNSPECIFIED": 0,
+		"UNMETERED_OR_CHARGING":       1,
+		"UNMETERED_ONLY":              2,
+		"ANY_NETWORK":                 3,
+	}
+)
+
+func (x DownloadPolicy) Enum() *DownloadPolicy {
+	p := new(DownloadPolicy)
+	*p = x
+	return p
+}
+
+func (x DownloadPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DownloadPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_fleetml_v1_device_proto_enumTypes[0].Descriptor()
+}
+
+func (DownloadPolicy) Type() protoreflect.EnumType {
+	return &file_fleetml_v1_device_proto_enumTypes[0]
+}
+
+func (x DownloadPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DownloadPolicy.Descriptor instead.
+func (DownloadPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{0}
+}
+
 type ModelAssignment_Action int32
 
 const (
@@ -57,11 +115,11 @@ func (x ModelAssignment_Action) String() string {
 }
 
 func (ModelAssignment_Action) Descriptor() protoreflect.EnumDescriptor {
-	return file_fleetml_v1_device_proto_enumTypes[0].Descriptor()
+	return file_fleetml_v1_device_proto_enumTypes[1].Descriptor()
 }
 
 func (ModelAssignment_Action) Type() protoreflect.EnumType {
-	return &file_fleetml_v1_device_proto_enumTypes[0]
+	return &file_fleetml_v1_device_proto_enumTypes[1]
 }
 
 func (x ModelAssignment_Action) Number() protoreflect.EnumNumber {
@@ -357,15 +415,21 @@ func (x *RefreshTokenResponse) GetTokenExpiresAt() int64 {
 	return 0
 }
 
-// Settings the SDK applies after registering.
+// Settings the device applies; sent at registration and with every heartbeat.
 type DeviceConfig struct {
-	state                         protoimpl.MessageState `protogen:"open.v1"`
-	HeartbeatIntervalSeconds      uint32                 `protobuf:"varint,1,opt,name=heartbeat_interval_seconds,json=heartbeatIntervalSeconds,proto3" json:"heartbeat_interval_seconds,omitempty"`
-	TelemetryBatchSize            uint32                 `protobuf:"varint,2,opt,name=telemetry_batch_size,json=telemetryBatchSize,proto3" json:"telemetry_batch_size,omitempty"`
-	MaxCacheSizeMb                uint32                 `protobuf:"varint,3,opt,name=max_cache_size_mb,json=maxCacheSizeMb,proto3" json:"max_cache_size_mb,omitempty"`
-	TelemetryFlushIntervalSeconds uint32                 `protobuf:"varint,4,opt,name=telemetry_flush_interval_seconds,json=telemetryFlushIntervalSeconds,proto3" json:"telemetry_flush_interval_seconds,omitempty"`
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Heartbeat interval while the app is in the foreground.
+	HeartbeatIntervalSeconds      uint32 `protobuf:"varint,1,opt,name=heartbeat_interval_seconds,json=heartbeatIntervalSeconds,proto3" json:"heartbeat_interval_seconds,omitempty"`
+	TelemetryBatchSize            uint32 `protobuf:"varint,2,opt,name=telemetry_batch_size,json=telemetryBatchSize,proto3" json:"telemetry_batch_size,omitempty"`
+	MaxCacheSizeMb                uint32 `protobuf:"varint,3,opt,name=max_cache_size_mb,json=maxCacheSizeMb,proto3" json:"max_cache_size_mb,omitempty"`
+	TelemetryFlushIntervalSeconds uint32 `protobuf:"varint,4,opt,name=telemetry_flush_interval_seconds,json=telemetryFlushIntervalSeconds,proto3" json:"telemetry_flush_interval_seconds,omitempty"`
+	// Interval of the background check (one heartbeat and one telemetry flush)
+	// while the app is in the background; the OS enforces at least 15 minutes.
+	BackgroundHeartbeatIntervalSeconds uint32 `protobuf:"varint,5,opt,name=background_heartbeat_interval_seconds,json=backgroundHeartbeatIntervalSeconds,proto3" json:"background_heartbeat_interval_seconds,omitempty"`
+	// Which networks non-urgent model downloads may use.
+	DownloadPolicy DownloadPolicy `protobuf:"varint,6,opt,name=download_policy,json=downloadPolicy,proto3,enum=fleetml.device.v1.DownloadPolicy" json:"download_policy,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DeviceConfig) Reset() {
@@ -424,6 +488,20 @@ func (x *DeviceConfig) GetTelemetryFlushIntervalSeconds() uint32 {
 		return x.TelemetryFlushIntervalSeconds
 	}
 	return 0
+}
+
+func (x *DeviceConfig) GetBackgroundHeartbeatIntervalSeconds() uint32 {
+	if x != nil {
+		return x.BackgroundHeartbeatIntervalSeconds
+	}
+	return 0
+}
+
+func (x *DeviceConfig) GetDownloadPolicy() DownloadPolicy {
+	if x != nil {
+		return x.DownloadPolicy
+	}
+	return DownloadPolicy_DOWNLOAD_POLICY_UNSPECIFIED
 }
 
 type HeartbeatRequest struct {
@@ -627,8 +705,10 @@ type HeartbeatResponse struct {
 	Assignments          []*ModelAssignment      `protobuf:"bytes,1,rep,name=assignments,proto3" json:"assignments,omitempty"`
 	Experiments          []*ExperimentAssignment `protobuf:"bytes,2,rep,name=experiments,proto3" json:"experiments,omitempty"`
 	NextHeartbeatSeconds uint32                  `protobuf:"varint,3,opt,name=next_heartbeat_seconds,json=nextHeartbeatSeconds,proto3" json:"next_heartbeat_seconds,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// The current device settings; apply them like the ones from Register.
+	Config        *DeviceConfig `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HeartbeatResponse) Reset() {
@@ -682,6 +762,13 @@ func (x *HeartbeatResponse) GetNextHeartbeatSeconds() uint32 {
 	return 0
 }
 
+func (x *HeartbeatResponse) GetConfig() *DeviceConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
 type ModelAssignment struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The model (stable across versions). Report it back in ModelStatus.model_id.
@@ -695,7 +782,10 @@ type ModelAssignment struct {
 	BlobSha256    string                 `protobuf:"bytes,7,opt,name=blob_sha256,json=blobSha256,proto3" json:"blob_sha256,omitempty"`
 	Action        ModelAssignment_Action `protobuf:"varint,8,opt,name=action,proto3,enum=fleetml.device.v1.ModelAssignment_Action" json:"action,omitempty"`
 	// The model version this assignment delivers; use it as model_version_id in telemetry.
-	VersionId     string `protobuf:"bytes,9,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	VersionId string `protobuf:"bytes,9,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
+	// Download now on any connected network, ignoring the download policy
+	// (set by the deployment, and on rollbacks).
+	Urgent        bool `protobuf:"varint,10,opt,name=urgent,proto3" json:"urgent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -791,6 +881,13 @@ func (x *ModelAssignment) GetVersionId() string {
 		return x.VersionId
 	}
 	return ""
+}
+
+func (x *ModelAssignment) GetUrgent() bool {
+	if x != nil {
+		return x.Urgent
+	}
+	return false
 }
 
 // The device's arm in a running experiment. Tag telemetry for
@@ -896,12 +993,14 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x14RefreshTokenResponse\x12\x1d\n" +
 	"\n" +
 	"auth_token\x18\x01 \x01(\tR\tauthToken\x12(\n" +
-	"\x10token_expires_at\x18\x02 \x01(\x03R\x0etokenExpiresAt\"\xf2\x01\n" +
+	"\x10token_expires_at\x18\x02 \x01(\x03R\x0etokenExpiresAt\"\x91\x03\n" +
 	"\fDeviceConfig\x12<\n" +
 	"\x1aheartbeat_interval_seconds\x18\x01 \x01(\rR\x18heartbeatIntervalSeconds\x120\n" +
 	"\x14telemetry_batch_size\x18\x02 \x01(\rR\x12telemetryBatchSize\x12)\n" +
 	"\x11max_cache_size_mb\x18\x03 \x01(\rR\x0emaxCacheSizeMb\x12G\n" +
-	" telemetry_flush_interval_seconds\x18\x04 \x01(\rR\x1dtelemetryFlushIntervalSeconds\"\xad\x01\n" +
+	" telemetry_flush_interval_seconds\x18\x04 \x01(\rR\x1dtelemetryFlushIntervalSeconds\x12Q\n" +
+	"%background_heartbeat_interval_seconds\x18\x05 \x01(\rR\"backgroundHeartbeatIntervalSeconds\x12J\n" +
+	"\x0fdownload_policy\x18\x06 \x01(\x0e2!.fleetml.device.v1.DownloadPolicyR\x0edownloadPolicy\"\xad\x01\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12C\n" +
 	"\rloaded_models\x18\x02 \x03(\v2\x1e.fleetml.device.v1.ModelStatusR\floadedModels\x127\n" +
@@ -916,11 +1015,12 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x10available_ram_mb\x18\x01 \x01(\rR\x0eavailableRamMb\x12'\n" +
 	"\x0fbattery_percent\x18\x02 \x01(\x02R\x0ebatteryPercent\x12*\n" +
 	"\x11cpu_usage_percent\x18\x03 \x01(\x02R\x0fcpuUsagePercent\x126\n" +
-	"\x17available_storage_bytes\x18\x04 \x01(\x04R\x15availableStorageBytes\"\xda\x01\n" +
+	"\x17available_storage_bytes\x18\x04 \x01(\x04R\x15availableStorageBytes\"\x93\x02\n" +
 	"\x11HeartbeatResponse\x12D\n" +
 	"\vassignments\x18\x01 \x03(\v2\".fleetml.device.v1.ModelAssignmentR\vassignments\x12I\n" +
 	"\vexperiments\x18\x02 \x03(\v2'.fleetml.device.v1.ExperimentAssignmentR\vexperiments\x124\n" +
-	"\x16next_heartbeat_seconds\x18\x03 \x01(\rR\x14nextHeartbeatSeconds\"\x96\x03\n" +
+	"\x16next_heartbeat_seconds\x18\x03 \x01(\rR\x14nextHeartbeatSeconds\x127\n" +
+	"\x06config\x18\x04 \x01(\v2\x1f.fleetml.device.v1.DeviceConfigR\x06config\"\xae\x03\n" +
 	"\x0fModelAssignment\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12\x1d\n" +
 	"\n" +
@@ -934,7 +1034,9 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"blobSha256\x12A\n" +
 	"\x06action\x18\b \x01(\x0e2).fleetml.device.v1.ModelAssignment.ActionR\x06action\x12\x1d\n" +
 	"\n" +
-	"version_id\x18\t \x01(\tR\tversionId\"B\n" +
+	"version_id\x18\t \x01(\tR\tversionId\x12\x16\n" +
+	"\x06urgent\x18\n" +
+	" \x01(\bR\x06urgent\"B\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04LOAD\x10\x01\x12\n" +
@@ -946,7 +1048,12 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\rexperiment_id\x18\x01 \x01(\tR\fexperimentId\x12\x19\n" +
 	"\barm_name\x18\x02 \x01(\tR\aarmName\x12(\n" +
 	"\x10model_version_id\x18\x03 \x01(\tR\x0emodelVersionId\x12\x15\n" +
-	"\x06arm_id\x18\x04 \x01(\tR\x05armId2\x9d\x02\n" +
+	"\x06arm_id\x18\x04 \x01(\tR\x05armId*q\n" +
+	"\x0eDownloadPolicy\x12\x1f\n" +
+	"\x1bDOWNLOAD_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15UNMETERED_OR_CHARGING\x10\x01\x12\x12\n" +
+	"\x0eUNMETERED_ONLY\x10\x02\x12\x0f\n" +
+	"\vANY_NETWORK\x10\x032\x9d\x02\n" +
 	"\rDeviceService\x12S\n" +
 	"\bRegister\x12\".fleetml.device.v1.RegisterRequest\x1a#.fleetml.device.v1.RegisterResponse\x12V\n" +
 	"\tHeartbeat\x12#.fleetml.device.v1.HeartbeatRequest\x1a$.fleetml.device.v1.HeartbeatResponse\x12_\n" +
@@ -964,42 +1071,45 @@ func file_fleetml_v1_device_proto_rawDescGZIP() []byte {
 	return file_fleetml_v1_device_proto_rawDescData
 }
 
-var file_fleetml_v1_device_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_fleetml_v1_device_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_fleetml_v1_device_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_fleetml_v1_device_proto_goTypes = []any{
-	(ModelAssignment_Action)(0),  // 0: fleetml.device.v1.ModelAssignment.Action
-	(*RegisterRequest)(nil),      // 1: fleetml.device.v1.RegisterRequest
-	(*RegisterResponse)(nil),     // 2: fleetml.device.v1.RegisterResponse
-	(*RefreshTokenRequest)(nil),  // 3: fleetml.device.v1.RefreshTokenRequest
-	(*RefreshTokenResponse)(nil), // 4: fleetml.device.v1.RefreshTokenResponse
-	(*DeviceConfig)(nil),         // 5: fleetml.device.v1.DeviceConfig
-	(*HeartbeatRequest)(nil),     // 6: fleetml.device.v1.HeartbeatRequest
-	(*ModelStatus)(nil),          // 7: fleetml.device.v1.ModelStatus
-	(*DeviceHealth)(nil),         // 8: fleetml.device.v1.DeviceHealth
-	(*HeartbeatResponse)(nil),    // 9: fleetml.device.v1.HeartbeatResponse
-	(*ModelAssignment)(nil),      // 10: fleetml.device.v1.ModelAssignment
-	(*ExperimentAssignment)(nil), // 11: fleetml.device.v1.ExperimentAssignment
-	nil,                          // 12: fleetml.device.v1.RegisterRequest.LabelsEntry
+	(DownloadPolicy)(0),          // 0: fleetml.device.v1.DownloadPolicy
+	(ModelAssignment_Action)(0),  // 1: fleetml.device.v1.ModelAssignment.Action
+	(*RegisterRequest)(nil),      // 2: fleetml.device.v1.RegisterRequest
+	(*RegisterResponse)(nil),     // 3: fleetml.device.v1.RegisterResponse
+	(*RefreshTokenRequest)(nil),  // 4: fleetml.device.v1.RefreshTokenRequest
+	(*RefreshTokenResponse)(nil), // 5: fleetml.device.v1.RefreshTokenResponse
+	(*DeviceConfig)(nil),         // 6: fleetml.device.v1.DeviceConfig
+	(*HeartbeatRequest)(nil),     // 7: fleetml.device.v1.HeartbeatRequest
+	(*ModelStatus)(nil),          // 8: fleetml.device.v1.ModelStatus
+	(*DeviceHealth)(nil),         // 9: fleetml.device.v1.DeviceHealth
+	(*HeartbeatResponse)(nil),    // 10: fleetml.device.v1.HeartbeatResponse
+	(*ModelAssignment)(nil),      // 11: fleetml.device.v1.ModelAssignment
+	(*ExperimentAssignment)(nil), // 12: fleetml.device.v1.ExperimentAssignment
+	nil,                          // 13: fleetml.device.v1.RegisterRequest.LabelsEntry
 }
 var file_fleetml_v1_device_proto_depIdxs = []int32{
-	12, // 0: fleetml.device.v1.RegisterRequest.labels:type_name -> fleetml.device.v1.RegisterRequest.LabelsEntry
-	5,  // 1: fleetml.device.v1.RegisterResponse.config:type_name -> fleetml.device.v1.DeviceConfig
-	7,  // 2: fleetml.device.v1.HeartbeatRequest.loaded_models:type_name -> fleetml.device.v1.ModelStatus
-	8,  // 3: fleetml.device.v1.HeartbeatRequest.health:type_name -> fleetml.device.v1.DeviceHealth
-	10, // 4: fleetml.device.v1.HeartbeatResponse.assignments:type_name -> fleetml.device.v1.ModelAssignment
-	11, // 5: fleetml.device.v1.HeartbeatResponse.experiments:type_name -> fleetml.device.v1.ExperimentAssignment
-	0,  // 6: fleetml.device.v1.ModelAssignment.action:type_name -> fleetml.device.v1.ModelAssignment.Action
-	1,  // 7: fleetml.device.v1.DeviceService.Register:input_type -> fleetml.device.v1.RegisterRequest
-	6,  // 8: fleetml.device.v1.DeviceService.Heartbeat:input_type -> fleetml.device.v1.HeartbeatRequest
-	3,  // 9: fleetml.device.v1.DeviceService.RefreshToken:input_type -> fleetml.device.v1.RefreshTokenRequest
-	2,  // 10: fleetml.device.v1.DeviceService.Register:output_type -> fleetml.device.v1.RegisterResponse
-	9,  // 11: fleetml.device.v1.DeviceService.Heartbeat:output_type -> fleetml.device.v1.HeartbeatResponse
-	4,  // 12: fleetml.device.v1.DeviceService.RefreshToken:output_type -> fleetml.device.v1.RefreshTokenResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	13, // 0: fleetml.device.v1.RegisterRequest.labels:type_name -> fleetml.device.v1.RegisterRequest.LabelsEntry
+	6,  // 1: fleetml.device.v1.RegisterResponse.config:type_name -> fleetml.device.v1.DeviceConfig
+	0,  // 2: fleetml.device.v1.DeviceConfig.download_policy:type_name -> fleetml.device.v1.DownloadPolicy
+	8,  // 3: fleetml.device.v1.HeartbeatRequest.loaded_models:type_name -> fleetml.device.v1.ModelStatus
+	9,  // 4: fleetml.device.v1.HeartbeatRequest.health:type_name -> fleetml.device.v1.DeviceHealth
+	11, // 5: fleetml.device.v1.HeartbeatResponse.assignments:type_name -> fleetml.device.v1.ModelAssignment
+	12, // 6: fleetml.device.v1.HeartbeatResponse.experiments:type_name -> fleetml.device.v1.ExperimentAssignment
+	6,  // 7: fleetml.device.v1.HeartbeatResponse.config:type_name -> fleetml.device.v1.DeviceConfig
+	1,  // 8: fleetml.device.v1.ModelAssignment.action:type_name -> fleetml.device.v1.ModelAssignment.Action
+	2,  // 9: fleetml.device.v1.DeviceService.Register:input_type -> fleetml.device.v1.RegisterRequest
+	7,  // 10: fleetml.device.v1.DeviceService.Heartbeat:input_type -> fleetml.device.v1.HeartbeatRequest
+	4,  // 11: fleetml.device.v1.DeviceService.RefreshToken:input_type -> fleetml.device.v1.RefreshTokenRequest
+	3,  // 12: fleetml.device.v1.DeviceService.Register:output_type -> fleetml.device.v1.RegisterResponse
+	10, // 13: fleetml.device.v1.DeviceService.Heartbeat:output_type -> fleetml.device.v1.HeartbeatResponse
+	5,  // 14: fleetml.device.v1.DeviceService.RefreshToken:output_type -> fleetml.device.v1.RefreshTokenResponse
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_fleetml_v1_device_proto_init() }
@@ -1012,7 +1122,7 @@ func file_fleetml_v1_device_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fleetml_v1_device_proto_rawDesc), len(file_fleetml_v1_device_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,

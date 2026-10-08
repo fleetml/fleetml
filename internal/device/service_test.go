@@ -254,9 +254,8 @@ func TestRegisterDevice_New(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.DeviceID)
 	assert.NotEmpty(t, resp.AuthToken)
-	assert.Equal(t, uint32(60), resp.HeartbeatIntervalSecs)
-	assert.Equal(t, uint32(100), resp.TelemetryBatchSize)
-	assert.Equal(t, uint32(512), resp.MaxCacheSizeMB)
+	assert.Equal(t, DefaultConfig(), resp.Config)
+	assert.Equal(t, DownloadUnmeteredOrCharging, resp.Config.DownloadPolicy)
 }
 
 func TestRegisterDevice_ReRegister(t *testing.T) {

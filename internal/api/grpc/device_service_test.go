@@ -267,6 +267,8 @@ func TestHeartbeat_WithValidToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, uint32(60), hbResp.NextHeartbeatSeconds)
+	assert.Equal(t, fleetmlv1.DownloadPolicy_UNMETERED_OR_CHARGING, hbResp.Config.GetDownloadPolicy(), "the heartbeat carries the device config")
+	assert.Equal(t, uint32(3600), hbResp.Config.GetBackgroundHeartbeatIntervalSeconds())
 }
 
 func TestHeartbeat_MissingToken(t *testing.T) {

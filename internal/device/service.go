@@ -19,12 +19,31 @@ const (
 	DefaultTokenTTL = 30 * 24 * time.Hour
 	// RefreshWindow is how close to expiry a token must be before RefreshToken
 	// issues a new one.
-	RefreshWindow        = 7 * 24 * time.Hour
-	defaultHeartbeatSecs = 60
-	defaultBatchSize     = 100
-	defaultFlushSecs     = 30
-	defaultMaxCacheMB    = 512
+	RefreshWindow = 7 * 24 * time.Hour
 )
+
+// Download policies for non-urgent model downloads (DeviceConfig.download_policy).
+const (
+	DownloadUnmeteredOrCharging = "unmetered_or_charging"
+	DownloadUnmeteredOnly       = "unmetered"
+	DownloadAnyNetwork          = "any"
+)
+
+// Config holds the device settings sent at registration and with every heartbeat.
+type Config struct {
+	HeartbeatSecs           uint32 // foreground heartbeat interval
+	BackgroundHeartbeatSecs uint32 // background check interval (the OS enforces >= 15 min)
+	TelemetryBatchSize      uint32
+	TelemetryFlushSecs      uint32
+	MaxCacheMB              uint32
+	DownloadPolicy          string // one of the Download* constants
+}
+
+// DefaultConfig is used unless the server is configured otherwise.
+func DefaultConfig() Config {
+	return Config{HeartbeatSecs: 60, BackgroundHeartbeatSecs: 3600, TelemetryBatchSize: 100,
+		TelemetryFlushSecs: 30, MaxCacheMB: 512, DownloadPolicy: DownloadUnmeteredOrCharging}
+}
 
 // RegisterRequest is the service-layer request for device registration.
 type RegisterRequest struct {
@@ -46,13 +65,10 @@ type RegisterRequest struct {
 
 // RegisterResponse is the service-layer response for device registration.
 type RegisterResponse struct {
-	DeviceID              string
-	AuthToken             string
-	TokenExpiresAt        time.Time
-	HeartbeatIntervalSecs uint32
-	TelemetryBatchSize    uint32
-	TelemetryFlushSecs    uint32
-	MaxCacheSizeMB        uint32
+	DeviceID       string
+	AuthToken      string
+	TokenExpiresAt time.Time
+	Config         Config
 }
 
 // HeartbeatRequest is the service-layer request for heartbeat.
@@ -74,6 +90,7 @@ type HeartbeatResponse struct {
 	Assignments          []ModelAssignment
 	Experiments          []ExperimentAssignment
 	NextHeartbeatSeconds uint32
+	Config               Config
 }
 
 // ModelAssignment tells the device to load/update/unload a model.
@@ -87,6 +104,7 @@ type ModelAssignment struct {
 	BlobSizeBytes uint64
 	BlobSHA256    string
 	Action        string // LOAD, UPDATE, UNLOAD
+	Urgent        bool   // download on any network
 }
 
 // ExperimentAssignment tells the device which experiment arm it is in. The
@@ -135,6 +153,7 @@ type Service struct {
 	enrollment     EnrollmentVerifier
 	tokenSecret    string
 	tokenTTL       time.Duration
+	config         Config
 	logger         *slog.Logger
 }
 
@@ -150,9 +169,13 @@ func NewService(
 		classes:     classes,
 		tokenSecret: tokenSecret,
 		tokenTTL:    DefaultTokenTTL,
+		config:      DefaultConfig(),
 		logger:      logger,
 	}
 }
+
+// SetConfig sets the device settings sent to devices.
+func (s *Service) SetConfig(c Config) { s.config = c }
 
 // SetAssignmentComputer sets the assignment computer (intelligence orchestrator).
 func (s *Service) SetAssignmentComputer(ac AssignmentComputer) {
@@ -236,13 +259,10 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		}
 
 		return &RegisterResponse{
-			DeviceID:              existing.ID.String(),
-			AuthToken:             token,
-			TokenExpiresAt:        expiresAt,
-			HeartbeatIntervalSecs: defaultHeartbeatSecs,
-			TelemetryBatchSize:    defaultBatchSize,
-			TelemetryFlushSecs:    defaultFlushSecs,
-			MaxCacheSizeMB:        defaultMaxCacheMB,
+			DeviceID:       existing.ID.String(),
+			AuthToken:      token,
+			TokenExpiresAt: expiresAt,
+			Config:         s.config,
 		}, nil
 	}
 	if !errors.Is(err, ErrNotFound) {
@@ -292,13 +312,10 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 	}
 
 	return &RegisterResponse{
-		DeviceID:              d.ID.String(),
-		AuthToken:             token,
-		TokenExpiresAt:        expiresAt,
-		HeartbeatIntervalSecs: defaultHeartbeatSecs,
-		TelemetryBatchSize:    defaultBatchSize,
-		TelemetryFlushSecs:    defaultFlushSecs,
-		MaxCacheSizeMB:        defaultMaxCacheMB,
+		DeviceID:       d.ID.String(),
+		AuthToken:      token,
+		TokenExpiresAt: expiresAt,
+		Config:         s.config,
 	}, nil
 }
 
@@ -396,7 +413,8 @@ func (s *Service) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*Heartb
 	return &HeartbeatResponse{
 		Assignments:          assignments,
 		Experiments:          experiments,
-		NextHeartbeatSeconds: defaultHeartbeatSecs,
+		NextHeartbeatSeconds: s.config.HeartbeatSecs,
+		Config:               s.config,
 	}, nil
 }
 

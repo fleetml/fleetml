@@ -82,6 +82,16 @@ Errors from devices outside the cohort never count.
 `GET /deployments/{id}/health` shows the effective gate, cohort size, stats and
 the verdict.
 
+## Urgent deployments and the download policy
+
+Devices download a new model only when their download policy allows it:
+by default on an unmetered network (Wi-Fi, Ethernet) or while charging, set
+for all devices with `DEVICE_DOWNLOAD_POLICY` ([CONFIG.md](CONFIG.md#devices)).
+A deployment created with `"urgent": true` (`fleetml deploy create --urgent`,
+or the dashboard's **Urgent** box) marks its assignments urgent, and devices
+download them on any connected network straight away. Use it for fixes that
+cannot wait for Wi-Fi; rollbacks are always urgent.
+
 ## Rollback, cancel and status
 
 | From \ to | ROLLING_OUT | PAUSED | COMPLETE | ROLLED_BACK | CANCELLED |
@@ -100,7 +110,9 @@ and returns `409 INVALID_TRANSITION` for anything else.
 - **Rollback** (automatic or `POST /deployments/{id}/rollback`) marks the
   deployment `ROLLED_BACK` and, if the previous version is known, creates a
   `COMPLETE` revert deployment of it with the same target selector. Devices get
-  an `UPDATE` back to the previous version with its URL and sha256.
+  an `UPDATE` back to the previous version with its URL and sha256. The revert
+  is urgent: devices fetch it on any network (usually they still have it
+  cached as their last-known-good version).
 - **Cancel** (`POST /deployments/{id}/cancel`) stops an unfinished deployment;
   its devices fall back to the previous active deployment of the model.
 

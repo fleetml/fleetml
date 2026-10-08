@@ -43,6 +43,12 @@ type Config struct {
 	DeployTickInterval     time.Duration `envconfig:"DEPLOY_TICK_INTERVAL" default:"30s"`
 	ExperimentTickInterval time.Duration `envconfig:"EXPERIMENT_TICK_INTERVAL" default:"60s"`
 	DriftTickInterval      time.Duration `envconfig:"DRIFT_TICK_INTERVAL" default:"5m"`
+	// Device settings sent at registration and with every heartbeat.
+	DeviceHeartbeatInterval           time.Duration `envconfig:"DEVICE_HEARTBEAT_INTERVAL" default:"60s"`
+	DeviceBackgroundHeartbeatInterval time.Duration `envconfig:"DEVICE_BACKGROUND_HEARTBEAT_INTERVAL" default:"1h"`
+	DeviceTelemetryBatchSize          int           `envconfig:"DEVICE_TELEMETRY_BATCH_SIZE" default:"100"`
+	DeviceTelemetryFlushInterval      time.Duration `envconfig:"DEVICE_TELEMETRY_FLUSH_INTERVAL" default:"30s"`
+	DeviceDownloadPolicy              string        `envconfig:"DEVICE_DOWNLOAD_POLICY" default:"unmetered_or_charging"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
 }
@@ -113,6 +119,23 @@ func (c Config) validate() error {
 	case "json", "text":
 	default:
 		fail("LOG_FORMAT must be json or text, got %q", c.LogFormat)
+	}
+	if c.DeviceHeartbeatInterval < 5*time.Second {
+		fail("DEVICE_HEARTBEAT_INTERVAL must be at least 5s, got %s", c.DeviceHeartbeatInterval)
+	}
+	if c.DeviceBackgroundHeartbeatInterval < 15*time.Minute {
+		fail("DEVICE_BACKGROUND_HEARTBEAT_INTERVAL must be at least 15m (the OS minimum), got %s", c.DeviceBackgroundHeartbeatInterval)
+	}
+	if c.DeviceTelemetryBatchSize < 1 || c.DeviceTelemetryBatchSize > 1000 {
+		fail("DEVICE_TELEMETRY_BATCH_SIZE must be between 1 and 1000, got %d", c.DeviceTelemetryBatchSize)
+	}
+	if c.DeviceTelemetryFlushInterval < time.Second {
+		fail("DEVICE_TELEMETRY_FLUSH_INTERVAL must be at least 1s, got %s", c.DeviceTelemetryFlushInterval)
+	}
+	switch c.DeviceDownloadPolicy {
+	case "unmetered_or_charging", "unmetered", "any":
+	default:
+		fail("DEVICE_DOWNLOAD_POLICY must be unmetered_or_charging, unmetered or any, got %q", c.DeviceDownloadPolicy)
 	}
 	if c.AlertWebhookURL != "" {
 		if u, err := url.Parse(c.AlertWebhookURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

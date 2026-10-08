@@ -35,13 +35,15 @@ type Deployment struct {
 	StageStartedAt    *time.Time        `json:"stage_started_at,omitempty"`
 	// RolloutThreshold is the hash-ring position below which a rolling
 	// deployment's devices are exposed (see internal/rollout).
-	RolloutThreshold *int64     `json:"-"`
-	RollbackReason   string     `json:"rollback_reason,omitempty"`
-	Status           string     `json:"status"`
-	CreatedBy        string     `json:"created_by"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+	RolloutThreshold *int64 `json:"-"`
+	RollbackReason   string `json:"rollback_reason,omitempty"`
+	// Urgent assignments download on any network, ignoring the device download policy.
+	Urgent      bool       `json:"urgent"`
+	Status      string     `json:"status"`
+	CreatedBy   string     `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 // CanaryStage defines a stage in a canary rollout.

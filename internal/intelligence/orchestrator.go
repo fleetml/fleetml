@@ -53,6 +53,7 @@ type DeploymentData struct {
 	// RolloutThreshold is the ring position below which a rolling
 	// deployment's devices are exposed.
 	RolloutThreshold int64
+	Urgent           bool
 }
 
 // exposes reports whether the deployment currently delivers to this device.
@@ -90,6 +91,7 @@ type Assignment struct {
 	BlobSHA256    string
 	Action        string // "LOAD", "UPDATE", "UNLOAD"
 	Reason        string
+	Urgent        bool // download on any network
 }
 
 // Orchestrator coordinates profiling, targeting, and selection.
@@ -238,6 +240,7 @@ func (o *Orchestrator) ComputeAssignments(
 			BlobSHA256:    findBlobSHA(variants, result.VariantID),
 			Action:        action,
 			Reason:        result.Reason,
+			Urgent:        dep.Urgent,
 		})
 	}
 

@@ -47,6 +47,7 @@ type createDeploymentRequest struct {
 	CanaryStages   []deploy.CanaryStageInput `json:"canary_stages"`
 	RollingConfig  *deploy.RollingConfig     `json:"rolling_config"`
 	HealthGate     *deploy.HealthGate        `json:"health_gate"`
+	Urgent         bool                      `json:"urgent"`
 	CreatedBy      string                    `json:"created_by"`
 }
 
@@ -65,6 +66,7 @@ func (h *DeploymentHandler) create(c *gin.Context) {
 		CanaryStages:   req.CanaryStages,
 		RollingConfig:  req.RollingConfig,
 		HealthGate:     req.HealthGate,
+		Urgent:         req.Urgent,
 		CreatedBy:      req.CreatedBy,
 	})
 	if err != nil {

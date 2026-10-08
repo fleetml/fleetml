@@ -240,9 +240,36 @@ Defined in [`proto/fleetml/v1`](../proto/fleetml/v1).
 | RPC | Credential | Purpose |
 |---|---|---|
 | `DeviceService/Register` | enrollment key | Register (or re-register) by hardware fingerprint; returns device ID, token and `DeviceConfig` |
-| `DeviceService/Heartbeat` | device token | Report loaded models; receive assignments, experiment arms, next interval |
+| `DeviceService/Heartbeat` | device token | Report loaded models; receive assignments, experiment arms, next interval and the current `DeviceConfig` |
 | `DeviceService/RefreshToken` | device token | Swap a token in its last 7 days for a new one |
 | `TelemetryService/ReportBatch` | device token | Send up to a batch of events; returns accepted and rejected counts |
+
+### What every client implements
+
+The Android and iOS SDKs follow these rules, and any other client (such as a
+device agent) must too:
+
+- **Identity.** Register with the enrollment key and a stable fingerprint
+  (64 hex characters); keep the token, refresh it in its last 7 days, and
+  re-register when a call returns `UNAUTHENTICATED`.
+- **Configuration.** Apply `DeviceConfig` from `Register` and from every
+  heartbeat: `heartbeat_interval_seconds` while active,
+  `background_heartbeat_interval_seconds` while in the background (one
+  heartbeat and one telemetry flush per run), `telemetry_batch_size`,
+  `telemetry_flush_interval_seconds`, `max_cache_size_mb`, and
+  `download_policy`.
+- **Downloads.** Download an assignment only when `download_policy` allows it
+  (`UNMETERED_OR_CHARGING` by default: an unmetered network, or any network
+  while charging; `UNMETERED_ONLY`; `ANY_NETWORK`), unless the assignment is
+  `urgent`, which needs only a connection. Resume interrupted downloads with an
+  HTTP `Range` request and check the sha256 before using the file.
+- **Activation.** Validate a downloaded model before switching to it; on
+  failure keep the current version (last-known-good) and report
+  `MODEL_LOAD_FAILED`. A replacement arrives as `UPDATE` (new) plus `UNLOAD`
+  (old): keep the old one until the new one is active.
+- **Telemetry.** Queue events persistently, send them in batches (never one
+  request per event), tag events of a model in an experiment with its
+  `arm_id`, and back off after failures.
 
 Deployments and the model lifecycle on a device:
 

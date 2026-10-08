@@ -70,6 +70,7 @@ export interface NewDeployment {
   canary_stages?: { percentage: number; min_duration: string }[];
   rolling_config?: { batch_size_percent: number; batch_interval: string };
   health_gate?: { max_error_rate: number; min_events: number; on_failure: string };
+  urgent?: boolean;
 }
 
 export interface NewExperiment {

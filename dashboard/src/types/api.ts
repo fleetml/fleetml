@@ -81,6 +81,7 @@ export interface Deployment {
   previous_version_id?: string;
   health_gate?: { max_error_rate: number; min_events: number; on_failure: string };
   rollback_reason?: string;
+  urgent?: boolean;
   created_at: string;
 }
 

@@ -42,6 +42,21 @@ and NATS, so it can start together with them.
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
 | `GRPC_REFLECTION` | `false` | Register gRPC server reflection, for tools like `grpcurl` without proto files |
 
+### Devices
+
+Sent to devices at registration and with every heartbeat; the SDKs and the
+agent apply them. The background interval is a lower bound for the operating
+system's scheduler, which never runs background work more often than every
+15 minutes.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEVICE_HEARTBEAT_INTERVAL` | `60s` | Heartbeat interval while the app is in the foreground (at least `5s`) |
+| `DEVICE_BACKGROUND_HEARTBEAT_INTERVAL` | `1h` | Interval of the background check (one heartbeat and one telemetry flush) while the app is in the background (at least `15m`) |
+| `DEVICE_TELEMETRY_BATCH_SIZE` | `100` | Events per telemetry batch (1 to 1000) |
+| `DEVICE_TELEMETRY_FLUSH_INTERVAL` | `30s` | How often queued telemetry is sent while the app is in the foreground |
+| `DEVICE_DOWNLOAD_POLICY` | `unmetered_or_charging` | Networks for non-urgent model downloads: `unmetered_or_charging`, `unmetered`, or `any`. Urgent deployments ignore it |
+
 ### Background loops
 
 | Variable | Default | Description |

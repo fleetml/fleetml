@@ -23,12 +23,14 @@ func newDeployCmd() *cobra.Command {
 
 func newDeployCreateCmd() *cobra.Command {
 	var versionID, strategy, target, healthGate, projectID string
+	var urgent bool
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create a deployment",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			body := map[string]interface{}{
 				"model_version_id": versionID,
 				"strategy":         strategy,
+				"urgent":           urgent,
 			}
 			if projectID != "" {
 				body["project_id"] = projectID
@@ -64,6 +66,7 @@ func newDeployCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&strategy, "strategy", "ALL_AT_ONCE", "Strategy")
 	cmd.Flags().StringVar(&target, "target", "", "Target selector JSON")
 	cmd.Flags().StringVar(&healthGate, "health-gate", "", "Health gate JSON")
+	cmd.Flags().BoolVar(&urgent, "urgent", false, "Devices download on any network, ignoring their download policy")
 	_ = cmd.MarkFlagRequired("version")
 	_ = cmd.MarkFlagRequired("project")
 	return cmd

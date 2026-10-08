@@ -391,6 +391,8 @@ func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason, trigge
 			Strategy:       "ALL_AT_ONCE",
 			Status:         "COMPLETE",
 			CreatedBy:      "system-rollback",
+			// Getting devices off a failing version must not wait for Wi-Fi.
+			Urgent: true,
 		}
 		revertNow := time.Now()
 		revert.CompletedAt = &revertNow
