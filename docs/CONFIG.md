@@ -26,7 +26,7 @@ missing or invalid variable.
 | `S3_ENDPOINT` | `localhost:19000` | Object store as `host:port`, without a scheme (the dev stack runs SeaweedFS) |
 | `S3_USE_SSL` | `false` | Reach the object store over HTTPS |
 | `S3_BUCKET` | `fleetml-models` | Bucket for model files; created at start-up if missing |
-| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19000` |
+| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100` |
 | `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline and alerts |
 | `MIGRATE_ON_START` | `false` | Apply the embedded database migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
 
@@ -79,8 +79,12 @@ NATS) publishes its services on these host ports:
 | `FLEETML_NATS_MONITOR_PORT` | `18222` | NATS monitoring |
 
 `deploy/docker-compose.prod.yml` (server, dashboard and their dependencies)
-reads `JWT_SECRET` (required) and `FLEETML_ADMIN_KEY` (optional) from the
-shell.
+publishes the dashboard on `:80`, the REST and gRPC APIs on `:18080` and
+`:19090`, and the object store on `FLEETML_S3_PUBLIC_PORT` (`19100`, so it can
+run next to the dev stack). It reads `JWT_SECRET` (required),
+`FLEETML_ADMIN_KEY` (optional) and `S3_PUBLIC_ENDPOINT` (default
+`localhost:19100`; set it to the object store's public `host:port` when
+devices are not on this machine) from the shell.
 
 ## CLI
 

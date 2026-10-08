@@ -1,123 +1,157 @@
 # FleetML
 
-**Fleet management for on-device ML.**
+Safe OTA rollouts, A/B experiments and drift detection for ML models running
+on devices, self-hosted, runtime-agnostic.
 
-FleetML is an open-source, runtime-agnostic, self-hosted-first platform for managing the complete lifecycle of ML models on edge devices, from model registry and versioning through OTA deployment, A/B testing, observability, and drift detection.
+FleetML decides which device runs which version of your model, ships the file,
+and watches what happens. Devices download a version only when a deployment or
+experiment targets them, verify its sha256, check that it loads before using
+it, and keep the previous version if it does not. A canary whose cohort starts
+failing rolls itself back. Your app runs the model with TensorFlow Lite,
+Core ML, ONNX Runtime or anything else; FleetML moves files and telemetry, not
+inferences.
+
+## The 60-second story
+
+<!-- GIF: a screen recording of ./scripts/demo.sh goes here (docs/demo.gif). -->
+
+[`scripts/demo.sh`](scripts/demo.sh) tells it against a real server and twenty
+simulated devices that use the same protocol as the SDKs (needs Docker, Go
+and jq; 47 seconds from a fresh stack):
+
+```text
+▶ 1. Publish three versions of a model
+  ✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)          (2.0.0 and 2.1.0 too)
+▶ 2. Twenty devices enroll and get 1.0.0
+  fleet: iris 1.0.0 on 20
+▶ 3. Drift: the last day's latency against the week before
+  latency drift for 1.0.0: NONE (PSI 0.044)
+  now the devices slow down (say, after an OS update)...
+  latency drift for 1.0.0: CRITICAL (PSI 8.511)
+  a change into CRITICAL is sent as an alert: 1 drift alert(s) on NATS
+▶ 4. A canary of 2.0.0 with a health gate; 2.0.0 is broken
+  fleet: iris 1.0.0 on 11, iris 2.0.0 on 9   (the canary cohort only)
+  deployment ROLLED_BACK: error rate 32.18% exceeds threshold 5.00% (56/174 events from 9 cohort devices)
+  fleet: iris 1.0.0 on 20, nobody outside the canary ever saw 2.0.0
+▶ 5. A/B test: 1.0.0 against the fixed 2.1.0
+  control 1.0.0:   450 inferences, mean 34 ms
+  treatment 2.1.0: 450 inferences, mean 14 ms
+  Welch t-test p < 0.0001, recommendation: ADOPT_TREATMENT
+  fleet: iris 2.1.0 on 20
+```
 
 ## Features
 
-- **Model Registry**: Version, store, and manage model variants (FP32, FP16, INT8, INT4) across frameworks (TFLite, ONNX, CoreML, GGUF); uploads are verified against their declared sha256 before a variant can be deployed
-- **Intelligent Variant Selection**: Automatically selects the optimal model variant based on device hardware capabilities
-- **Device Fleet Management**: Register, classify, and monitor edge devices with capability scoring (0-100)
-- **Deployment Strategies**: ALL_AT_ONCE, CANARY (staged, consistent hashing) and ROLLING (batches on the same hash ring, `max_unavailable`) with label targeting. Each device runs one version per model: the newest deployment that reaches it. See [docs/ROLLOUTS.md](docs/ROLLOUTS.md)
-- **Health gate and rollback**: on by default for canary and rolling (error rate over the current cohort's stage window, optional p95 latency regression against the previous version); a failing gate rolls back automatically. Manual rollback works after completion too and returns devices to the previous version; deployments can be cancelled
-- **A/B Experiments**: sticky cohorts, each arm's model delivered with a verified download, telemetry attributed per arm, and a fixed-horizon Welch t-test (no peeking) with `max_duration`
-- **Telemetry**: Device events over gRPC, through NATS into a TimescaleDB hypertable, with summary and time-bucketed series endpoints
-- **Drift Detection**: PSI on latency and confidence distributions per model version; a change into CRITICAL sends an alert
-- **Alerts**: rollback and drift alerts on NATS (`fleetml.alerts.*`) and an HMAC-signed, retried webhook
-- **Dashboard**: React UI for monitoring devices, deployments, experiments, telemetry, drift
-- **CLI**: `fleetml push`, `fleetml deploy`, `fleetml experiment`, `fleetml drift`
-- **Android SDK** ([guide](docs/ANDROID_SDK.md)): Kotlin, minSdk 26: register with an enrollment key, resumable sha256-verified downloads, validation before activation, last-known-good, offline start, persistent telemetry queue
-- **iOS SDK** ([guide](docs/IOS_SDK.md)): Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials
-- **Security**: admin API keys on the REST API, per-project device enrollment keys, revocable and refreshable device tokens, locked-down CORS (see [SECURITY.md](SECURITY.md))
+| Feature | Status | See it |
+|---|---|---|
+| **Model registry with integrity checks.** Files go straight to the S3-compatible store with presigned URLs; the server checks each upload's sha256 and size before the variant can be deployed | DONE | [Tour §1](docs/QUICKSTART.md#1-publish-a-model), e2e `TestE2E_ArtifactIntegrity` |
+| **Variant selection.** Several builds per version (runtime, quantization); each device gets one it can run, by OS runtime, RAM and capability score | DONE | [Tour §2](docs/QUICKSTART.md#2-a-fleet-and-a-rollout), [ROLLOUTS.md](docs/ROLLOUTS.md) |
+| **Canary rollouts with a health gate.** Staged percentages on a consistent-hash ring; the gate compares the exposed cohort's error rate (and optionally p95 latency against the previous version) with thresholds and rolls back or pauses | DONE | [Tour §3](docs/QUICKSTART.md#3-a-canary-that-rolls-itself-back), e2e `TestE2E_HealthGateIsCohortScoped` |
+| **Rolling rollouts.** Batches by device count or percentage at an interval, with the same gate | DONE | e2e `TestE2E_RollingBatches` |
+| **Rollback, cancel, one version per model.** Manual rollback (also after completion) returns devices to the previous version; the newest deployment that reaches a device wins | DONE | e2e `TestE2E_RollbackFromComplete` |
+| **A/B experiments.** Sticky cohorts, each arm's model delivered and verified, telemetry attributed per arm, a fixed-horizon Welch t-test and a maximum duration | DONE | [Tour §4](docs/QUICKSTART.md#4-an-ab-experiment), e2e `TestE2E_ABExperiment` |
+| **Drift detection.** PSI on inference latency and confidence, last 24 hours against the 7 days before, with history; a change into CRITICAL raises an alert | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
+| **Alerts.** Rollback and drift alerts on NATS and to an HMAC-signed webhook with retries | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alerts) |
+| **Android SDK.** Kotlin, minSdk 26: resumable verified downloads, validation before activation, last-known-good, offline start, persistent telemetry | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
+| **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md) |
+| **Battery and data.** Telemetry batched in a persistent queue, model downloads on Wi-Fi only by default, heartbeat and telemetry intervals set by the server | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md#telemetry), [IOS_SDK.md](docs/IOS_SDK.md#telemetry) |
+| **Background scheduling and charging-aware downloads** in the SDKs | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
+| **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
+| **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
+| **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
+| **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1` | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
+| **Linux device agent** for Jetson, Raspberry Pi and x86 edge boxes | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
+| **Artifact signing** verified on the device | PLANNED | [Roadmap](docs/ROADMAP.md#later) |
+| **Feature-level drift** from device-side input histograms | PLANNED | [Roadmap](docs/ROADMAP.md#later) |
 
-## Quick Start
+The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
-**Prerequisites**
+## Quickstart
 
-- [Docker](https://docs.docker.com/get-docker/) with Compose v2.20+ (running)
-- [Go 1.24+](https://go.dev/dl/)
-- [grpcurl](https://github.com/fullstorydev/grpcurl) and [jq](https://jqlang.github.io/jq/), to register a device from a terminal
-- [golang-migrate](https://github.com/golang-migrate/migrate) CLI, only for manual `make migrate-up` / `make migrate-down` (the quickstart runs migrations in Compose)
-- [Node.js 20+](https://nodejs.org/), only for the dashboard dev server
-
-**1. Run the server**
+Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
+APIs use 18080 (REST) and 19090 (gRPC).
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-make dev    # creates .env (random JWT_SECRET and FLEETML_ADMIN_KEY) if missing, starts Postgres/TimescaleDB,
-            # S3 storage (SeaweedFS), NATS, applies DB migrations, then runs the server
-            # on REST :18080 and gRPC :19090
+export JWT_SECRET=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
+docker compose -f deploy/docker-compose.prod.yml up -d --build
+until curl -sf localhost:18080/readyz; do sleep 2; done; echo
+curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects
+echo "Dashboard: http://localhost  (Settings → admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
-**2. Get your admin API key** (second terminal, same directory)
+Measured on a laptop, cold: **QUICKSTART_TIME** from `git clone` to a working
+UI and API, with no FleetML images or build cache present.
 
-Every `/api/v1` call needs `Authorization: Bearer <admin key>`. On first start the server stores `FLEETML_ADMIN_KEY` from `.env` as the bootstrap key:
+Next:
 
-```bash
-export FLEETML_API_KEY=$(grep '^FLEETML_ADMIN_KEY=' .env | cut -d= -f2)
-curl localhost:18080/healthz                                                  # {"db":"connected",...,"status":"ok"}
-curl -s -H "Authorization: Bearer $FLEETML_API_KEY" localhost:18080/api/v1/projects   # 200; without the header: 401
+- **See it work:** `./scripts/demo.sh` (Go and jq).
+- **Take the tour:** [docs/QUICKSTART.md](docs/QUICKSTART.md) walks through
+  publishing, rollouts, a canary rollback, an A/B test, drift and the
+  dashboard against these containers.
+- **Connect an app:** [Android](docs/ANDROID_SDK.md) or [iOS](docs/IOS_SDK.md).
+- **Develop:** `make dev` runs the server from source against the dev stack;
+  see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+To stop: `docker compose -f deploy/docker-compose.prod.yml down` (add `-v` to
+delete the data).
+
+## How it works
+
+```
+Android / iOS SDK ──gRPC :19090──▶ FleetML server ──▶ Postgres + TimescaleDB
+Dashboard, CLI ─────REST :18080──▶  (Go)           ──▶ NATS (telemetry, alerts)
+        └──────── presigned URLs ─────────────────────▶ S3-compatible object store
 ```
 
-If your `.env` predates `FLEETML_ADMIN_KEY`, the server generated a key on first start and logged it once: look for `admin_api_key` in its output.
+Devices heartbeat with the models they run and receive assignments: what to
+load, update or unload, with presigned download URLs and their experiment
+arms. Three background loops advance rollouts through the health gate,
+evaluate experiments and check drift. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+has the request paths, data model, device protocol and trust boundaries.
 
-**3. Create a project and an enrollment key, then register a device**
-
-Devices can only register with a per-project enrollment key. The key is shown once.
-
-```bash
-AUTH="Authorization: Bearer $FLEETML_API_KEY"
-PROJECT_ID=$(curl -s -H "$AUTH" -H 'Content-Type: application/json' -d '{"name":"demo"}' \
-  localhost:18080/api/v1/projects | jq -r .data.id)
-ENROLL_KEY=$(curl -s -H "$AUTH" -H 'Content-Type: application/json' -d '{"name":"quickstart"}' \
-  localhost:18080/api/v1/projects/$PROJECT_ID/enrollment-keys | jq -r .data.key)
-
-# Register a device the way the SDK does (fingerprint = 64 hex chars)
-grpcurl -plaintext -import-path proto -proto fleetml/v1/device.proto -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"enrollment_key\":\"$ENROLL_KEY\"}" \
-  localhost:19090 fleetml.device.v1.DeviceService/Register             # returns deviceId, authToken, tokenExpiresAt
-
-curl -s -H "$AUTH" localhost:18080/api/v1/devices | jq '.data[] | {id, os, project_id}'
-```
-
-**4. Dashboard and CLI**
-
-```bash
-make dashboard-dev                          # http://localhost:5173 → Settings → paste the admin key
-go run ./cmd/fleetml config set-key "$FLEETML_API_KEY"   # or keep FLEETML_API_KEY exported
-go run ./cmd/fleetml project list
-```
-
-In the Android SDK, pass the enrollment key as `FleetMLConfig(enrollmentKey = ...)`; the sample app reads `fleetml.enrollmentKey` from `android/local.properties`. In the iOS SDK it is `FleetMLConfig(serverHost:enrollmentKey:)`; see [docs/IOS_SDK.md](docs/IOS_SDK.md).
-
-**Containers only** (server + dashboard): `export JWT_SECRET=$(openssl rand -base64 32)`, then `docker compose -f deploy/docker-compose.prod.yml up -d --build`. The API is on `:18080` and the dashboard on `:80`. Set `FLEETML_ADMIN_KEY` in your shell before the first start, or read the generated key with `docker compose -f deploy/docker-compose.prod.yml logs server | grep admin_api_key`.
-
-### Credentials at a glance
-
-| Credential | Who uses it | Create / manage |
+| Credential | Who uses it | Manage |
 |---|---|---|
 | Admin API key | Dashboard, CLI, scripts (`Authorization: Bearer`) | `POST/GET /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke` |
-| Enrollment key | A device's first `Register` (per project) | `POST/GET /api/v1/projects/{id}/enrollment-keys`, `POST /api/v1/enrollment-keys/{id}/rotate`, `.../revoke` |
-| Device token | Every device RPC after `Register` (30 days) | `RefreshToken` RPC in the last 7 days; `POST /api/v1/devices/{id}/revoke` |
+| Enrollment key | An app's first device registration, per project | `POST/GET /api/v1/projects/{id}/enrollment-keys`, `POST /api/v1/enrollment-keys/{id}/rotate`, `.../revoke` |
+| Device token | Every device call after registering (30 days, refreshed by the SDK) | `POST /api/v1/devices/{id}/revoke` |
 
 ## Configuration
 
-The server is configured with environment variables; [docs/CONFIG.md](docs/CONFIG.md) lists every one, for the server, Docker Compose, the CLI, the dashboard and the test scripts. `.env.example` is a ready-to-use dev set. The essentials:
+The server is configured with environment variables; [docs/CONFIG.md](docs/CONFIG.md)
+lists every one, for the server, Docker Compose, the CLI, the dashboard and
+the test scripts. The essentials:
 
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_URL` | *(required)* | Postgres/TimescaleDB connection string |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | *(required)* | Object store credentials; `S3_ENDPOINT` defaults to `localhost:19000` |
+| `S3_PUBLIC_ENDPOINT` | *(unset)* | Where devices and the CLI reach the object store, if not `S3_ENDPOINT` |
 | `JWT_SECRET` | *(required)* | Signs device tokens; at least 32 characters |
 | `FLEETML_ADMIN_KEY` | *(generated)* | First admin API key; if unset, one is generated and logged once |
 | `REST_PORT`, `GRPC_PORT` | `18080`, `19090` | REST API and device gRPC API |
 | `NATS_URL` | `nats://localhost:14222` | Telemetry pipeline and alerts |
 | `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_SECRET` | *(unset)* | Signed webhook for rollback and drift alerts |
 
-The server checks its configuration at start-up and names every missing or invalid variable. Operations endpoints: `GET /livez`, `GET /readyz` (Postgres, S3 and NATS reachable), `GET /metrics` (Prometheus) on the REST port, and `grpc.health.v1` on the gRPC port.
+The server checks its configuration at start-up and names every missing or
+invalid variable.
 
-## Architecture
+## Documentation
 
-```
-Android/iOS: gRPC --> Go Server ──NATS--> TimescaleDB
-Dashboard  : REST --> (REST+gRPC)        S3 (SeaweedFS)
-CLI        : REST -->
-```
+| | |
+|---|---|
+| [Quickstart and tour](docs/QUICKSTART.md) | Run it, then every feature step by step |
+| [Rollouts, experiments and alerts](docs/ROLLOUTS.md) | Strategies, the health gate, statistics, webhooks |
+| [Architecture](docs/ARCHITECTURE.md) | Components, request paths, data model, trust boundaries |
+| [Configuration](docs/CONFIG.md) | Every environment variable |
+| [Android SDK](docs/ANDROID_SDK.md), [iOS SDK](docs/IOS_SDK.md) | Integration guides and device runbooks |
+| [Roadmap](docs/ROADMAP.md) | What comes next |
 
-## Security
+## Contributing, security and license
 
-Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md). FleetML does not terminate TLS itself: put the REST, gRPC and storage ports behind a TLS proxy before exposing them.
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Please report vulnerabilities privately
+as described in [SECURITY.md](SECURITY.md); FleetML does not terminate TLS
+itself, so put its ports behind a TLS proxy before exposing them.
 
-## License
-
-Apache 2.0
+FleetML is licensed under the [Apache License 2.0](LICENSE).
