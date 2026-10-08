@@ -22,7 +22,7 @@ func minimalEnv(t *testing.T) {
 		"DATABASE_URL":  "postgres://localhost/test",
 		"S3_ACCESS_KEY": "key",
 		"S3_SECRET_KEY": "secret",
-		"JWT_SECRET":    "test-secret",
+		"JWT_SECRET":    "test-secret-at-least-32-characters",
 	})
 }
 
@@ -37,7 +37,6 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "fleetml-models", cfg.S3Bucket)
 	assert.Equal(t, false, cfg.S3UseSSL)
 	assert.Equal(t, "nats://localhost:14222", cfg.NatsURL)
-	assert.Equal(t, "redis://localhost:16379", cfg.RedisURL)
 	assert.Equal(t, 19090, cfg.GRPCPort)
 	assert.Equal(t, 18080, cfg.RESTPort)
 	assert.Equal(t, "info", cfg.LogLevel)
@@ -62,7 +61,26 @@ func TestLoad_DeviceTokenTTL(t *testing.T) {
 func TestLoad_MissingRequired(t *testing.T) {
 	os.Clearenv()
 	_, err := Load()
-	assert.Error(t, err)
+	assert.ErrorContains(t, err, "DATABASE_URL", "the error names the missing variable")
+}
+
+// Every invalid variable is reported, each by name.
+func TestLoad_Invalid(t *testing.T) {
+	minimalEnv(t)
+	setEnv(t, map[string]string{
+		"JWT_SECRET":         "short",
+		"S3_ENDPOINT":        "http://localhost:19000",
+		"S3_PUBLIC_ENDPOINT": "10.0.2.2:19000/bucket",
+		"LOG_LEVEL":          "verbose",
+		"LOG_FORMAT":         "xml",
+		"ALERT_WEBHOOK_URL":  "hooks.example.com/x",
+	})
+	_, err := Load()
+	require.Error(t, err)
+	for _, name := range []string{"JWT_SECRET must be at least 32", "S3_ENDPOINT must be host:port", "S3_PUBLIC_ENDPOINT must be host:port",
+		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL"} {
+		assert.ErrorContains(t, err, name)
+	}
 }
 
 func TestLoad_CustomPorts(t *testing.T) {

@@ -35,8 +35,8 @@ FleetML is an open-source, runtime-agnostic, self-hosted-first platform for mana
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-make dev    # creates .env (with a random FLEETML_ADMIN_KEY) if missing, starts Postgres/TimescaleDB,
-            # S3 storage (SeaweedFS), NATS, Redis, applies DB migrations, then runs the server
+make dev    # creates .env (random JWT_SECRET and FLEETML_ADMIN_KEY) if missing, starts Postgres/TimescaleDB,
+            # S3 storage (SeaweedFS), NATS, applies DB migrations, then runs the server
             # on REST :18080 and gRPC :19090
 ```
 
@@ -80,7 +80,7 @@ go run ./cmd/fleetml project list
 
 In the Android SDK, pass the enrollment key as `FleetMLConfig(enrollmentKey = ...)`; the sample app reads `fleetml.enrollmentKey` from `android/local.properties`. In the iOS SDK it is `FleetMLConfig(serverHost:enrollmentKey:)`; see [docs/IOS_SDK.md](docs/IOS_SDK.md).
 
-**Containers only** (server + dashboard): `docker compose -f deploy/docker-compose.prod.yml up -d --build`. The API is on `:18080` and the dashboard on `:80`. Set `FLEETML_ADMIN_KEY` in your shell before the first start, or read the generated key with `docker compose -f deploy/docker-compose.prod.yml logs server | grep admin_api_key`.
+**Containers only** (server + dashboard): `export JWT_SECRET=$(openssl rand -base64 32)`, then `docker compose -f deploy/docker-compose.prod.yml up -d --build`. The API is on `:18080` and the dashboard on `:80`. Set `FLEETML_ADMIN_KEY` in your shell before the first start, or read the generated key with `docker compose -f deploy/docker-compose.prod.yml logs server | grep admin_api_key`.
 
 ### Credentials at a glance
 
@@ -92,35 +92,19 @@ In the Android SDK, pass the enrollment key as `FleetMLConfig(enrollmentKey = ..
 
 ## Configuration
 
-The server reads its configuration from environment variables (`.env.example` has a ready-to-use dev set). Default ports: REST **18080**, gRPC **19090**, infrastructure on **15xxx/14xxx/16xxx/18xxx/19xxx** host ports so nothing collides with common 8080/5432 users.
+The server is configured with environment variables; [docs/CONFIG.md](docs/CONFIG.md) lists every one, for the server, Docker Compose, the CLI, the dashboard and the test scripts. `.env.example` is a ready-to-use dev set. The essentials:
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | *(required)* | Postgres/TimescaleDB DSN, e.g. `postgres://fleetml:fleetml_dev@localhost:15432/fleetml?sslmode=disable` |
-| `S3_ENDPOINT` | `localhost:19000` | S3-compatible endpoint as `host:port` (no scheme); the dev stack runs SeaweedFS |
-| `S3_BUCKET` | `fleetml-models` | Bucket for model blobs (created on server start if missing) |
-| `S3_ACCESS_KEY` | *(required)* | S3 access key |
-| `S3_SECRET_KEY` | *(required)* | S3 secret key |
-| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` devices download models from, if not `S3_ENDPOINT` (Android emulator: `10.0.2.2:19000`); device download URLs are signed for it |
-| `S3_USE_SSL` | `false` | Use HTTPS to reach S3 |
-| `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline |
-| `REDIS_URL` | `redis://localhost:16379` | Reserved; not used yet |
-| `GRPC_PORT` | `19090` | Device gRPC API port |
-| `REST_PORT` | `18080` | REST API port (dashboard, CLI) |
-| `JWT_SECRET` | *(required)* | HMAC secret for device tokens |
-| `DEVICE_TOKEN_TTL` | `720h` | Device token lifetime (minimum `24h`); tokens can be refreshed in their last 7 days |
-| `FLEETML_ADMIN_KEY` | *(unset)* | Stored as the `bootstrap` admin API key on first start if no key exists (min. 32 chars). If unset, the server generates one and logs it once |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `LOG_FORMAT` | `json` | `json` or `text` |
-| `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
-| `ALERT_WEBHOOK_URL` | *(unset)* | Receives rollback and drift alerts as JSON POSTs (see [docs/ROLLOUTS.md](docs/ROLLOUTS.md#alerts)) |
-| `ALERT_WEBHOOK_SECRET` | *(unset)* | Signs webhook bodies: `X-FleetML-Signature: sha256=<HMAC-SHA256>` |
-| `DEPLOY_TICK_INTERVAL` | `30s` | How often rollouts are evaluated and advanced |
-| `EXPERIMENT_TICK_INTERVAL` | `60s` | How often running experiments are evaluated |
-| `DRIFT_TICK_INTERVAL` | `5m` | How often ACTIVE model versions are checked for drift |
-| `MIGRATE_ON_START` | `false` | Apply the embedded DB migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
+| `DATABASE_URL` | *(required)* | Postgres/TimescaleDB connection string |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | *(required)* | Object store credentials; `S3_ENDPOINT` defaults to `localhost:19000` |
+| `JWT_SECRET` | *(required)* | Signs device tokens; at least 32 characters |
+| `FLEETML_ADMIN_KEY` | *(generated)* | First admin API key; if unset, one is generated and logged once |
+| `REST_PORT`, `GRPC_PORT` | `18080`, `19090` | REST API and device gRPC API |
+| `NATS_URL` | `nats://localhost:14222` | Telemetry pipeline and alerts |
+| `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_SECRET` | *(unset)* | Signed webhook for rollback and drift alerts |
 
-Docker Compose host ports (dev stack): `FLEETML_PG_PORT=15432`, `FLEETML_S3_PORT=19000`, `FLEETML_NATS_PORT=14222`, `FLEETML_NATS_MONITOR_PORT=18222`, `FLEETML_REDIS_PORT=16379`.
+The server checks its configuration at start-up and names every missing or invalid variable. Operations endpoints: `GET /livez`, `GET /readyz` (Postgres, S3 and NATS reachable), `GET /metrics` (Prometheus) on the REST port, and `grpc.health.v1` on the gRPC port.
 
 ## Architecture
 

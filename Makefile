@@ -10,7 +10,6 @@ MIGRATIONS_PATH=internal/db/migrations
 export FLEETML_PG_PORT
 export FLEETML_NATS_PORT
 export FLEETML_NATS_MONITOR_PORT
-export FLEETML_REDIS_PORT
 export FLEETML_S3_PORT
 export DATABASE_URL
 
@@ -87,6 +86,7 @@ env-file:
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		printf 'FLEETML_ADMIN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')" >> .env; \
+		sed -i.bak "s|^JWT_SECRET=$$|JWT_SECRET=$$(head -c 32 /dev/urandom | base64 | tr -d '\n')|" .env && rm -f .env.bak; \
 		echo "Created .env from .env.example (REST :18080, gRPC :19090, infra on 15xxx host ports)"; \
 		echo "Your admin API key is FLEETML_ADMIN_KEY in .env (used on first start only)"; \
 	fi

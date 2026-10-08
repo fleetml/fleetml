@@ -50,13 +50,6 @@ services:
   nats:
     image: nats:latest
 
-  redis:
-    image: redis:7-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   server:
     build:
@@ -73,8 +66,8 @@ services:
       S3_BUCKET: fleetml-models
       S3_USE_SSL: "false"
       NATS_URL: nats://nats:4222
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: change-me-in-production
+      # Required, at least 32 characters: export JWT_SECRET=$(openssl rand -base64 32)
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to at least 32 random characters, e.g. export JWT_SECRET=$$(openssl rand -base64 32)}
       GRPC_PORT: "19090"
       REST_PORT: "18080"
       LOG_LEVEL: info
@@ -91,8 +84,6 @@ services:
         condition: service_healthy
       nats:
         condition: service_started
-      redis:
-        condition: service_healthy
 
   dashboard:
     build:
