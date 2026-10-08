@@ -147,7 +147,18 @@ func TestE2E_RollingBatches(t *testing.T) {
 		}
 		return e.deploymentStatus(t, id) == "COMPLETE"
 	})
-	assert.Equal(t, []int{5, 10, 15, 20}, seen)
+	// A sweep of 20 heartbeats can straddle a batch boundary (e.g. 15, 18, 20),
+	// so check the shape: batches of 5, none skipped, ending at all 20.
+	require.NotEmpty(t, seen)
+	assert.Equal(t, 5, seen[0], "the first batch is 5 devices")
+	assert.Equal(t, 20, seen[len(seen)-1])
+	for _, boundary := range []int{5, 10, 15} {
+		assert.Contains(t, seen, boundary, "every batch is observed: %v", seen)
+	}
+	for i := 1; i < len(seen); i++ {
+		assert.LessOrEqual(t, seen[i]-seen[i-1], 5, "no batch is skipped: %v", seen)
+		assert.Greater(t, seen[i], seen[i-1], "the rollout only grows: %v", seen)
+	}
 }
 
 // 3.1: devices in different arms each get their own arm's model with URL and
