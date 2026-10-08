@@ -12,7 +12,7 @@ import (
 
 func TestTicker_ProgressesRollingOut(t *testing.T) {
 	repo := newMockRepo()
-	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil)
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, newMockFleet(10), nil)
 	dep := createPendingDep(repo, "CANARY", quickStages(), nil)
 	_, err := engine.StartDeployment(context.Background(), dep.ID)
 	require.NoError(t, err)
@@ -27,7 +27,7 @@ func TestTicker_ProgressesRollingOut(t *testing.T) {
 
 func TestTicker_SkipsCompleted(t *testing.T) {
 	repo := newMockRepo()
-	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil)
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, newMockFleet(10), nil)
 
 	dep := &Deployment{
 		ProjectID: uuid.New(), ModelVersionID: uuid.New(),
@@ -45,7 +45,7 @@ func TestTicker_SkipsCompleted(t *testing.T) {
 
 func TestTicker_EmptyList(t *testing.T) {
 	repo := newMockRepo()
-	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil)
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, newMockFleet(10), nil)
 	ticker := NewTicker(engine, repo, time.Minute, nil)
 	// Should not panic with empty deployment list
 	ticker.tick(context.Background())

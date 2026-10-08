@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/fleetml/fleetml/internal/rollout"
 )
 
 var (
@@ -55,11 +57,46 @@ type RollingConfig struct {
 }
 
 // HealthGate defines conditions that must be met to continue a rollout.
+// It is evaluated on telemetry from the devices in the current cohort only,
+// over the current stage's window.
 type HealthGate struct {
-	MaxErrorRate         float64 `json:"max_error_rate"`
+	// MaxErrorRate is the highest allowed share of error events (ERROR, OOM,
+	// MODEL_LOAD_FAILED, or any event with an error message), 0-1.
+	MaxErrorRate float64 `json:"max_error_rate"`
+	// MaxLatencyRegression is the highest allowed increase of p95 inference
+	// latency over the previous version's p95, as a fraction (0.2 = +20%).
+	// 0 disables the check.
 	MaxLatencyRegression float64 `json:"max_latency_regression"`
-	MinEvents            int     `json:"min_events"`
-	OnFailure            string  `json:"on_failure"` // PAUSE or ROLLBACK
+	// MinEvents is the number of cohort events needed before the gate judges.
+	MinEvents int    `json:"min_events"`
+	OnFailure string `json:"on_failure"` // PAUSE or ROLLBACK
+}
+
+// DefaultHealthGate applies to every canary and rolling deployment created
+// without one: roll back if more than 5% of at least 20 cohort events are errors.
+func DefaultHealthGate() *HealthGate {
+	return &HealthGate{MaxErrorRate: 0.05, MinEvents: 20, OnFailure: "ROLLBACK"}
+}
+
+// Exposes reports whether the deployment currently delivers to a device.
+// It must agree with the orchestrator's exposure rule.
+func (d *Deployment) Exposes(deviceID uuid.UUID) bool {
+	if d.Status == "COMPLETE" || d.Strategy == "ALL_AT_ONCE" {
+		return true
+	}
+	if d.Strategy == "CANARY" {
+		pct := d.EffectiveCanaryPercent()
+		return pct <= 0 || pct >= 100 || rollout.InCanary(deviceID, d.ID, pct)
+	}
+	return true
+}
+
+// stageStartedAt is when the current stage began: the start of the gate's window.
+func (d *Deployment) stageStartedAt() time.Time {
+	if d.Strategy == "CANARY" && d.CurrentStage < len(d.CanaryStages) && d.CanaryStages[d.CurrentStage].StartedAt != nil {
+		return *d.CanaryStages[d.CurrentStage].StartedAt
+	}
+	return d.UpdatedAt
 }
 
 // EffectiveCanaryPercent returns the canary percentage for the current stage.

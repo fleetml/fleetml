@@ -90,8 +90,22 @@ func (m *mockDeployRepo) Delete(_ context.Context, id uuid.UUID) error {
 
 type mockDeployTelemetry struct{}
 
-func (m *mockDeployTelemetry) GetRecentStats(_ context.Context, _ uuid.UUID, _ time.Time) (*deploy.DeploymentStats, error) {
+func (m *mockDeployTelemetry) CohortStats(context.Context, uuid.UUID, []uuid.UUID, time.Time) (*deploy.DeploymentStats, error) {
 	return &deploy.DeploymentStats{TotalEvents: 500, ErrorRate: 0.01}, nil
+}
+
+func (m *mockDeployTelemetry) VersionP95(context.Context, uuid.UUID, time.Time) (p95 float64, events int64, err error) {
+	return 0, 0, nil
+}
+
+// mockDeployFleet is a fixed set of targeted devices.
+type mockDeployFleet struct{}
+
+func (mockDeployFleet) CountMatchingDevices(context.Context, map[string]string) (int, error) {
+	return 3, nil
+}
+func (mockDeployFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
+	return []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}, nil
 }
 
 func setupDeployTestRouter() (*gin.Engine, *deploy.Service) {
@@ -99,7 +113,7 @@ func setupDeployTestRouter() (*gin.Engine, *deploy.Service) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	repo := newMockDeployRepo()
 	svc := deploy.NewService(repo, logger)
-	engine := deploy.NewEngine(repo, &mockDeployTelemetry{}, nil, nil)
+	engine := deploy.NewEngine(repo, &mockDeployTelemetry{}, mockDeployFleet{}, nil)
 	svc.SetEngine(engine)
 
 	r := gin.New()

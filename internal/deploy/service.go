@@ -163,13 +163,19 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 		}
 	}
 
-	// Health gate validation
+	// Health gate: canary and rolling deployments always get one.
+	if input.HealthGate == nil && (strategy == "CANARY" || strategy == "ROLLING") {
+		input.HealthGate = DefaultHealthGate()
+	}
 	if input.HealthGate != nil {
 		if input.HealthGate.MaxErrorRate < 0 || input.HealthGate.MaxErrorRate > 1 {
 			return nil, fmt.Errorf("%w: max_error_rate must be 0-1", ErrInvalidInput)
 		}
+		if input.HealthGate.MaxLatencyRegression < 0 {
+			return nil, fmt.Errorf("%w: max_latency_regression must be >= 0", ErrInvalidInput)
+		}
 		if input.HealthGate.MinEvents <= 0 {
-			input.HealthGate.MinEvents = 10
+			input.HealthGate.MinEvents = DefaultHealthGate().MinEvents
 		}
 		if input.HealthGate.OnFailure == "" {
 			input.HealthGate.OnFailure = "ROLLBACK"

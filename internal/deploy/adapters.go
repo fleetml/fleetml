@@ -21,25 +21,43 @@ func NewTelemetryAdapter(pool *pgxpool.Pool) *TelemetryAdapter {
 	return &TelemetryAdapter{pool: pool}
 }
 
-func (a *TelemetryAdapter) GetRecentStats(ctx context.Context, modelVersionID uuid.UUID, since time.Time) (*DeploymentStats, error) {
-	query := `SELECT
-		COUNT(*) AS total,
-		COUNT(*) FILTER (WHERE error_message IS NOT NULL AND error_message != '') AS errors,
-		COALESCE(AVG(latency_ms), 0) AS avg_latency
-		FROM telemetry_events
-		WHERE model_version_id = $1 AND recorded_at >= $2`
+// errorEvent matches events that count as failures for the health gate.
+const errorEvent = `(event_type IN ('ERROR', 'OOM', 'MODEL_LOAD_FAILED') OR (error_message IS NOT NULL AND error_message <> ''))`
 
+func (a *TelemetryAdapter) CohortStats(ctx context.Context, modelVersionID uuid.UUID, deviceIDs []uuid.UUID, since time.Time) (*DeploymentStats, error) {
 	stats := &DeploymentStats{}
-	err := a.pool.QueryRow(ctx, query, modelVersionID, since).Scan(
-		&stats.TotalEvents, &stats.ErrorCount, &stats.AvgLatencyMs,
-	)
+	if len(deviceIDs) == 0 {
+		return stats, nil
+	}
+	err := a.pool.QueryRow(ctx, `SELECT
+		COUNT(*),
+		COUNT(*) FILTER (WHERE `+errorEvent+`),
+		COALESCE(AVG(latency_ms) FILTER (WHERE event_type = 'INFERENCE'), 0),
+		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE event_type = 'INFERENCE' AND latency_ms > 0), 0)
+		FROM telemetry_events
+		WHERE model_version_id = $1 AND recorded_at >= $2 AND device_id = ANY($3)`,
+		modelVersionID, since, deviceIDs,
+	).Scan(&stats.TotalEvents, &stats.ErrorCount, &stats.AvgLatencyMs, &stats.P95LatencyMs)
 	if err != nil {
-		return nil, fmt.Errorf("telemetryAdapter.GetRecentStats: %w", err)
+		return nil, fmt.Errorf("telemetryAdapter.CohortStats: %w", err)
 	}
 	if stats.TotalEvents > 0 {
 		stats.ErrorRate = float64(stats.ErrorCount) / float64(stats.TotalEvents)
 	}
 	return stats, nil
+}
+
+func (a *TelemetryAdapter) VersionP95(ctx context.Context, modelVersionID uuid.UUID, since time.Time) (p95 float64, events int64, err error) {
+	err = a.pool.QueryRow(ctx, `SELECT
+		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms), 0), COUNT(*)
+		FROM telemetry_events
+		WHERE model_version_id = $1 AND recorded_at >= $2 AND event_type = 'INFERENCE' AND latency_ms > 0`,
+		modelVersionID, since,
+	).Scan(&p95, &events)
+	if err != nil {
+		return 0, 0, fmt.Errorf("telemetryAdapter.VersionP95: %w", err)
+	}
+	return p95, events, nil
 }
 
 // VersionAdapter implements VersionChecker using pgxpool.

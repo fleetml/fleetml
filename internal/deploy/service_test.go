@@ -130,7 +130,7 @@ func TestCreateDeployment(t *testing.T) {
 func newServiceWithEngine() *Service {
 	repo := newMockRepo()
 	svc := NewService(repo, nil)
-	svc.SetEngine(NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil))
+	svc.SetEngine(NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, newMockFleet(10), nil))
 	return svc
 }
 

@@ -9,18 +9,36 @@ import (
 	"github.com/google/uuid"
 )
 
-// TelemetryQuerier provides telemetry data for health gate evaluation.
+// TelemetryQuerier provides telemetry for health gate evaluation.
 type TelemetryQuerier interface {
-	GetRecentStats(ctx context.Context, modelVersionID uuid.UUID, since time.Time) (*DeploymentStats, error)
+	// CohortStats aggregates a version's events from the given devices since a time.
+	CohortStats(ctx context.Context, modelVersionID uuid.UUID, deviceIDs []uuid.UUID, since time.Time) (*DeploymentStats, error)
+	// VersionP95 is a version's p95 inference latency over all devices since a time.
+	VersionP95(ctx context.Context, modelVersionID uuid.UUID, since time.Time) (p95 float64, events int64, err error)
 }
 
 // DeploymentStats holds telemetry stats for health gate evaluation.
 type DeploymentStats struct {
-	TotalEvents  int64
-	ErrorCount   int64
-	ErrorRate    float64
-	AvgLatencyMs float64
+	TotalEvents  int64   `json:"total_events"`
+	ErrorCount   int64   `json:"error_count"`
+	ErrorRate    float64 `json:"error_rate"`
+	AvgLatencyMs float64 `json:"avg_latency_ms"`
+	P95LatencyMs float64 `json:"p95_latency_ms"`
 }
+
+// GateResult is the outcome of a health gate evaluation.
+type GateResult struct {
+	Healthy bool
+	// Hold means the gate could not be evaluated (e.g. a query failed): the
+	// rollout neither advances nor rolls back until it can be.
+	Hold   bool
+	Reason string
+	Stats  *DeploymentStats
+	Cohort int
+}
+
+// latencyBaselineWindow is how far back the previous version's p95 is measured.
+const latencyBaselineWindow = 24 * time.Hour
 
 // Valid state transitions. ROLLED_BACK and CANCELLED are terminal.
 // Rolling back a COMPLETE deployment reverts devices to the previous version.
@@ -37,13 +55,13 @@ const defaultMaxRollingBatches = 10
 type Engine struct {
 	repo          Repository
 	telemetryRepo TelemetryQuerier
-	deviceCounter DeviceCounter
+	devices       DeviceDirectory
 	logger        *slog.Logger
 }
 
 // NewEngine creates a new deployment engine.
-func NewEngine(repo Repository, telemetryRepo TelemetryQuerier, deviceCounter DeviceCounter, logger *slog.Logger) *Engine {
-	return &Engine{repo: repo, telemetryRepo: telemetryRepo, deviceCounter: deviceCounter, logger: logger}
+func NewEngine(repo Repository, telemetryRepo TelemetryQuerier, devices DeviceDirectory, logger *slog.Logger) *Engine {
+	return &Engine{repo: repo, telemetryRepo: telemetryRepo, devices: devices, logger: logger}
 }
 
 // StartDeployment transitions PENDING → ROLLING_OUT.
@@ -98,16 +116,21 @@ func (e *Engine) ProgressDeployment(ctx context.Context, deploymentID uuid.UUID)
 		return dep, nil // No-op for non-active deployments
 	}
 
-	// Evaluate health gate
-	healthy, reason := e.EvaluateHealthGate(ctx, dep)
-	if !healthy {
+	gate := e.EvaluateHealthGate(ctx, dep)
+	if gate.Hold {
 		if e.logger != nil {
-			e.logger.Warn("health gate failed", "deployment_id", dep.ID, "reason", reason)
+			e.logger.Warn("health gate could not be evaluated; holding rollout", "deployment_id", dep.ID, "reason", gate.Reason)
 		}
-		if dep.HealthGate != nil && dep.HealthGate.OnFailure == "PAUSE" {
+		return dep, nil
+	}
+	if !gate.Healthy {
+		if e.logger != nil {
+			e.logger.Warn("health gate failed", "deployment_id", dep.ID, "reason", gate.Reason)
+		}
+		if effectiveGate(dep).OnFailure == "PAUSE" {
 			return e.doPause(ctx, dep)
 		}
-		return e.doRollback(ctx, dep, reason)
+		return e.doRollback(ctx, dep, gate.Reason)
 	}
 
 	switch dep.Strategy {
@@ -171,8 +194,8 @@ func (e *Engine) progressRolling(ctx context.Context, dep *Deployment) (*Deploym
 	}
 
 	// Determine total batches needed
-	if e.deviceCounter != nil {
-		total, err := e.deviceCounter.CountMatchingDevices(ctx, dep.TargetSelector)
+	if e.devices != nil {
+		total, err := e.devices.CountMatchingDevices(ctx, dep.TargetSelector)
 		if err == nil && total > 0 {
 			maxBatches = (total + batchSize - 1) / batchSize
 		}
@@ -337,28 +360,77 @@ func (e *Engine) CompleteDeployment(ctx context.Context, deploymentID uuid.UUID)
 	return dep, nil
 }
 
-// EvaluateHealthGate checks telemetry against the deployment's health gate.
-func (e *Engine) EvaluateHealthGate(ctx context.Context, dep *Deployment) (healthy bool, reason string) {
-	if dep.HealthGate == nil {
-		return true, "no health gate configured"
+func effectiveGate(dep *Deployment) *HealthGate {
+	if dep.HealthGate != nil {
+		return dep.HealthGate
 	}
+	return DefaultHealthGate()
+}
 
-	gate := dep.HealthGate
-	stats, err := e.telemetryRepo.GetRecentStats(ctx, dep.ModelVersionID, time.Now().Add(-10*time.Minute))
-	if err != nil {
-		return true, fmt.Sprintf("telemetry query failed: %v (passing by default)", err)
+// cohort returns the targeted devices the deployment currently exposes.
+func (e *Engine) cohort(ctx context.Context, dep *Deployment) ([]uuid.UUID, error) {
+	if e.devices == nil {
+		return nil, fmt.Errorf("no device directory configured")
 	}
+	targeted, err := e.devices.ListMatchingDevices(ctx, dep.TargetSelector)
+	if err != nil {
+		return nil, err
+	}
+	exposed := make([]uuid.UUID, 0, len(targeted))
+	for _, id := range targeted {
+		if dep.Exposes(id) {
+			exposed = append(exposed, id)
+		}
+	}
+	return exposed, nil
+}
+
+// EvaluateHealthGate judges the current stage on telemetry from the devices
+// in its cohort only, since the stage started. Deployments without a gate
+// use DefaultHealthGate. Any query error holds the rollout (fails closed).
+func (e *Engine) EvaluateHealthGate(ctx context.Context, dep *Deployment) GateResult {
+	gate := effectiveGate(dep)
+	if e.telemetryRepo == nil {
+		return GateResult{Hold: true, Reason: "no telemetry source configured"}
+	}
+	cohort, err := e.cohort(ctx, dep)
+	if err != nil {
+		return GateResult{Hold: true, Reason: fmt.Sprintf("listing cohort failed: %v", err)}
+	}
+	since := dep.stageStartedAt()
+	stats, err := e.telemetryRepo.CohortStats(ctx, dep.ModelVersionID, cohort, since)
+	if err != nil {
+		return GateResult{Hold: true, Reason: fmt.Sprintf("telemetry query failed: %v", err), Cohort: len(cohort)}
+	}
+	res := GateResult{Stats: stats, Cohort: len(cohort)}
 
 	if stats.TotalEvents < int64(gate.MinEvents) {
-		return true, fmt.Sprintf("insufficient data: %d/%d events", stats.TotalEvents, gate.MinEvents)
+		res.Healthy = true
+		res.Reason = fmt.Sprintf("insufficient data: %d/%d events from %d cohort devices", stats.TotalEvents, gate.MinEvents, len(cohort))
+		return res
 	}
-
 	if stats.ErrorRate > gate.MaxErrorRate {
-		return false, fmt.Sprintf("error rate %.2f%% exceeds threshold %.2f%%",
-			stats.ErrorRate*100, gate.MaxErrorRate*100)
+		res.Reason = fmt.Sprintf("error rate %.2f%% exceeds threshold %.2f%% (%d/%d events from %d cohort devices)",
+			stats.ErrorRate*100, gate.MaxErrorRate*100, stats.ErrorCount, stats.TotalEvents, len(cohort))
+		return res
 	}
-
-	return true, "all checks passed"
+	if gate.MaxLatencyRegression > 0 && dep.PreviousVersionID != nil && stats.P95LatencyMs > 0 {
+		prevP95, prevEvents, err := e.telemetryRepo.VersionP95(ctx, *dep.PreviousVersionID, time.Now().Add(-latencyBaselineWindow))
+		if err != nil {
+			return GateResult{Hold: true, Reason: fmt.Sprintf("baseline latency query failed: %v", err), Stats: stats, Cohort: len(cohort)}
+		}
+		if prevEvents >= int64(gate.MinEvents) && prevP95 > 0 {
+			limit := prevP95 * (1 + gate.MaxLatencyRegression)
+			if stats.P95LatencyMs > limit {
+				res.Reason = fmt.Sprintf("p95 latency %.0fms is %.0f%% above the previous version's %.0fms (limit +%.0f%%)",
+					stats.P95LatencyMs, (stats.P95LatencyMs/prevP95-1)*100, prevP95, gate.MaxLatencyRegression*100)
+				return res
+			}
+		}
+	}
+	res.Healthy = true
+	res.Reason = "all checks passed"
+	return res
 }
 
 // GetHealthStatus returns the health gate status for a deployment.
@@ -368,22 +440,26 @@ func (e *Engine) GetHealthStatus(ctx context.Context, deploymentID uuid.UUID) (m
 		return nil, err
 	}
 
-	healthy, reason := e.EvaluateHealthGate(ctx, dep)
+	gate := e.EvaluateHealthGate(ctx, dep)
 
 	stagePct := 100
 	if dep.Strategy == "CANARY" && dep.CurrentStage < len(dep.CanaryStages) {
 		stagePct = dep.CanaryStages[dep.CurrentStage].Percentage
 	}
 
-	canProgress := dep.Status == "ROLLING_OUT" && healthy
+	canProgress := dep.Status == "ROLLING_OUT" && gate.Healthy && !gate.Hold
 	result := map[string]interface{}{
 		"deployment_id":    dep.ID,
 		"status":           dep.Status,
 		"current_stage":    dep.CurrentStage,
 		"stage_percentage": stagePct,
-		"healthy":          healthy,
-		"reason":           reason,
+		"healthy":          gate.Healthy,
+		"hold":             gate.Hold,
+		"reason":           gate.Reason,
 		"can_progress":     canProgress,
+		"cohort_devices":   gate.Cohort,
+		"health_gate":      effectiveGate(dep),
+		"stats":            gate.Stats,
 	}
 	return result, nil
 }
