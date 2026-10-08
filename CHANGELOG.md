@@ -5,7 +5,9 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.3.0] - Unreleased
+## [0.4.0] - Unreleased
+
+## [0.3.0] - 2026-10-08
 
 ### Added
 
@@ -63,6 +65,8 @@ change APIs).
 
 - The Linux agent applies a telemetry flush interval from the server at once
   instead of after its first 30-second wait.
+- The CLI, the Linux agent, the dashboard and the Android and iOS SDKs are
+  0.3.0.
 - `SIGNING_MASTER_KEY` is required; `make env-file` adds one to an existing
   `.env`.
 - The quickstart's dashboard hint mentions the login (it still pointed to
@@ -206,6 +210,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/fleetml/fleetml/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fleetml/fleetml/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fleetml/fleetml/releases/tag/v0.1.0

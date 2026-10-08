@@ -110,4 +110,4 @@ discussions from the project's maintainer account.
 ## After the release
 
 Add a section for the next version at the top of `CHANGELOG.md`
-(`## [0.3.0] - Unreleased`) with its compare link at the bottom.
+(`## [0.4.0] - Unreleased`) with its compare link at the bottom.

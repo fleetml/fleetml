@@ -33,7 +33,7 @@ import (
 )
 
 // AgentVersion is the agent's version, reported at registration.
-const AgentVersion = "0.2.0"
+const AgentVersion = "0.3.0"
 
 // modelFile is the name of the model inside each version directory.
 const modelFile = "model.bin"
