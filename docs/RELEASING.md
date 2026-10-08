@@ -3,6 +3,15 @@
 How a FleetML release is cut, in order. Releases are made by the maintainers
 from `main`.
 
+## Release plan up to the public launch
+
+The repository stays private through v0.1.0 and v0.2.0. Those two versions
+are tagged in the private repository, on the boundary commits recorded when
+each version was closed, with steps 1 to 4 below. The visibility change
+(steps 5 and 6) and the public launch (step 7) happen once, after v0.3.0 and
+the launch material are done: branch protection is set right before the
+repository is made public. From then on every release follows all the steps.
+
 ## 1. Check the release candidate
 
 On an up-to-date `main` with a clean working tree:
@@ -67,7 +76,7 @@ the recommended version.
 
 ## 5. Protect `main`
 
-Right before the repository becomes public, in **Settings → Branches → Add
+Once, right before the repository becomes public (after v0.3.0), in **Settings → Branches → Add
 branch protection rule** (or a ruleset) for `main`:
 
 - require a pull request before merging;
@@ -78,7 +87,7 @@ From then on every change to `main` goes through a pull request.
 
 ## 6. Make the repository public
 
-In **Settings → General → Danger Zone → Change repository visibility**, make
+Once, after v0.3.0 and the launch material are ready. In **Settings → General → Danger Zone → Change repository visibility**, make
 it public. Then, in **Settings → Code security**, enable private
 vulnerability reporting (so the security policy's reports can also arrive
 there) and Dependabot alerts.
