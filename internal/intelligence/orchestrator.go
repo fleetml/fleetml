@@ -26,14 +26,17 @@ type StorageClient interface {
 
 // VariantData holds variant info loaded from the database.
 type VariantData struct {
-	ID           uuid.UUID
-	VersionID    uuid.UUID
-	Quantization string
-	Runtime      string
-	BlobKey      string
-	BlobSize     int64
-	BlobSHA256   string
-	MetadataJSON map[string]interface{}
+	ID            uuid.UUID
+	VersionID     uuid.UUID
+	ModelID       uuid.UUID
+	ModelName     string
+	VersionString string
+	Quantization  string
+	Runtime       string
+	BlobKey       string
+	BlobSize      int64
+	BlobSHA256    string
+	MetadataJSON  map[string]interface{}
 }
 
 // DeploymentData holds deployment info for assignment computation.
@@ -251,6 +254,43 @@ func (o *Orchestrator) ComputeAssignments(
 	}
 
 	return desired, nil
+}
+
+// ResolveVersion picks the variant of one model version that a device should
+// run and returns a LOAD assignment for it with a presigned URL and sha256,
+// or nil if no READY variant is compatible with the device.
+func (o *Orchestrator) ResolveVersion(ctx context.Context, dev *device.Device, versionID uuid.UUID) (*Assignment, error) {
+	variants, err := o.variantRepo.GetByVersionID(ctx, versionID)
+	if err != nil {
+		return nil, fmt.Errorf("loading variants: %w", err)
+	}
+	candidates := make([]CandidateVariant, 0, len(variants))
+	for _, v := range variants {
+		candidates = append(candidates, CandidateVariant{
+			VariantID: v.ID, VersionID: v.VersionID, Quantization: v.Quantization, Runtime: v.Runtime,
+			BlobKey: v.BlobKey, BlobSize: v.BlobSize, BlobSHA256: v.BlobSHA256,
+			Requirements: ParseRequirements(v.MetadataJSON, v.Quantization, v.Runtime, v.BlobSize),
+		})
+	}
+	result := o.selector.Select(o.profiler.BuildProfile(dev, nil), candidates)
+	if result == nil {
+		return nil, nil
+	}
+	for _, v := range variants {
+		if v.ID != result.VariantID {
+			continue
+		}
+		url, err := o.s3Client.GeneratePresignedDownload(ctx, v.BlobKey, downloadURLExpiry)
+		if err != nil {
+			return nil, fmt.Errorf("presigning download: %w", err)
+		}
+		return &Assignment{
+			ModelID: v.ModelID.String(), VersionID: v.VersionID.String(), ModelName: v.ModelName,
+			Version: v.VersionString, VariantID: v.ID.String(), DownloadURL: url,
+			BlobSizeBytes: v.BlobSize, BlobSHA256: v.BlobSHA256, Action: "LOAD", Reason: result.Reason,
+		}, nil
+	}
+	return nil, nil
 }
 
 // LoadVariantsForVersion loads and converts variants for the preview endpoint.

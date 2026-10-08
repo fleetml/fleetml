@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,6 +117,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Experiment, e
 	}
 	if input.MaxDuration == "" {
 		input.MaxDuration = "7d"
+	}
+	if _, err := ParseMaxDuration(input.MaxDuration); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	if input.TargetSelector == nil {
 		input.TargetSelector = map[string]string{}
@@ -319,6 +323,36 @@ func (s *Service) GetCohortAssignments(ctx context.Context, experimentID uuid.UU
 // ListRunning returns RUNNING experiments (for ticker).
 func (s *Service) ListRunning(ctx context.Context) ([]Experiment, error) {
 	return s.repo.ListByStatus(ctx, []string{"RUNNING"})
+}
+
+// ParseMaxDuration parses an experiment's max_duration: a Go duration
+// ("36h", "90m") or a number of days ("7d").
+func ParseMaxDuration(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if strings.HasSuffix(s, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil || days <= 0 {
+			return 0, fmt.Errorf("max_duration %q: expected a positive number of days like \"7d\"", s)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("max_duration %q: expected a duration like \"7d\" or \"36h\"", s)
+	}
+	return d, nil
+}
+
+// Expired reports whether a running experiment has passed its max_duration.
+func (e *Experiment) Expired(now time.Time) bool {
+	if e.StartedAt == nil {
+		return false
+	}
+	d, err := ParseMaxDuration(e.MaxDuration)
+	if err != nil {
+		return false
+	}
+	return now.Sub(*e.StartedAt) >= d
 }
 
 func validateTransition(from, to string) error {

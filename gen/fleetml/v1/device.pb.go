@@ -784,11 +784,14 @@ func (x *ModelAssignment) GetVersionId() string {
 	return ""
 }
 
+// The device's arm in a running experiment. Tag telemetry for
+// model_version_id with experiment_arm_id = arm_id.
 type ExperimentAssignment struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ExperimentId   string                 `protobuf:"bytes,1,opt,name=experiment_id,json=experimentId,proto3" json:"experiment_id,omitempty"`
 	ArmName        string                 `protobuf:"bytes,2,opt,name=arm_name,json=armName,proto3" json:"arm_name,omitempty"`
 	ModelVersionId string                 `protobuf:"bytes,3,opt,name=model_version_id,json=modelVersionId,proto3" json:"model_version_id,omitempty"`
+	ArmId          string                 `protobuf:"bytes,4,opt,name=arm_id,json=armId,proto3" json:"arm_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -840,6 +843,13 @@ func (x *ExperimentAssignment) GetArmName() string {
 func (x *ExperimentAssignment) GetModelVersionId() string {
 	if x != nil {
 		return x.ModelVersionId
+	}
+	return ""
+}
+
+func (x *ExperimentAssignment) GetArmId() string {
+	if x != nil {
+		return x.ArmId
 	}
 	return ""
 }
@@ -921,11 +931,12 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\n" +
 	"\x06UPDATE\x10\x02\x12\n" +
 	"\n" +
-	"\x06UNLOAD\x10\x03\"\x80\x01\n" +
+	"\x06UNLOAD\x10\x03\"\x97\x01\n" +
 	"\x14ExperimentAssignment\x12#\n" +
 	"\rexperiment_id\x18\x01 \x01(\tR\fexperimentId\x12\x19\n" +
 	"\barm_name\x18\x02 \x01(\tR\aarmName\x12(\n" +
-	"\x10model_version_id\x18\x03 \x01(\tR\x0emodelVersionId2\x9d\x02\n" +
+	"\x10model_version_id\x18\x03 \x01(\tR\x0emodelVersionId\x12\x15\n" +
+	"\x06arm_id\x18\x04 \x01(\tR\x05armId2\x9d\x02\n" +
 	"\rDeviceService\x12S\n" +
 	"\bRegister\x12\".fleetml.device.v1.RegisterRequest\x1a#.fleetml.device.v1.RegisterResponse\x12V\n" +
 	"\tHeartbeat\x12#.fleetml.device.v1.HeartbeatRequest\x1a$.fleetml.device.v1.HeartbeatResponse\x12_\n" +

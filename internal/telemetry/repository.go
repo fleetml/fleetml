@@ -29,7 +29,7 @@ func (r *Repository) InsertEvents(ctx context.Context, events []Event) (int, err
 	rows := make([][]interface{}, len(events))
 	for i, e := range events {
 		rows[i] = []interface{}{
-			e.DeviceID, e.ModelVersionID, e.EventType,
+			e.DeviceID, e.ModelVersionID, e.ExperimentArmID, e.EventType,
 			e.LatencyMs, e.Confidence, e.PredictionLabel,
 			e.MemoryUsageMB, e.BatteryPercent, e.ErrorMessage, e.RecordedAt,
 		}
@@ -37,7 +37,7 @@ func (r *Repository) InsertEvents(ctx context.Context, events []Event) (int, err
 
 	count, err := r.pool.CopyFrom(ctx,
 		pgx.Identifier{"telemetry_events"},
-		[]string{"device_id", "model_version_id", "event_type",
+		[]string{"device_id", "model_version_id", "experiment_arm_id", "event_type",
 			"latency_ms", "confidence_score", "prediction_label",
 			"memory_usage_mb", "battery_impact_pct", "error_message", "recorded_at"},
 		pgx.CopyFromRows(rows),
@@ -52,11 +52,11 @@ func (r *Repository) InsertEvents(ctx context.Context, events []Event) (int, err
 // batch CopyFrom fails, so that one bad row does not block the others.
 func (r *Repository) InsertEvent(ctx context.Context, e Event) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO telemetry_events (device_id, model_version_id, event_type,
+		`INSERT INTO telemetry_events (device_id, model_version_id, experiment_arm_id, event_type,
 			latency_ms, confidence_score, prediction_label,
 			memory_usage_mb, battery_impact_pct, error_message, recorded_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		e.DeviceID, e.ModelVersionID, e.EventType,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		e.DeviceID, e.ModelVersionID, e.ExperimentArmID, e.EventType,
 		e.LatencyMs, e.Confidence, e.PredictionLabel,
 		e.MemoryUsageMB, e.BatteryPercent, e.ErrorMessage, e.RecordedAt,
 	)

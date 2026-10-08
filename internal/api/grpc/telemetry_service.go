@@ -55,6 +55,13 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 			}
 		}
 
+		var armID *uuid.UUID
+		if a := pe.GetExperimentArmId(); a != "" {
+			if parsed, err := uuid.Parse(a); err == nil {
+				armID = &parsed
+			}
+		}
+
 		recordedAt := time.Now()
 		if ts := pe.GetTimestampUnixMs(); ts > 0 {
 			recordedAt = time.UnixMilli(ts)
@@ -63,6 +70,7 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 		events = append(events, telemetry.Event{
 			DeviceID:        deviceID,
 			ModelVersionID:  modelVersionID,
+			ExperimentArmID: armID,
 			EventType:       eventType,
 			LatencyMs:       int(pe.GetLatencyMs()),
 			Confidence:      float64(pe.GetConfidenceScore()),

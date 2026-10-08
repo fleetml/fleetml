@@ -627,3 +627,30 @@ func TestHeartbeat_UsesAssignmentComputer(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, resp.Assignments)
 }
+
+// Experiments win over deployments for the models they control.
+func TestMergeExperimentPlan(t *testing.T) {
+	deployed := []ModelAssignment{
+		{ModelID: "m1", VariantID: "deploy-v2", Action: "UPDATE"},       // model under experiment: dropped
+		{ModelID: "m1", VariantID: "arm-variant", Action: "UNLOAD"},     // arm variant: never unloaded
+		{ModelID: "m2", VariantID: "other-model-v1", Action: "LOAD"},    // unrelated model: kept
+		{ModelID: "m3", VariantID: "retired-variant", Action: "UNLOAD"}, // unrelated unload: kept
+	}
+	plan := &ExperimentPlan{
+		Keep:   map[string]bool{"arm-variant": true},
+		Models: map[string]bool{"m1": true},
+	}
+
+	// Arm not loaded yet: the deployed version stays until the arm is in place.
+	loaded := []ModelStatus{{ModelID: "m1", VariantID: "deploy-v1"}}
+	plan.Assignments = []ModelAssignment{{ModelID: "m1", VariantID: "arm-variant", Action: "UPDATE"}}
+	got := mergeExperimentPlan(deployed, plan, loaded)
+	assert.Equal(t, []ModelAssignment{deployed[2], deployed[3], plan.Assignments[0]}, got)
+
+	// Arm loaded: the deployed version of the same model is unloaded.
+	plan.Assignments = nil
+	loaded = []ModelStatus{{ModelID: "m1", VariantID: "deploy-v1"}, {ModelID: "m1", VariantID: "arm-variant"}}
+	got = mergeExperimentPlan(deployed, plan, loaded)
+	assert.Contains(t, got, ModelAssignment{ModelID: "m1", VariantID: "deploy-v1", Action: "UNLOAD"})
+	assert.NotContains(t, got, ModelAssignment{ModelID: "m1", VariantID: "arm-variant", Action: "UNLOAD"})
+}

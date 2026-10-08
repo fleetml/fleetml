@@ -5,121 +5,113 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/fleetml/fleetml/internal/device"
 	"github.com/fleetml/fleetml/internal/intelligence"
 )
 
+// ArmID is the stable identifier of one experiment arm. Devices receive it in
+// the heartbeat and send it back as experiment_arm_id in telemetry, so each
+// event is attributed to the arm that produced it.
+func ArmID(experimentID uuid.UUID, cohort string) uuid.UUID {
+	return uuid.NewSHA1(experimentID, []byte(cohort))
+}
+
+// VersionResolver picks the variant of a model version a device should run.
+type VersionResolver interface {
+	ResolveVersion(ctx context.Context, dev *device.Device, versionID uuid.UUID) (*intelligence.Assignment, error)
+	GetProfiler() *intelligence.Profiler
+}
+
 // Bridge integrates experiments into the heartbeat assignment flow.
 type Bridge struct {
-	service      *Service
-	orchestrator *intelligence.Orchestrator
-	logger       *slog.Logger
+	service  *Service
+	resolver VersionResolver
+	logger   *slog.Logger
 }
 
 // NewBridge creates a new experiment bridge.
-func NewBridge(service *Service, orchestrator *intelligence.Orchestrator, logger *slog.Logger) *Bridge {
-	return &Bridge{service: service, orchestrator: orchestrator, logger: logger}
+func NewBridge(service *Service, resolver VersionResolver, logger *slog.Logger) *Bridge {
+	return &Bridge{service: service, resolver: resolver, logger: logger}
 }
 
-// ComputeExperimentAssignments returns model assignments based on running experiments.
-func (b *Bridge) ComputeExperimentAssignments(
-	ctx context.Context,
-	dev *device.Device,
-	currentlyLoaded []device.ModelStatus,
-) ([]device.ModelAssignment, error) {
+// PlanExperiments assigns the device to an arm of every running experiment
+// that targets it and returns the arm models it must run. The first
+// experiment to claim a model wins; an arm whose version has no variant the
+// device can run is skipped, leaving the model to deployments.
+func (b *Bridge) PlanExperiments(ctx context.Context, dev *device.Device, currentlyLoaded []device.ModelStatus) (*device.ExperimentPlan, error) {
 	exps, err := b.service.ListRunning(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	profile := b.orchestrator.GetProfiler().BuildProfile(dev, nil)
-	var assignments []device.ModelAssignment
+	plan := &device.ExperimentPlan{Keep: map[string]bool{}, Models: map[string]bool{}}
+	profile := b.resolver.GetProfiler().BuildProfile(dev, nil)
 
 	for _, exp := range exps {
-		// Check targeting
 		ts := intelligence.TargetSelector{Labels: exp.TargetSelector}
 		if !ts.Matches(profile, dev.Labels) {
 			continue
 		}
-
-		// Assign cohort
 		cohort, included, err := b.service.AssignDeviceCohort(ctx, dev.ID, exp.ID)
-		if err != nil || !included {
+		if err != nil {
+			if b.logger != nil {
+				b.logger.Warn("cohort assignment failed", "experiment_id", exp.ID, "device_id", dev.ID, "error", err)
+			}
 			continue
 		}
-
-		// Determine which version to use
-		var versionID uuid.UUID
+		if !included {
+			continue
+		}
+		versionID := exp.ControlVersionID
 		if cohort == "treatment" {
 			versionID = exp.TreatmentVersionID
-		} else {
-			versionID = exp.ControlVersionID
 		}
 
-		// Load variants and select best for device
-		candidates, err := b.orchestrator.LoadVariantsForVersion(ctx, versionID)
-		if err != nil || len(candidates) == 0 {
-			continue
-		}
-
-		result := b.orchestrator.GetSelector().Select(profile, candidates)
-		if result == nil {
-			continue
-		}
-
-		// Generate download URL
-		downloadURL := ""
-		for _, c := range candidates {
-			if c.VariantID == result.VariantID {
-				downloadURL, _ = generateURL(b.orchestrator, ctx, c.BlobKey)
-				break
+		a, err := b.resolver.ResolveVersion(ctx, dev, versionID)
+		if err != nil || a == nil {
+			if err != nil && b.logger != nil {
+				b.logger.Warn("resolving arm version failed", "experiment_id", exp.ID, "error", err)
 			}
+			continue
 		}
+		if plan.Models[a.ModelID] {
+			continue // another experiment already controls this model
+		}
+		plan.Models[a.ModelID] = true
+		plan.Keep[a.VariantID] = true
+		plan.Experiments = append(plan.Experiments, device.ExperimentAssignment{
+			ExperimentID:   exp.ID.String(),
+			ArmName:        cohort,
+			ArmID:          ArmID(exp.ID, cohort).String(),
+			ModelVersionID: versionID.String(),
+		})
 
-		// Check if already loaded
 		action := "LOAD"
 		alreadyLoaded := false
-		for _, loaded := range currentlyLoaded {
-			if loaded.VariantID == result.VariantID.String() {
+		for _, m := range currentlyLoaded {
+			if m.VariantID == a.VariantID {
 				alreadyLoaded = true
 				break
 			}
-			if loaded.ModelID == versionID.String() {
+			if m.ModelID == a.ModelID || m.ModelID == a.VersionID {
 				action = "UPDATE"
 			}
 		}
 		if alreadyLoaded {
 			continue
 		}
-
-		assignments = append(assignments, device.ModelAssignment{
-			ModelID:       versionID.String(),
-			VersionID:     versionID.String(),
-			ModelName:     exp.Name,
-			Version:       cohort,
-			VariantID:     result.VariantID.String(),
-			DownloadURL:   downloadURL,
-			BlobSizeBytes: 0,
-			BlobSHA256:    "",
+		plan.Assignments = append(plan.Assignments, device.ModelAssignment{
+			ModelID:       a.ModelID,
+			VersionID:     a.VersionID,
+			ModelName:     a.ModelName,
+			Version:       a.Version,
+			VariantID:     a.VariantID,
+			DownloadURL:   a.DownloadURL,
+			BlobSizeBytes: uint64(a.BlobSizeBytes),
+			BlobSHA256:    a.BlobSHA256,
 			Action:        action,
 		})
 	}
-	return assignments, nil
-}
-
-func generateURL(orch *intelligence.Orchestrator, ctx context.Context, blobKey string) (string, error) {
-	// Use the orchestrator's S3 client via a helper
-	return "", nil // URL generation handled at orchestrator level
-}
-
-// ExperimentVariantAdapter loads variants from the database for experiment bridge.
-type ExperimentVariantAdapter struct {
-	pool *pgxpool.Pool
-}
-
-// NewExperimentVariantAdapter creates a new adapter.
-func NewExperimentVariantAdapter(pool *pgxpool.Pool) *ExperimentVariantAdapter {
-	return &ExperimentVariantAdapter{pool: pool}
+	return plan, nil
 }

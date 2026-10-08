@@ -9,16 +9,18 @@ import (
 // Event represents a single telemetry event from a device.
 // Maps to the telemetry_events table.
 type Event struct {
-	DeviceID        uuid.UUID `json:"device_id"`
-	ModelVersionID  uuid.UUID `json:"model_version_id"`
-	EventType       string    `json:"event_type"` // INFERENCE, MODEL_LOAD, MODEL_LOAD_FAILED, OOM, PREDICTION_DRIFT, ERROR
-	LatencyMs       int       `json:"latency_ms"`
-	Confidence      float64   `json:"confidence_score"`
-	PredictionLabel string    `json:"prediction_label"`
-	MemoryUsageMB   int       `json:"memory_usage_mb"`
-	BatteryPercent  float64   `json:"battery_percent"`
-	ErrorMessage    string    `json:"error_message"`
-	RecordedAt      time.Time `json:"recorded_at"`
+	DeviceID       uuid.UUID `json:"device_id"`
+	ModelVersionID uuid.UUID `json:"model_version_id"`
+	// ExperimentArmID attributes the event to an experiment arm (nil if none).
+	ExperimentArmID *uuid.UUID `json:"experiment_arm_id,omitempty"`
+	EventType       string     `json:"event_type"` // INFERENCE, MODEL_LOAD, MODEL_LOAD_FAILED, OOM, PREDICTION_DRIFT, ERROR
+	LatencyMs       int        `json:"latency_ms"`
+	Confidence      float64    `json:"confidence_score"`
+	PredictionLabel string     `json:"prediction_label"`
+	MemoryUsageMB   int        `json:"memory_usage_mb"`
+	BatteryPercent  float64    `json:"battery_percent"`
+	ErrorMessage    string     `json:"error_message"`
+	RecordedAt      time.Time  `json:"recorded_at"`
 }
 
 // Summary provides aggregated telemetry stats over a time range.

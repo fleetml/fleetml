@@ -104,8 +104,11 @@ message ModelAssignment {
   }
 }
 
+// The device's arm in a running experiment. Tag telemetry for
+// model_version_id with experiment_arm_id = arm_id.
 message ExperimentAssignment {
   string experiment_id = 1;
   string arm_name = 2;
   string model_version_id = 3;
+  string arm_id = 4;
 }

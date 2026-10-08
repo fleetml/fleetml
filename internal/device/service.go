@@ -87,11 +87,25 @@ type ModelAssignment struct {
 	Action        string // LOAD, UPDATE, UNLOAD
 }
 
-// ExperimentAssignment is a placeholder for future experiment support.
+// ExperimentAssignment tells the device which experiment arm it is in. The
+// device tags telemetry for that model version with ArmID.
 type ExperimentAssignment struct {
 	ExperimentID   string
-	ArmName        string
+	ArmName        string // "control" or "treatment"
+	ArmID          string
 	ModelVersionID string
+}
+
+// ExperimentPlan is what running experiments require of one device.
+type ExperimentPlan struct {
+	// Assignments are LOAD/UPDATE actions for arm models not yet loaded.
+	Assignments []ModelAssignment
+	// Keep holds the variant IDs of the device's arm models; they must not be unloaded.
+	Keep map[string]bool
+	// Models holds the model IDs an experiment controls on this device;
+	// deployments must not change them while the experiment runs.
+	Models      map[string]bool
+	Experiments []ExperimentAssignment
 }
 
 // AssignmentComputer computes model assignments for a device.
@@ -100,9 +114,9 @@ type AssignmentComputer interface {
 	ComputeAssignments(ctx context.Context, dev *Device, currentlyLoaded []ModelStatus) ([]ModelAssignment, error)
 }
 
-// ExperimentAssigner computes experiment-based assignments for a device.
+// ExperimentAssigner plans experiment arms for a device.
 type ExperimentAssigner interface {
-	ComputeExperimentAssignments(ctx context.Context, dev *Device, currentlyLoaded []ModelStatus) ([]ModelAssignment, error)
+	PlanExperiments(ctx context.Context, dev *Device, currentlyLoaded []ModelStatus) (*ExperimentPlan, error)
 }
 
 // EnrollmentVerifier checks a per-project enrollment key and returns its project.
@@ -364,20 +378,56 @@ func (s *Service) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*Heartb
 		}
 	}
 
-	// Merge experiment assignments (experiment takes priority)
+	var experiments []ExperimentAssignment
 	if s.experimentComp != nil {
-		expAssignments, expErr := s.experimentComp.ComputeExperimentAssignments(ctx, dev, req.LoadedModels)
+		plan, expErr := s.experimentComp.PlanExperiments(ctx, dev, req.LoadedModels)
 		if expErr != nil {
 			s.logger.Warn("experiment assignment failed", "device_id", req.DeviceID, "error", expErr)
-		} else {
-			assignments = append(assignments, expAssignments...)
+		} else if plan != nil {
+			assignments = mergeExperimentPlan(assignments, plan, req.LoadedModels)
+			experiments = plan.Experiments
 		}
 	}
 
 	return &HeartbeatResponse{
 		Assignments:          assignments,
+		Experiments:          experiments,
 		NextHeartbeatSeconds: defaultHeartbeatSecs,
 	}, nil
+}
+
+// mergeExperimentPlan gives running experiments priority over deployments:
+// deployment actions for a model an experiment controls are dropped, the
+// arm's variant is never unloaded, and once the arm's variant is loaded any
+// other loaded variant of that model (e.g. the deployed version) is unloaded.
+func mergeExperimentPlan(deployed []ModelAssignment, plan *ExperimentPlan, loaded []ModelStatus) []ModelAssignment {
+	out := make([]ModelAssignment, 0, len(deployed)+len(plan.Assignments))
+	unloading := map[string]bool{}
+	for _, a := range deployed {
+		if a.Action == "UNLOAD" {
+			if plan.Keep[a.VariantID] {
+				continue
+			}
+			unloading[a.VariantID] = true
+		} else if plan.Models[a.ModelID] {
+			continue
+		}
+		out = append(out, a)
+	}
+	out = append(out, plan.Assignments...)
+	armLoaded := map[string]bool{}
+	for _, m := range loaded {
+		if plan.Keep[m.VariantID] {
+			armLoaded[m.ModelID] = true
+		}
+	}
+	for _, m := range loaded {
+		if armLoaded[m.ModelID] && !plan.Keep[m.VariantID] && !unloading[m.VariantID] {
+			out = append(out, ModelAssignment{ModelID: m.ModelID, VariantID: m.VariantID, Action: "UNLOAD"})
+			unloading[m.VariantID] = true
+		}
+	}
+	return out
 }
 
 // ValidateToken checks a device token's signature and expiry, and that it is

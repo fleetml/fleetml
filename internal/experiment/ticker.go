@@ -56,6 +56,10 @@ func (t *Ticker) tick(ctx context.Context) {
 	}
 
 	for _, exp := range exps {
+		if exp.Expired(time.Now()) {
+			t.concludeExpired(ctx, &exp)
+			continue
+		}
 		result, err := t.service.EvaluateExperiment(ctx, exp.ID)
 		if err != nil {
 			if t.logger != nil {
@@ -82,5 +86,27 @@ func (t *Ticker) tick(ctx context.Context) {
 				t.logger.Info("experiment auto-concluded", "experiment_id", exp.ID, "winner", winner, "recommendation", result.Recommendation)
 			}
 		}
+	}
+}
+
+// concludeExpired ends an experiment that reached max_duration. The winner is
+// the recommended arm if the result is significant, otherwise control.
+func (t *Ticker) concludeExpired(ctx context.Context, exp *Experiment) {
+	winner := exp.ControlVersionID
+	note := "max_duration reached without a significant result; keeping control"
+	if result, err := t.service.EvaluateExperiment(ctx, exp.ID); err == nil && result.IsSignificant {
+		note = "max_duration reached: " + result.Recommendation
+		if result.Recommendation == "ADOPT_TREATMENT" {
+			winner = exp.TreatmentVersionID
+		}
+	}
+	if _, err := t.service.Conclude(ctx, exp.ID, winner, note); err != nil {
+		if t.logger != nil {
+			t.logger.Warn("experiment ticker: concluding expired experiment failed", "experiment_id", exp.ID, "error", err)
+		}
+		return
+	}
+	if t.logger != nil {
+		t.logger.Info("experiment concluded at max_duration", "experiment_id", exp.ID, "winner", winner)
 	}
 }

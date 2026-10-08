@@ -246,11 +246,16 @@ func (r *Repository) GetCohortStats(ctx context.Context, experimentID, versionID
 		COUNT(*) FILTER (WHERE te.error_message IS NOT NULL AND te.error_message != ''),
 		COALESCE(AVG(te.confidence_score), 0)
 		FROM telemetry_events te
-		JOIN cohort_assignments ca ON ca.device_id = te.device_id AND ca.experiment_id = $1
-		WHERE te.model_version_id = $2 AND te.recorded_at >= $3 AND ca.cohort = $4`
+		WHERE te.model_version_id = $2 AND te.recorded_at >= $3
+		  AND (te.experiment_arm_id = $5
+		       OR (te.experiment_arm_id IS NULL AND EXISTS (
+		           SELECT 1 FROM cohort_assignments ca
+		           WHERE ca.device_id = te.device_id AND ca.experiment_id = $1 AND ca.cohort = $4)))`
 
+	// Events tagged with this arm's ID count for the arm; untagged events
+	// (older SDKs) fall back to the device's cohort assignment.
 	cs := &CohortStats{}
-	err := r.pool.QueryRow(ctx, query, experimentID, versionID, since, cohort).Scan(
+	err := r.pool.QueryRow(ctx, query, experimentID, versionID, since, cohort, ArmID(experimentID, cohort)).Scan(
 		&cs.SampleSize, &cs.AvgLatency, &cs.StdDevLatency, &cs.P50Latency, &cs.P95Latency,
 		&cs.ErrorCount, &cs.AvgConfidence,
 	)

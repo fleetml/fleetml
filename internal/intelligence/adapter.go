@@ -20,11 +20,12 @@ func NewVariantRepoAdapter(pool *pgxpool.Pool) *VariantRepoAdapter {
 }
 
 func (a *VariantRepoAdapter) GetByVersionID(ctx context.Context, versionID uuid.UUID) ([]VariantData, error) {
-	query := `SELECT mv.id, mv.version_id, mv.quantization, mv.target_runtime,
-		mv.blob_key, mv.blob_size_bytes, mv.blob_sha256,
+	query := `SELECT mv.id, mv.version_id, ver.model_id, COALESCE(m.name, ''), ver.version,
+		mv.quantization, mv.target_runtime, mv.blob_key, mv.blob_size_bytes, mv.blob_sha256,
 		COALESCE(ver.metadata_json, '{}'::jsonb)
 		FROM model_variants mv
 		JOIN model_versions ver ON ver.id = mv.version_id
+		LEFT JOIN models m ON m.id = ver.model_id
 		WHERE mv.version_id = $1 AND mv.status = 'READY'`
 
 	rows, err := a.pool.Query(ctx, query, versionID)
@@ -37,8 +38,8 @@ func (a *VariantRepoAdapter) GetByVersionID(ctx context.Context, versionID uuid.
 	for rows.Next() {
 		var v VariantData
 		var metaJSON []byte
-		if err := rows.Scan(&v.ID, &v.VersionID, &v.Quantization, &v.Runtime,
-			&v.BlobKey, &v.BlobSize, &v.BlobSHA256, &metaJSON); err != nil {
+		if err := rows.Scan(&v.ID, &v.VersionID, &v.ModelID, &v.ModelName, &v.VersionString,
+			&v.Quantization, &v.Runtime, &v.BlobKey, &v.BlobSize, &v.BlobSHA256, &metaJSON); err != nil {
 			return nil, fmt.Errorf("variantRepoAdapter.GetByVersionID: scanning: %w", err)
 		}
 		if metaJSON != nil {

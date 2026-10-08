@@ -134,8 +134,19 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		})
 	}
 
+	protoExperiments := make([]*fleetmlv1.ExperimentAssignment, 0, len(resp.Experiments))
+	for _, e := range resp.Experiments {
+		protoExperiments = append(protoExperiments, &fleetmlv1.ExperimentAssignment{
+			ExperimentId:   e.ExperimentID,
+			ArmName:        e.ArmName,
+			ArmId:          e.ArmID,
+			ModelVersionId: e.ModelVersionID,
+		})
+	}
+
 	return &fleetmlv1.HeartbeatResponse{
 		Assignments:          protoAssignments,
+		Experiments:          protoExperiments,
 		NextHeartbeatSeconds: resp.NextHeartbeatSeconds,
 	}, nil
 }
