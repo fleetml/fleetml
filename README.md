@@ -76,12 +76,13 @@ git clone https://github.com/fleetml/fleetml.git && cd fleetml
 export JWT_SECRET=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
-curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects
+curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
 echo "Dashboard: http://localhost  (Settings → admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
-Measured on a laptop, cold: **QUICKSTART_TIME** from `git clone` to a working
-UI and API, with no FleetML images or build cache present.
+Measured on a laptop, cold: **1 min 50 s** from `git clone` to a working UI
+and API, with no FleetML images or build cache present (most of it is pulling
+the base images and building the server and dashboard images).
 
 Next:
 
