@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Ticker periodically evaluates running experiments.
@@ -68,17 +66,17 @@ func (t *Ticker) tick(ctx context.Context) {
 			continue
 		}
 
-		// Auto-conclude if configured and significant
-		if exp.AutoConclude && result.IsSignificant &&
-			result.ControlStats.SampleSize >= int64(exp.MinSampleSize) &&
-			result.TreatmentStats.SampleSize >= int64(exp.MinSampleSize) {
-			var winner uuid.UUID
-			if result.Recommendation == "ADOPT_TREATMENT" {
-				winner = exp.TreatmentVersionID
-			} else {
-				winner = exp.ControlVersionID
+		// Auto-conclude at the fixed horizon: the single test has run.
+		if exp.AutoConclude && result.Final {
+			winner := exp.ControlVersionID
+			note := "auto-concluded at the fixed horizon: no significant difference, keeping control"
+			if result.IsSignificant {
+				note = "auto-concluded at the fixed horizon: " + result.Recommendation
+				if result.Recommendation == "ADOPT_TREATMENT" {
+					winner = exp.TreatmentVersionID
+				}
 			}
-			if _, err := t.service.Conclude(ctx, exp.ID, winner, "auto-concluded: "+result.Recommendation); err != nil {
+			if _, err := t.service.Conclude(ctx, exp.ID, winner, note); err != nil {
 				if t.logger != nil {
 					t.logger.Warn("experiment ticker: auto-conclude failed", "experiment_id", exp.ID, "error", err)
 				}
@@ -94,7 +92,7 @@ func (t *Ticker) tick(ctx context.Context) {
 func (t *Ticker) concludeExpired(ctx context.Context, exp *Experiment) {
 	winner := exp.ControlVersionID
 	note := "max_duration reached without a significant result; keeping control"
-	if result, err := t.service.EvaluateExperiment(ctx, exp.ID); err == nil && result.IsSignificant {
+	if result, err := t.service.EvaluateExperiment(ctx, exp.ID); err == nil && result.Final && result.IsSignificant {
 		note = "max_duration reached: " + result.Recommendation
 		if result.Recommendation == "ADOPT_TREATMENT" {
 			winner = exp.TreatmentVersionID

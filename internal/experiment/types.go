@@ -44,13 +44,24 @@ type Experiment struct {
 }
 
 // ExperimentResult holds the statistical comparison.
+//
+// Experiments use a fixed-horizon design: while either arm has fewer than
+// min_sample_size events the result only reports descriptive statistics
+// (Final false, no p-value, recommendation COLLECTING_DATA). The first time
+// both arms reach min_sample_size a single Welch t-test is run at
+// alpha = 1 - confidence_level and the result is frozen (Final true); later
+// data never changes the decision, so repeated looks cannot inflate the
+// false-positive rate.
 type ExperimentResult struct {
 	ControlStats   CohortStats `json:"control"`
 	TreatmentStats CohortStats `json:"treatment"`
-	PValue         float64     `json:"p_value"`
+	PValue         *float64    `json:"p_value"`
 	IsSignificant  bool        `json:"is_significant"`
-	EffectSize     float64     `json:"effect_size"`
+	EffectSize     *float64    `json:"effect_size"`
 	Recommendation string      `json:"recommendation"`
+	MinSampleSize  int         `json:"min_sample_size"`
+	Final          bool        `json:"final"`
+	TestedAt       *time.Time  `json:"tested_at,omitempty"`
 }
 
 // CohortStats holds aggregated metrics for one cohort.
@@ -65,6 +76,8 @@ type CohortStats struct {
 	ErrorCount    int64   `json:"error_count"`
 	ErrorRate     float64 `json:"error_rate"`
 	AvgConfidence float64 `json:"avg_confidence"`
+	// StdDevConfidence is the sample standard deviation of confidence scores.
+	StdDevConfidence float64 `json:"stddev_confidence"`
 }
 
 // CohortAssignment represents which cohort a device belongs to.

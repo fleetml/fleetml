@@ -77,10 +77,13 @@ export interface Experiment {
 export interface ExperimentResult {
   control: CohortStats;
   treatment: CohortStats;
-  p_value: number;
+  p_value: number | null;
   is_significant: boolean;
-  effect_size: number;
+  effect_size: number | null;
   recommendation: string;
+  min_sample_size: number;
+  final: boolean;
+  tested_at?: string;
 }
 
 export interface CohortStats {

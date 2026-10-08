@@ -143,7 +143,7 @@ func TestExpStart_AlreadyRunning(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestExpResults_Inconclusive(t *testing.T) {
+func TestExpResults_CollectingBeforeHorizon(t *testing.T) {
 	r, svc := setupExpTestRouter()
 	exp, _ := svc.Create(context.Background(), experiment.CreateInput{
 		ProjectID: uuid.New(), Name: "results-test",
@@ -153,7 +153,10 @@ func TestExpResults_Inconclusive(t *testing.T) {
 	w := doJSON(r, "GET", fmt.Sprintf("/api/v1/experiments/%s/results", exp.ID), nil)
 	require.Equal(t, http.StatusOK, w.Code)
 	body := parseBody(t, w)
-	assert.Equal(t, "INCONCLUSIVE", body["data"].(map[string]interface{})["recommendation"])
+	data := body["data"].(map[string]interface{})
+	assert.Equal(t, "COLLECTING_DATA", data["recommendation"])
+	assert.Nil(t, data["p_value"])
+	assert.Equal(t, false, data["final"])
 }
 
 func TestExpCancel(t *testing.T) {

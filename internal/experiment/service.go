@@ -253,11 +253,16 @@ func (s *Service) Conclude(ctx context.Context, id, winnerVersionID uuid.UUID, n
 	return exp, nil
 }
 
-// EvaluateExperiment computes statistical results.
+// EvaluateExperiment computes the experiment's result under the fixed-horizon
+// rule documented on ExperimentResult: descriptive stats until both arms reach
+// min_sample_size, then one significance test whose result is frozen.
 func (s *Service) EvaluateExperiment(ctx context.Context, id uuid.UUID) (*ExperimentResult, error) {
 	exp, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if exp.Result != nil && exp.Result.Final {
+		return exp.Result, nil
 	}
 
 	since := exp.CreatedAt
@@ -279,11 +284,26 @@ func (s *Service) EvaluateExperiment(ctx context.Context, id uuid.UUID) (*Experi
 	treatmentStats.Cohort = "treatment"
 	treatmentStats.VersionID = exp.TreatmentVersionID.String()
 
-	result := Evaluate(*controlStats, *treatmentStats, exp.PrimaryMetric, exp.ConfidenceLevel)
+	horizon := int64(exp.MinSampleSize)
+	var result *ExperimentResult
+	if controlStats.SampleSize >= horizon && treatmentStats.SampleSize >= horizon {
+		result = Evaluate(*controlStats, *treatmentStats, exp.PrimaryMetric, exp.ConfidenceLevel)
+		now := time.Now()
+		result.Final = true
+		result.TestedAt = &now
+	} else {
+		result = &ExperimentResult{
+			ControlStats:   *controlStats,
+			TreatmentStats: *treatmentStats,
+			Recommendation: "COLLECTING_DATA",
+		}
+	}
+	result.MinSampleSize = exp.MinSampleSize
 
 	exp.Result = result
-	_ = s.repo.Update(ctx, exp)
-
+	if err := s.repo.Update(ctx, exp); err != nil {
+		return nil, fmt.Errorf("storing result: %w", err)
+	}
 	return result, nil
 }
 

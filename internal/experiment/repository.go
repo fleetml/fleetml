@@ -243,8 +243,9 @@ func (r *Repository) GetCohortStats(ctx context.Context, experimentID, versionID
 		COALESCE(STDDEV(te.latency_ms), 0),
 		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY te.latency_ms), 0),
 		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY te.latency_ms), 0),
-		COUNT(*) FILTER (WHERE te.error_message IS NOT NULL AND te.error_message != ''),
-		COALESCE(AVG(te.confidence_score), 0)
+		COUNT(*) FILTER (WHERE te.event_type IN ('ERROR', 'OOM', 'MODEL_LOAD_FAILED') OR (te.error_message IS NOT NULL AND te.error_message <> '')),
+		COALESCE(AVG(te.confidence_score), 0),
+		COALESCE(STDDEV(te.confidence_score), 0)
 		FROM telemetry_events te
 		WHERE te.model_version_id = $2 AND te.recorded_at >= $3
 		  AND (te.experiment_arm_id = $5
@@ -257,7 +258,7 @@ func (r *Repository) GetCohortStats(ctx context.Context, experimentID, versionID
 	cs := &CohortStats{}
 	err := r.pool.QueryRow(ctx, query, experimentID, versionID, since, cohort, ArmID(experimentID, cohort)).Scan(
 		&cs.SampleSize, &cs.AvgLatency, &cs.StdDevLatency, &cs.P50Latency, &cs.P95Latency,
-		&cs.ErrorCount, &cs.AvgConfidence,
+		&cs.ErrorCount, &cs.AvgConfidence, &cs.StdDevConfidence,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("experiment.GetCohortStats: %w", err)

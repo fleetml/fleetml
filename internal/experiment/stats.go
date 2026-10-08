@@ -75,18 +75,14 @@ func Evaluate(control, treatment CohortStats, primaryMetric string, confidenceLe
 		mean1, std1 = control.AvgLatency, control.StdDevLatency
 		mean2, std2 = treatment.AvgLatency, treatment.StdDevLatency
 	case "error_rate":
-		mean1 = control.ErrorRate
-		mean2 = treatment.ErrorRate
-		// Binomial stddev approximation
-		if control.SampleSize > 0 {
-			std1 = math.Sqrt(control.ErrorRate * (1 - control.ErrorRate) / float64(control.SampleSize))
-		}
-		if treatment.SampleSize > 0 {
-			std2 = math.Sqrt(treatment.ErrorRate * (1 - treatment.ErrorRate) / float64(treatment.SampleSize))
-		}
+		// Each event is a Bernoulli trial: the per-event SD is sqrt(p(1-p)).
+		// (WelchTTest divides by n itself; passing the standard error here
+		// would shrink the variance n-fold and make noise look significant.)
+		mean1, std1 = control.ErrorRate, bernoulliSD(control.ErrorRate)
+		mean2, std2 = treatment.ErrorRate, bernoulliSD(treatment.ErrorRate)
 	case "confidence":
-		mean1, std1 = control.AvgConfidence, 0.1 // approximate
-		mean2, std2 = treatment.AvgConfidence, 0.1
+		mean1, std1 = control.AvgConfidence, control.StdDevConfidence
+		mean2, std2 = treatment.AvgConfidence, treatment.StdDevConfidence
 	default:
 		mean1, std1 = control.AvgLatency, control.StdDevLatency
 		mean2, std2 = treatment.AvgLatency, treatment.StdDevLatency
@@ -117,9 +113,16 @@ func Evaluate(control, treatment CohortStats, primaryMetric string, confidenceLe
 	return &ExperimentResult{
 		ControlStats:   control,
 		TreatmentStats: treatment,
-		PValue:         pValue,
+		PValue:         &pValue,
 		IsSignificant:  isSignificant,
-		EffectSize:     effectSize,
+		EffectSize:     &effectSize,
 		Recommendation: recommendation,
 	}
+}
+
+func bernoulliSD(p float64) float64 {
+	if p <= 0 || p >= 1 {
+		return 0
+	}
+	return math.Sqrt(p * (1 - p))
 }

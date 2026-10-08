@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWelchTTest_Significant(t *testing.T) {
@@ -114,4 +115,38 @@ func TestEvaluate_InsufficientData(t *testing.T) {
 	result := Evaluate(control, treatment, "latency", 0.95)
 	// With only 2 samples each, unlikely to be significant
 	assert.Equal(t, "INCONCLUSIVE", result.Recommendation)
+}
+
+// 5.0% vs 6.0% errors over 1000 events per arm is not significant
+// (two-proportion p ~ 0.33). Passing the standard error as the SD, as the
+// old code did, shrank the variance 1000-fold and reported p ~ 0.
+func TestEvaluate_ErrorRateUsesBernoulliSD(t *testing.T) {
+	control := CohortStats{SampleSize: 1000, ErrorRate: 0.05}
+	treatment := CohortStats{SampleSize: 1000, ErrorRate: 0.06}
+	r := Evaluate(control, treatment, "error_rate", 0.95)
+	require.NotNil(t, r.PValue)
+	assert.InDelta(t, 0.33, *r.PValue, 0.03)
+	assert.False(t, r.IsSignificant)
+
+	// A real difference is still detected: 5% vs 9%.
+	treatment.ErrorRate = 0.09
+	r = Evaluate(control, treatment, "error_rate", 0.95)
+	assert.True(t, r.IsSignificant)
+	assert.Equal(t, "KEEP_CONTROL", r.Recommendation)
+}
+
+// Confidence uses the measured SD. With a tight spread (0.02) a 0.80 vs 0.82
+// difference over 100 events per arm is clearly significant; the old fixed
+// SD of 0.1 hid it.
+func TestEvaluate_ConfidenceUsesMeasuredSD(t *testing.T) {
+	control := CohortStats{SampleSize: 100, AvgConfidence: 0.80, StdDevConfidence: 0.02}
+	treatment := CohortStats{SampleSize: 100, AvgConfidence: 0.82, StdDevConfidence: 0.02}
+	r := Evaluate(control, treatment, "confidence", 0.95)
+	assert.True(t, r.IsSignificant)
+	assert.Equal(t, "ADOPT_TREATMENT", r.Recommendation)
+
+	// And a wide measured spread makes the same means inconclusive.
+	control.StdDevConfidence, treatment.StdDevConfidence = 0.3, 0.3
+	r = Evaluate(control, treatment, "confidence", 0.95)
+	assert.False(t, r.IsSignificant)
 }

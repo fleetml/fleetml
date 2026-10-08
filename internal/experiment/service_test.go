@@ -17,6 +17,7 @@ type mockRepo struct {
 	experiments map[uuid.UUID]*Experiment
 	names       map[string]uuid.UUID
 	cohorts     map[string]*CohortAssignment // key: "deviceID:expID"
+	stats       map[string]CohortStats       // cohort -> stats returned by GetCohortStats
 }
 
 func newMockRepo() *mockRepo {
@@ -24,6 +25,7 @@ func newMockRepo() *mockRepo {
 		experiments: make(map[uuid.UUID]*Experiment),
 		names:       make(map[string]uuid.UUID),
 		cohorts:     make(map[string]*CohortAssignment),
+		stats:       make(map[string]CohortStats),
 	}
 }
 
@@ -115,7 +117,11 @@ func (m *mockRepo) ListCohortAssignments(_ context.Context, _ uuid.UUID) ([]Coho
 	return nil, nil
 }
 
-func (m *mockRepo) GetCohortStats(_ context.Context, _, _ uuid.UUID, _ time.Time, _ string) (*CohortStats, error) {
+func (m *mockRepo) GetCohortStats(_ context.Context, _, _ uuid.UUID, _ time.Time, cohort string) (*CohortStats, error) {
+	if s, ok := m.stats[cohort]; ok {
+		cp := s
+		return &cp, nil
+	}
 	return &CohortStats{SampleSize: 0}, nil
 }
 
@@ -209,7 +215,7 @@ func TestEvaluate_EmptyTelemetry(t *testing.T) {
 	_, _ = svc.Start(context.Background(), exp.ID)
 	result, err := svc.EvaluateExperiment(context.Background(), exp.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "INCONCLUSIVE", result.Recommendation)
+	assert.Equal(t, "COLLECTING_DATA", result.Recommendation)
 }
 
 func TestCreate_InvalidMetric(t *testing.T) {
@@ -236,4 +242,71 @@ func TestCreate_ArmsNeedReadyVariants(t *testing.T) {
 	svc.SetVersionChecker(fakeVersions{in.ControlVersionID: 1, in.TreatmentVersionID: 2})
 	_, err = svc.Create(context.Background(), in)
 	assert.NoError(t, err)
+}
+
+// Fixed horizon: no test (and no p-value) before both arms reach
+// min_sample_size; one test when they do; the decision never changes after.
+func TestEvaluate_FixedHorizon(t *testing.T) {
+	svc := newTestService()
+	repo := svc.repo.(*mockRepo)
+	in := validInput()
+	in.MinSampleSize = 100
+	exp, err := svc.Create(context.Background(), in)
+	require.NoError(t, err)
+	_, err = svc.Start(context.Background(), exp.ID)
+	require.NoError(t, err)
+
+	// A striking but early difference: not tested yet.
+	repo.stats["control"] = CohortStats{SampleSize: 99, AvgLatency: 50, StdDevLatency: 5}
+	repo.stats["treatment"] = CohortStats{SampleSize: 150, AvgLatency: 30, StdDevLatency: 5}
+	r, err := svc.EvaluateExperiment(context.Background(), exp.ID)
+	require.NoError(t, err)
+	assert.False(t, r.Final)
+	assert.Nil(t, r.PValue, "no p-value before the horizon")
+	assert.False(t, r.IsSignificant)
+	assert.Equal(t, "COLLECTING_DATA", r.Recommendation)
+
+	// Horizon reached: tested once.
+	repo.stats["control"] = CohortStats{SampleSize: 100, AvgLatency: 50, StdDevLatency: 5}
+	r, err = svc.EvaluateExperiment(context.Background(), exp.ID)
+	require.NoError(t, err)
+	assert.True(t, r.Final)
+	require.NotNil(t, r.TestedAt)
+	assert.True(t, r.IsSignificant)
+	assert.Equal(t, "ADOPT_TREATMENT", r.Recommendation)
+
+	// Later data cannot change the decision.
+	repo.stats["treatment"] = CohortStats{SampleSize: 5000, AvgLatency: 50, StdDevLatency: 5}
+	again, err := svc.EvaluateExperiment(context.Background(), exp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, r.Recommendation, again.Recommendation)
+	assert.Equal(t, *r.PValue, *again.PValue)
+	assert.Equal(t, int64(150), again.TreatmentStats.SampleSize, "stats are those at the horizon")
+}
+
+// auto_conclude acts on the single fixed-horizon test, not on every tick.
+func TestTicker_AutoConcludesAtHorizon(t *testing.T) {
+	svc := newTestService()
+	repo := svc.repo.(*mockRepo)
+	in := validInput()
+	in.MinSampleSize = 50
+	in.AutoConclude = true
+	exp, err := svc.Create(context.Background(), in)
+	require.NoError(t, err)
+	_, err = svc.Start(context.Background(), exp.ID)
+	require.NoError(t, err)
+	ticker := NewTicker(svc, time.Minute, nil)
+
+	repo.stats["control"] = CohortStats{SampleSize: 10, AvgLatency: 50, StdDevLatency: 5}
+	repo.stats["treatment"] = CohortStats{SampleSize: 10, AvgLatency: 30, StdDevLatency: 5}
+	ticker.tick(context.Background())
+	got, _ := svc.Get(context.Background(), exp.ID)
+	assert.Equal(t, "RUNNING", got.Status, "a dramatic early difference does not conclude early")
+
+	repo.stats["control"] = CohortStats{SampleSize: 60, AvgLatency: 50, StdDevLatency: 5}
+	repo.stats["treatment"] = CohortStats{SampleSize: 60, AvgLatency: 30, StdDevLatency: 5}
+	ticker.tick(context.Background())
+	got, _ = svc.Get(context.Background(), exp.ID)
+	assert.Equal(t, "CONCLUDED", got.Status)
+	assert.Equal(t, exp.TreatmentVersionID, *got.WinnerVersionID)
 }
