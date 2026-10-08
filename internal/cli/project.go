@@ -30,7 +30,7 @@ func newProjectListCmd() *cobra.Command {
 			var rows [][]string
 			for _, p := range result {
 				rows = append(rows, []string{
-					fmt.Sprint(p["ID"]), fmt.Sprint(p["Name"]), fmt.Sprint(p["Slug"]),
+					fmt.Sprint(p["id"]), fmt.Sprint(p["name"]), fmt.Sprint(p["slug"]),
 				})
 			}
 			PrintTable([]string{"ID", "Name", "Slug"}, rows)
@@ -53,8 +53,8 @@ func newProjectCreateCmd() *cobra.Command {
 				PrintJSON(result)
 				return nil
 			}
-			PrintSuccess(fmt.Sprintf("Project created: %s (slug: %s)", result["Name"], result["Slug"]))
-			fmt.Printf("  ID: %s\n", result["ID"])
+			PrintSuccess(fmt.Sprintf("Project created: %s (slug: %s)", result["name"], result["slug"]))
+			fmt.Printf("  ID: %s\n", result["id"])
 			return nil
 		},
 	}
@@ -77,9 +77,9 @@ func newProjectGetCmd() *cobra.Command {
 				return nil
 			}
 			PrintDetail("Project", [][2]string{
-				{"ID", fmt.Sprint(result["ID"])},
-				{"Name", fmt.Sprint(result["Name"])},
-				{"Slug", fmt.Sprint(result["Slug"])},
+				{"ID", fmt.Sprint(result["id"])},
+				{"Name", fmt.Sprint(result["name"])},
+				{"Slug", fmt.Sprint(result["slug"])},
 			})
 			return nil
 		},

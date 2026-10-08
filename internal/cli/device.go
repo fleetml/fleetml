@@ -29,8 +29,8 @@ func newDeviceListCmd() *cobra.Command {
 			var rows [][]string
 			for _, d := range result {
 				rows = append(rows, []string{
-					fmt.Sprint(d["ID"]), fmt.Sprint(d["OS"]),
-					fmt.Sprint(d["RAMMB"]), fmt.Sprint(d["Chipset"]),
+					fmt.Sprint(d["id"]), fmt.Sprint(d["os"]),
+					fmt.Sprint(d["ram_mb"]), fmt.Sprint(d["chipset"]),
 				})
 			}
 			PrintTable([]string{"ID", "OS", "RAM(MB)", "Chipset"}, rows)
@@ -67,16 +67,16 @@ func newDeviceProfileCmd() *cobra.Command {
 			}
 			fmt.Printf("Device Profile: %s\n", args[0][:12])
 			fmt.Println("────────────────────────────")
-			fmt.Printf("  Class:     %v\n", result["DeviceClass"])
-			fmt.Printf("  Score:     %v/100\n", result["Score"])
-			fmt.Printf("  OS:        %v\n", result["OS"])
-			if mem, ok := result["Memory"].(map[string]interface{}); ok {
-				fmt.Printf("  RAM:       %v MB\n", mem["TotalRAMMB"])
+			fmt.Printf("  Class:     %v\n", result["device_class"])
+			fmt.Printf("  Score:     %v/100\n", result["score"])
+			fmt.Printf("  OS:        %v\n", result["os"])
+			if mem, ok := result["memory"].(map[string]interface{}); ok {
+				fmt.Printf("  RAM:       %v MB\n", mem["total_ram_mb"])
 			}
-			if acc, ok := result["Accelerators"].(map[string]interface{}); ok {
-				fmt.Printf("  NPU:       %v\n", acc["HasNPU"])
-				fmt.Printf("  GPU:       %v\n", acc["HasGPU"])
-				fmt.Printf("  Runtimes:  %v\n", acc["SupportedRuntimes"])
+			if acc, ok := result["accelerators"].(map[string]interface{}); ok {
+				fmt.Printf("  NPU:       %v\n", acc["has_npu"])
+				fmt.Printf("  GPU:       %v\n", acc["has_gpu"])
+				fmt.Printf("  Runtimes:  %v\n", acc["supported_runtimes"])
 			}
 			return nil
 		},

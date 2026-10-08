@@ -54,7 +54,7 @@ func newPushCmd() *cobra.Command {
 					return fmt.Errorf("creating model: %s", err)
 				}
 				for _, m := range models {
-					if fmt.Sprint(m["Name"]) == modelName {
+					if fmt.Sprint(m["name"]) == modelName {
 						model = m
 						break
 					}
@@ -63,7 +63,7 @@ func newPushCmd() *cobra.Command {
 					return fmt.Errorf("creating model: %s", err)
 				}
 			}
-			modelID := fmt.Sprint(model["ID"])
+			modelID := fmt.Sprint(model["id"])
 
 			// Step 2: Ensure version exists
 			var version map[string]interface{}
@@ -74,7 +74,7 @@ func newPushCmd() *cobra.Command {
 					return fmt.Errorf("creating version: %s", err)
 				}
 				for _, v := range versions {
-					if fmt.Sprint(v["Version"]) == ver {
+					if fmt.Sprint(v["version"]) == ver {
 						version = v
 						break
 					}
@@ -83,7 +83,7 @@ func newPushCmd() *cobra.Command {
 					return fmt.Errorf("creating version: %s", err)
 				}
 			}
-			versionID := fmt.Sprint(version["ID"])
+			versionID := fmt.Sprint(version["id"])
 
 			// Step 3: Create variant + get upload URL
 			var variantResp map[string]interface{}
@@ -99,7 +99,7 @@ func newPushCmd() *cobra.Command {
 
 			uploadURL := fmt.Sprint(variantResp["upload_url"])
 			variant := variantResp["variant"].(map[string]interface{})
-			variantID := fmt.Sprint(variant["ID"])
+			variantID := fmt.Sprint(variant["id"])
 
 			// Step 4: Upload with progress
 			f, err = os.Open(filePath)

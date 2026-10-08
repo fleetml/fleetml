@@ -1,36 +1,39 @@
 export interface Project {
-  ID: string;
-  Name: string;
-  Slug: string;
-  Description: string;
-  CreatedAt: string;
-  UpdatedAt: string;
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Device {
-  ID: string;
-  OS: string;
-  OSVersion: string;
-  RAMMB: number;
-  Chipset: string;
-  HasNPU: boolean;
-  HasGPU: boolean;
-  NPUTflops: number;
-  AgentVersion: string;
-  Labels: Record<string, string>;
-  LastSeenAt: string | null;
-  CreatedAt: string;
+  id: string;
+  project_id: string | null;
+  device_class_id: string | null;
+  os: string;
+  os_version: string;
+  ram_mb: number;
+  chipset: string;
+  has_npu: boolean;
+  has_gpu: boolean;
+  npu_tflops: number;
+  agent_version: string;
+  labels: Record<string, string>;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DeviceProfile {
-  DeviceID: string;
-  DeviceClass: string;
-  OS: string;
-  Score: number;
-  Compute: { CPUCores: number; Architecture: string; IntScore: number; FloatScore: number };
-  Memory: { TotalRAMMB: number; AvailableRAMMB: number; StorageFreeMB: number };
-  Accelerators: { HasNPU: boolean; HasGPU: boolean; NPUTflops: number; SupportedRuntimes: string[] };
-  Connectivity: { NetworkType: string; BandwidthMbps: number; IsMetered: boolean };
+  device_id: string;
+  device_class: string;
+  os: string;
+  score: number;
+  compute: { cpu_cores: number; architecture: string; int_score: number; float_score: number };
+  memory: { total_ram_mb: number; available_ram_mb: number; storage_free_mb: number };
+  accelerators: { has_npu: boolean; has_gpu: boolean; npu_tflops: number; gpu_tflops: number; supported_runtimes: string[] | null };
+  connectivity: { network_type: string; bandwidth_mbps: number; is_metered: boolean };
 }
 
 export interface Deployment {

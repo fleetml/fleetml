@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -362,4 +363,25 @@ func TestRevokeDevice(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, doJSON(r, "POST", "/api/v1/devices/"+uuid.NewString()+"/revoke", nil).Code)
 	assert.Equal(t, http.StatusBadRequest, doJSON(r, "POST", "/api/v1/devices/not-a-uuid/revoke", nil).Code)
+}
+
+// Regression: GET /devices used to return Fingerprint and AuthTokenHash, which
+// let anyone with API access impersonate a device.
+func TestDeviceResponses_NoFingerprintOrTokenHash(t *testing.T) {
+	svc := newDeviceTestService()
+	r := setupDeviceTestRouter(svc)
+	fp := deviceFingerprint("dto")
+	resp, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{EnrollmentKey: restEnrollKey, Fingerprint: fp, OS: "ANDROID", RAMMB: 4096})
+	require.NoError(t, err)
+
+	for _, path := range []string{"/api/v1/devices", "/api/v1/devices/" + resp.DeviceID} {
+		w := doJSON(r, "GET", path, nil)
+		require.Equal(t, http.StatusOK, w.Code, path)
+		body := w.Body.String()
+		assert.NotContains(t, body, fp, path)
+		assert.NotContains(t, strings.ToLower(body), "fingerprint", path)
+		assert.NotContains(t, strings.ToLower(body), "token", path)
+		assert.Contains(t, body, `"ram_mb":4096`, path)
+		assert.Contains(t, body, `"id":"`+resp.DeviceID+`"`, path)
+	}
 }

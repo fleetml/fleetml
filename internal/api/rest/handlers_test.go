@@ -379,9 +379,9 @@ func TestProjectCRUD(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 	body := parseBody(t, w)
 	data := body["data"].(map[string]interface{})
-	assert.Equal(t, "Fraud Detector", data["Name"])
-	assert.Equal(t, "fraud-detector", data["Slug"])
-	projectID := data["ID"].(string)
+	assert.Equal(t, "Fraud Detector", data["name"])
+	assert.Equal(t, "fraud-detector", data["slug"])
+	projectID := data["id"].(string)
 
 	// Get by ID
 	w = doJSON(r, "GET", "/api/v1/projects/"+projectID, nil)
@@ -446,7 +446,7 @@ func TestModelCRUD(t *testing.T) {
 	// Create project first
 	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "ML Project"})
 	require.Equal(t, http.StatusCreated, w.Code)
-	projectID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	// Create model
 	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{
@@ -455,7 +455,7 @@ func TestModelCRUD(t *testing.T) {
 		"task_type": "CLASSIFICATION",
 	})
 	assert.Equal(t, http.StatusCreated, w.Code)
-	modelID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	// Get model
 	w = doJSON(r, "GET", "/api/v1/models/"+modelID, nil)
@@ -484,7 +484,7 @@ func TestModelInvalidFramework(t *testing.T) {
 
 	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
 	require.Equal(t, http.StatusCreated, w.Code)
-	projectID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{
 		"name":      "test",
@@ -503,13 +503,13 @@ func TestVersionCRUD(t *testing.T) {
 	// Setup: project + model
 	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
 	require.Equal(t, http.StatusCreated, w.Code)
-	projectID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{
 		"name": "m", "framework": "ONNX", "task_type": "LLM",
 	})
 	require.Equal(t, http.StatusCreated, w.Code)
-	modelID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	// Create version
 	w = doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{
@@ -517,8 +517,8 @@ func TestVersionCRUD(t *testing.T) {
 	})
 	assert.Equal(t, http.StatusCreated, w.Code)
 	verData := parseBody(t, w)["data"].(map[string]interface{})
-	versionID := verData["ID"].(string)
-	assert.Equal(t, "DRAFT", verData["Status"])
+	versionID := verData["id"].(string)
+	assert.Equal(t, "DRAFT", verData["status"])
 
 	// Get version
 	w = doJSON(r, "GET", "/api/v1/versions/"+versionID, nil)
@@ -551,13 +551,13 @@ func TestVersionInvalidSemver(t *testing.T) {
 
 	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
 	require.Equal(t, http.StatusCreated, w.Code)
-	projectID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{
 		"name": "m", "framework": "ONNX", "task_type": "LLM",
 	})
 	require.Equal(t, http.StatusCreated, w.Code)
-	modelID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{
 		"version": "not-semver",
@@ -571,19 +571,19 @@ func TestVersionInvalidTransition(t *testing.T) {
 
 	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
 	require.Equal(t, http.StatusCreated, w.Code)
-	projectID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{
 		"name": "m", "framework": "ONNX", "task_type": "LLM",
 	})
 	require.Equal(t, http.StatusCreated, w.Code)
-	modelID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{
 		"version": "1.0.0",
 	})
 	require.Equal(t, http.StatusCreated, w.Code)
-	versionID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	versionID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	// DRAFT -> ACTIVE should fail
 	w = doJSON(r, "PATCH", "/api/v1/versions/"+versionID+"/status", map[string]string{
@@ -601,19 +601,19 @@ func TestVariantCRUD(t *testing.T) {
 	// Setup: project + model + version
 	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
 	require.Equal(t, http.StatusCreated, w.Code)
-	projectID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{
 		"name": "m", "framework": "ONNX", "task_type": "LLM",
 	})
 	require.Equal(t, http.StatusCreated, w.Code)
-	modelID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	w = doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{
 		"version": "1.0.0",
 	})
 	require.Equal(t, http.StatusCreated, w.Code)
-	versionID := parseBody(t, w)["data"].(map[string]interface{})["ID"].(string)
+	versionID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
 
 	// Create variant
 	w = doJSON(r, "POST", "/api/v1/versions/"+versionID+"/variants", map[string]interface{}{
@@ -627,7 +627,7 @@ func TestVariantCRUD(t *testing.T) {
 	variantData := body["data"].(map[string]interface{})
 	assert.NotEmpty(t, variantData["upload_url"])
 	variant := variantData["variant"].(map[string]interface{})
-	variantID := variant["ID"].(string)
+	variantID := variant["id"].(string)
 
 	// List variants
 	w = doJSON(r, "GET", "/api/v1/versions/"+versionID+"/variants", nil)

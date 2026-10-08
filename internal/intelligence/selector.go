@@ -32,10 +32,10 @@ type CandidateVariant struct {
 
 // SelectionResult represents the outcome of variant selection.
 type SelectionResult struct {
-	VariantID    uuid.UUID
-	Quantization string
-	Score        int
-	Reason       string
+	VariantID    uuid.UUID `json:"variant_id"`
+	Quantization string    `json:"quantization"`
+	Score        int       `json:"score"`
+	Reason       string    `json:"reason"`
 }
 
 // CandidateResult describes a candidate's compatibility for the preview endpoint.

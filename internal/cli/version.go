@@ -29,7 +29,7 @@ func newVerListCmd() *cobra.Command {
 			}
 			var rows [][]string
 			for _, v := range result {
-				rows = append(rows, []string{fmt.Sprint(v["ID"]), fmt.Sprint(v["Version"]), fmt.Sprint(v["Status"])})
+				rows = append(rows, []string{fmt.Sprint(v["id"]), fmt.Sprint(v["version"]), fmt.Sprint(v["status"])})
 			}
 			PrintTable([]string{"ID", "Version", "Status"}, rows)
 			return nil
@@ -50,8 +50,8 @@ func newVerCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			PrintSuccess(fmt.Sprintf("Version %s created (status: %s)", result["Version"], result["Status"]))
-			fmt.Printf("  ID: %s\n", result["ID"])
+			PrintSuccess(fmt.Sprintf("Version %s created (status: %s)", result["version"], result["status"]))
+			fmt.Printf("  ID: %s\n", result["id"])
 			return nil
 		},
 	}
@@ -72,7 +72,7 @@ func newVerPromoteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			PrintSuccess(fmt.Sprintf("Version promoted to %s", result["Status"]))
+			PrintSuccess(fmt.Sprintf("Version promoted to %s", result["status"]))
 			return nil
 		},
 	}

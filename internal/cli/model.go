@@ -29,7 +29,7 @@ func newModelListCmd() *cobra.Command {
 			}
 			var rows [][]string
 			for _, m := range result {
-				rows = append(rows, []string{fmt.Sprint(m["ID"]), fmt.Sprint(m["Name"]), fmt.Sprint(m["Framework"]), fmt.Sprint(m["TaskType"])})
+				rows = append(rows, []string{fmt.Sprint(m["id"]), fmt.Sprint(m["name"]), fmt.Sprint(m["framework"]), fmt.Sprint(m["task_type"])})
 			}
 			PrintTable([]string{"ID", "Name", "Framework", "TaskType"}, rows)
 			return nil
@@ -56,8 +56,8 @@ func newModelCreateCmd() *cobra.Command {
 				PrintJSON(result)
 				return nil
 			}
-			PrintSuccess(fmt.Sprintf("Model created: %s", result["Name"]))
-			fmt.Printf("  ID: %s\n", result["ID"])
+			PrintSuccess(fmt.Sprintf("Model created: %s", result["name"]))
+			fmt.Printf("  ID: %s\n", result["id"])
 			return nil
 		},
 	}

@@ -22,10 +22,10 @@ export default function Models() {
           <tbody>
             {projects.length === 0 && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-gray-400">No projects</td></tr>}
             {projects.map(p => (
-              <tr key={p.ID} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.Name}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{p.Slug}</td>
-                <td className="px-4 py-3"><CopyableId id={p.ID} /></td>
+              <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.name}</td>
+                <td className="px-4 py-3 text-sm text-gray-500">{p.slug}</td>
+                <td className="px-4 py-3"><CopyableId id={p.id} /></td>
               </tr>
             ))}
           </tbody>
