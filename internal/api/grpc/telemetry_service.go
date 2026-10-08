@@ -25,12 +25,19 @@ func NewTelemetryServiceServer(svc *telemetry.Service, logger *slog.Logger) *Tel
 	return &TelemetryServiceServer{service: svc, logger: logger}
 }
 
+// maxTelemetryBatch bounds one ReportBatch call.
+const maxTelemetryBatch = 1000
+
 // ReportBatch handles batch telemetry from devices.
 func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1.TelemetryBatch) (*fleetmlv1.TelemetryAck, error) {
 	// Extract device_id from JWT context
 	deviceID, ok := ctx.Value(deviceIDKey).(uuid.UUID)
 	if !ok {
 		return nil, status.Errorf(codes.Unauthenticated, "missing device authentication")
+	}
+
+	if n := len(req.GetEvents()); n > maxTelemetryBatch {
+		return nil, status.Errorf(codes.InvalidArgument, "batch has %d events; the maximum is %d", n, maxTelemetryBatch)
 	}
 
 	events := make([]telemetry.Event, 0, len(req.GetEvents()))
@@ -70,7 +77,7 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 	accepted, rejected, err := s.service.IngestEvents(ctx, deviceID, events)
 	if err != nil {
 		s.logger.Error("telemetry ingestion failed", "device_id", deviceID, "error", err)
-		return nil, status.Errorf(codes.Internal, "ingestion failed: %v", err)
+		return nil, status.Error(codes.Internal, "ingestion failed")
 	}
 
 	return &fleetmlv1.TelemetryAck{

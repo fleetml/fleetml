@@ -65,7 +65,7 @@ func (h *TelemetryHandler) queryEvents(c *gin.Context) {
 
 	events, total, err := h.service.QueryEvents(c.Request.Context(), filter)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to query events")
+		internalError(c, err, "Failed to query events")
 		return
 	}
 	if events == nil {
@@ -83,7 +83,7 @@ func (h *TelemetryHandler) getSummary(c *gin.Context) {
 	from, to := parseTimeRange(c)
 	summary, err := h.service.GetSummary(c.Request.Context(), id, from, to)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get summary")
+		internalError(c, err, "Failed to get summary")
 		return
 	}
 	respondData(c, http.StatusOK, summary)
@@ -98,7 +98,7 @@ func (h *TelemetryHandler) getSummaryByClass(c *gin.Context) {
 	from, to := parseTimeRange(c)
 	summaries, err := h.service.GetSummaryByDeviceClass(c.Request.Context(), id, from, to)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get summary by class")
+		internalError(c, err, "Failed to get summary by class")
 		return
 	}
 	if summaries == nil {
@@ -122,7 +122,7 @@ func (h *TelemetryHandler) getTimeSeries(c *gin.Context) {
 
 	points, err := h.service.GetTimeSeries(c.Request.Context(), id, from, to, interval)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get time series")
+		internalError(c, err, "Failed to get time series")
 		return
 	}
 	if points == nil {

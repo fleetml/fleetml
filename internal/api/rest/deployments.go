@@ -235,6 +235,6 @@ func handleDeployError(c *gin.Context, err error) {
 	case errors.Is(err, deploy.ErrInvalidTransition):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred")
+		internalError(c, err, "An internal error occurred")
 	}
 }

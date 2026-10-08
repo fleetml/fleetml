@@ -84,6 +84,10 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		return nil, status.Errorf(codes.Unauthenticated, "missing device authentication")
 	}
 
+	if id := req.GetDeviceId(); id != "" && id != deviceID.String() {
+		return nil, status.Error(codes.InvalidArgument, "device_id does not match the authenticated device")
+	}
+
 	var loadedModels []device.ModelStatus
 	for _, m := range req.GetLoadedModels() {
 		loadedModels = append(loadedModels, device.ModelStatus{
@@ -99,8 +103,11 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		LoadedModels: loadedModels,
 	})
 	if err != nil {
+		if errors.Is(err, device.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "device not found")
+		}
 		s.logger.Error("heartbeat failed", "device_id", deviceID, "error", err)
-		return nil, status.Errorf(codes.Internal, "heartbeat failed: %v", err)
+		return nil, status.Error(codes.Internal, "heartbeat failed")
 	}
 
 	var protoAssignments []*fleetmlv1.ModelAssignment

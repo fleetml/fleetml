@@ -420,3 +420,11 @@ func TestHeartbeat_RevokedToken(t *testing.T) {
 	_, err = client.Heartbeat(withToken(reg.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: reg.DeviceId})
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
+
+func TestHeartbeat_DeviceIDMismatchIsInvalidArgument(t *testing.T) {
+	client := setupGRPCTest(t)
+	reg, err := client.Register(context.Background(), &fleetmlv1.RegisterRequest{Fingerprint: validFingerprint(), Os: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	_, err = client.Heartbeat(withToken(reg.AuthToken), &fleetmlv1.HeartbeatRequest{DeviceId: uuid.NewString()})
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}

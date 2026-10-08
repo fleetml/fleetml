@@ -94,7 +94,7 @@ func (h *IntelligenceHandler) preview(c *gin.Context) {
 
 	candidates, err := h.orchestrator.LoadVariantsForVersion(ctx, dep.ModelVersionID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load variants")
+		internalError(c, err, "Failed to load variants")
 		return
 	}
 

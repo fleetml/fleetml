@@ -41,6 +41,22 @@ func respondError(c *gin.Context, status int, code, message string) {
 	})
 }
 
+// internalError responds 500 without leaking details. The cause is attached to
+// the request so RequestLogger logs it together with the request_id, which is
+// also returned to the client for correlation.
+func internalError(c *gin.Context, err error, message string) {
+	if err != nil {
+		_ = c.Error(err)
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": gin.H{
+			"code":       "INTERNAL_ERROR",
+			"message":    message,
+			"request_id": c.GetString(requestIDKey),
+		},
+	})
+}
+
 func handleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, registry.ErrNotFound):
@@ -52,7 +68,7 @@ func handleServiceError(c *gin.Context, err error) {
 	case errors.Is(err, registry.ErrInvalidTransition):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred")
+		internalError(c, err, "An internal error occurred")
 	}
 }
 

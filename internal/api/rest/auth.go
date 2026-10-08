@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -37,8 +38,7 @@ func RequireAPIKey(keys *auth.APIKeyService, logger *slog.Logger) gin.HandlerFun
 				unauthorized(c, "invalid or revoked API key")
 				return
 			}
-			logger.Error("api key lookup failed", "error", err, "request_id", c.GetString(requestIDKey))
-			respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred")
+			internalError(c, fmt.Errorf("api key lookup: %w", err), "An internal error occurred")
 			c.Abort()
 			return
 		}
@@ -125,7 +125,7 @@ func handleAuthError(c *gin.Context, err error) {
 	case errors.Is(err, auth.ErrLastKey):
 		respondError(c, http.StatusConflict, "CONFLICT", "cannot revoke the last active admin key; create another key first")
 	default:
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "An internal error occurred")
+		internalError(c, err, "An internal error occurred")
 	}
 }
 

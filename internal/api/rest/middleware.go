@@ -25,17 +25,26 @@ func RequestID() gin.HandlerFunc {
 }
 
 // RequestLogger logs each request with method, path, status, duration, request_id.
+// Server errors are logged at error level with the underlying cause.
 func RequestLogger(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		logger.Info("request",
+		attrs := []any{
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"status", c.Writer.Status(),
 			"duration_ms", time.Since(start).Milliseconds(),
 			"request_id", c.GetString(requestIDKey),
-		)
+		}
+		if c.Writer.Status() >= 500 {
+			if len(c.Errors) > 0 {
+				attrs = append(attrs, "error", c.Errors.String())
+			}
+			logger.Error("request failed", attrs...)
+			return
+		}
+		logger.Info("request", attrs...)
 	}
 }
 

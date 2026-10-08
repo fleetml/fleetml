@@ -136,3 +136,19 @@ func TestReportBatch_EmptyBatch(t *testing.T) {
 	assert.Equal(t, uint32(0), ack.AcceptedCount)
 	assert.Equal(t, uint32(0), ack.RejectedCount)
 }
+
+func TestReportBatch_OversizedBatchIsInvalidArgument(t *testing.T) {
+	telClient, devClient := setupTelemetryGRPCTest(t)
+	reg, err := devClient.Register(context.Background(), &fleetmlv1.RegisterRequest{
+		EnrollmentKey: testEnrollKey, Fingerprint: validFingerprint(), Os: "ANDROID",
+	})
+	require.NoError(t, err)
+
+	events := make([]*fleetmlv1.TelemetryEvent, maxTelemetryBatch+1)
+	for i := range events {
+		events[i] = &fleetmlv1.TelemetryEvent{Type: fleetmlv1.TelemetryEvent_INFERENCE}
+	}
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer "+reg.AuthToken)
+	_, err = telClient.ReportBatch(ctx, &fleetmlv1.TelemetryBatch{DeviceId: reg.DeviceId, Events: events})
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}

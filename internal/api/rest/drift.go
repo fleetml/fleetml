@@ -36,7 +36,7 @@ func (h *DriftHandler) getLatest(c *gin.Context) {
 	}
 	results, err := h.store.GetLatestResults(c.Request.Context(), id)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get drift results")
+		internalError(c, err, "Failed to get drift results")
 		return
 	}
 	if results == nil {
@@ -52,7 +52,7 @@ func (h *DriftHandler) check(c *gin.Context) {
 	}
 	results, err := h.detector.CheckDrift(c.Request.Context(), id, 7*24*time.Hour, 24*time.Hour)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		internalError(c, err, "Drift check failed")
 		return
 	}
 	if results == nil {
@@ -68,7 +68,7 @@ func (h *DriftHandler) getHistory(c *gin.Context) {
 	}
 	results, err := h.store.GetHistory(c.Request.Context(), id, 50)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get drift history")
+		internalError(c, err, "Failed to get drift history")
 		return
 	}
 	if results == nil {
