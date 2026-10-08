@@ -17,7 +17,9 @@ final class LiveServerTests: XCTestCase {
         let cellular = DeviceConditions(connected: true, expensive: true, charging: false)
         let inst = try Instance(config: FleetMLConfig(serverHost: host, enrollmentKey: key, labels: ["ios-live": label], autoStart: false),
                                 delegate: nil, validator: ModelValidators.default(), directory: tempDir(), tokens: MemoryTokenStore(),
-                                conditions: { cellular })
+                                conditions: { cellular },
+                                // A new device each run: the test runner's real fingerprint repeats across runs.
+                                fingerprint: (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined())
         defer { inst.stop() }
 
         let reached = await inst.syncNow()

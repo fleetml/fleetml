@@ -124,6 +124,7 @@ final class Instance {
     private let lock = NSLock()
     private var path = DeviceConditions(connected: true, expensive: true, charging: false) // until the first path update
     private var conditionsOverride: (() -> DeviceConditions)?
+    private let fingerprintOverride: String?
     private var downloadPolicy: DownloadPolicy
     private var backgroundInterval: TimeInterval
     private var registered = false
@@ -131,14 +132,17 @@ final class Instance {
     private var observers: [NSObjectProtocol] = []
     private var startTask: Task<Void, Never>?
 
-    /// - Parameter conditions: overrides the network and battery readings (tests).
+    /// - Parameters:
+    ///   - conditions: overrides the network and battery readings (tests).
+    ///   - fingerprint: overrides the device fingerprint (tests).
     init(config: FleetMLConfig, delegate: FleetMLDelegate?, validator: ModelValidator, directory: URL, tokens: TokenStore,
-         conditions: (() -> DeviceConditions)?) throws {
+         conditions: (() -> DeviceConditions)?, fingerprint: String? = nil) throws {
         self.config = config
         self.delegate = delegate
         self.directory = directory
         self.tokens = tokens
         conditionsOverride = conditions
+        fingerprintOverride = fingerprint
         downloadPolicy = config.downloadPolicy
         backgroundInterval = config.backgroundHeartbeatIntervalSeconds
         grpc = try FleetMLRPC(config: config)
@@ -315,7 +319,7 @@ final class Instance {
 
     func register() async throws {
         var req = Fleetml_Device_V1_RegisterRequest()
-        req.fingerprint = DeviceFingerprint.generate()
+        req.fingerprint = fingerprintOverride ?? DeviceFingerprint.generate()
         req.os = "IOS"
         req.osVersion = DeviceFingerprint.osVersion
         req.chipset = DeviceFingerprint.hardwareModel()

@@ -3,11 +3,13 @@
 package e2e
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 )
@@ -282,4 +284,32 @@ func TestE2E_UrgentAndDeviceConfig(t *testing.T) {
 	assert.Equal(t, fleetmlv1.DownloadPolicy_UNMETERED_OR_CHARGING, resp.Config.GetDownloadPolicy())
 	assert.GreaterOrEqual(t, resp.Config.GetBackgroundHeartbeatIntervalSeconds(), uint32(900))
 	assert.Positive(t, resp.Config.GetTelemetryBatchSize())
+}
+
+// A registered device whose app is reconfigured with another project's
+// enrollment key moves to that project when it also presents its token; the
+// key alone cannot take the device over.
+func TestE2E_DeviceMovesProjectWithItsToken(t *testing.T) {
+	e := newEnv(t)
+	a, b := e.newFixture(t), e.newFixture(t)
+	vb, _, _ := e.newVersion(t, b, "1.0.0", "")
+	e.deploy(t, map[string]any{"project_id": b.project, "model_version_id": vb})
+	fp := randHex(32)
+	reg := func(key, token string) (*fleetmlv1.RegisterResponse, error) {
+		ctx := context.Background()
+		if token != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+		}
+		return e.devices.Register(ctx, &fleetmlv1.RegisterRequest{Fingerprint: fp, Os: "ANDROID", RamMb: 4096, EnrollmentKey: key})
+	}
+	first, err := reg(a.enrollKey, "")
+	require.NoError(t, err)
+	_, err = reg(b.enrollKey, "")
+	require.Error(t, err, "another project's key alone is refused")
+	moved, err := reg(b.enrollKey, first.AuthToken)
+	require.NoError(t, err)
+	assert.Equal(t, first.DeviceId, moved.DeviceId)
+	resp := e.heartbeat(t, &device{id: moved.DeviceId, token: moved.AuthToken, loaded: map[string]*fleetmlv1.ModelAssignment{}})
+	require.Len(t, resp.Assignments, 1, "the device now gets project B's deployment")
+	assert.Equal(t, vb, resp.Assignments[0].VersionId)
 }

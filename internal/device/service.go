@@ -340,22 +340,31 @@ func (s *Service) verifyEnrollment(ctx context.Context, key string) (uuid.UUID, 
 // authorizeReRegister allows a known fingerprint to re-register only with its
 // current token, or with an enrollment key for the device's project (any
 // project for devices registered before enrollment keys existed).
+// authorizeReRegister lets a known device register again with its current
+// token or an enrollment key of its project. A device that presents both its
+// token and a valid key of another project moves to that project (the app was
+// reconfigured); a key of another project alone is refused, so knowing a
+// device's fingerprint is not enough to take it over.
 func (s *Service) authorizeReRegister(ctx context.Context, dev *Device, req *RegisterRequest) error {
-	if req.CurrentToken != "" && s.tokenMatchesDevice(dev, req.CurrentToken) {
-		return nil
-	}
+	tokenOK := req.CurrentToken != "" && s.tokenMatchesDevice(dev, req.CurrentToken)
 	if req.EnrollmentKey != "" {
 		projectID, err := s.verifyEnrollment(ctx, req.EnrollmentKey)
-		if err != nil {
+		switch {
+		case err != nil && !tokenOK:
 			return err
-		}
-		if dev.ProjectID == nil {
+		case err != nil:
+			return nil // a revoked or rotated key does not lock out a device with a valid token
+		case dev.ProjectID == nil || *dev.ProjectID == projectID:
+			dev.ProjectID = &projectID
+			return nil
+		case tokenOK:
+			s.logger.Info("device moves to another project", "device_id", dev.ID, "from", *dev.ProjectID, "to", projectID)
 			dev.ProjectID = &projectID
 			return nil
 		}
-		if *dev.ProjectID == projectID {
-			return nil
-		}
+	}
+	if tokenOK {
+		return nil
 	}
 	return fmt.Errorf("%w: this device is already registered; re-register with its current device token or an enrollment key for its project", ErrUnauthenticated)
 }

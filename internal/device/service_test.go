@@ -653,3 +653,18 @@ func TestMergeExperimentPlan(t *testing.T) {
 	assert.Contains(t, got, ModelAssignment{ModelID: "m1", VariantID: "deploy-v1", Action: "UNLOAD"})
 	assert.NotContains(t, got, ModelAssignment{ModelID: "m1", VariantID: "arm-variant", Action: "UNLOAD"})
 }
+
+// A device with its token and a key of another project moves to that project.
+func TestRegisterDevice_MovesProjectWithTokenAndKey(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newTestService()
+	fp := validFingerprint()
+	first, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: testEnrollKey})
+	require.NoError(t, err)
+	moved, err := svc.RegisterDevice(ctx, &RegisterRequest{Fingerprint: fp, OS: "ANDROID", EnrollmentKey: otherEnrollKey, CurrentToken: first.AuthToken})
+	require.NoError(t, err)
+	assert.Equal(t, first.DeviceID, moved.DeviceID)
+	dev, err := repo.GetByFingerprint(ctx, fp)
+	require.NoError(t, err)
+	assert.Equal(t, otherProjectID, *dev.ProjectID)
+}

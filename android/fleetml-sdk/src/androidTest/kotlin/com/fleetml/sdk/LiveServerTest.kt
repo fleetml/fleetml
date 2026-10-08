@@ -41,7 +41,9 @@ class LiveServerTest {
         val expectedVersion = args.getString("expectedVersion")!!
         val expectedSha = args.getString("expectedSha")!!
 
-        FleetML.reset()
+        // Keep the device's registration from earlier runs: each run uses a new
+        // project, so a repeat run moves the device there with its token.
+        FleetML.stop()
         val ready = CountDownLatch(1)
         var active: ActiveModel? = null
         FleetML.init(

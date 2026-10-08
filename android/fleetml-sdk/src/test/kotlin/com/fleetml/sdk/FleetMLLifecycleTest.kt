@@ -37,6 +37,14 @@ class FleetMLLifecycleTest {
     }
 
     @Test
+    fun `reset with a context clears storage without an instance`() {
+        val dir = java.io.File(context.filesDir, "fleetml").apply { mkdirs() }
+        java.io.File(dir, "models.json").writeText("{}")
+        FleetML.reset(context)
+        assertFalse(dir.exists())
+    }
+
+    @Test
     fun `a duplicate init is ignored`() {
         val config = FleetMLConfig(serverHost = "127.0.0.1", autoStart = false)
         FleetML.init(context, config)

@@ -126,10 +126,14 @@ object FleetML {
     fun getTelemetryReporter(): TelemetryReporter =
         instance?.telemetryReporter ?: error("FleetML not initialized. Call FleetML.init() first.")
 
-    /** Clear cached models and registration data, and stop. */
+    /**
+     * Stop, and clear cached models and registration data. Pass a [context] to
+     * clear them also when the SDK is not initialized (e.g. before [init]).
+     */
     @Synchronized
-    fun reset() {
-        instance?.reset()
+    fun reset(context: Context? = null) {
+        val inst = instance
+        if (inst != null) inst.reset() else if (context != null) FleetMLInstance.clearStorage(context.applicationContext)
         instance = null
     }
 }
@@ -308,8 +312,15 @@ internal class FleetMLInstance(
         root.deleteRecursively()
     }
 
-    private companion object {
-        const val REGISTER_RETRY_MS = 10_000L
-        const val BACKGROUND_WORK = "fleetml-background-sync"
+
+    companion object {
+        private const val REGISTER_RETRY_MS = 10_000L
+        private const val BACKGROUND_WORK = "fleetml-background-sync"
+
+        /** Deletes the registration and everything the SDK stored, without an instance. */
+        fun clearStorage(context: Context) {
+            TokenManager(context).clear()
+            File(context.filesDir, "fleetml").deleteRecursively()
+        }
     }
 }
