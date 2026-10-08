@@ -2,6 +2,8 @@ package com.fleetml.sdk.internal
 
 import com.fleetml.sdk.FleetMLConfig
 import fleetml.device.v1.DeviceServiceGrpcKt as DeviceGrpc
+import fleetml.telemetry.v1.Telemetry.TelemetryBatch
+import fleetml.telemetry.v1.TelemetryServiceGrpcKt as TelemetryGrpc
 import io.grpc.CallCredentials
 import io.grpc.ManagedChannel
 import io.grpc.Metadata
@@ -34,6 +36,14 @@ internal class GrpcClient(private val config: FleetMLConfig) {
     /** Authenticated stub — used for Heartbeat and other authenticated RPCs. */
     fun authenticatedStub(token: String): DeviceGrpc.DeviceServiceCoroutineStub {
         return deviceService.withCallCredentials(BearerToken(token))
+    }
+
+    /** Sends telemetry batches with the device token. */
+    val telemetrySender = com.fleetml.sdk.TelemetrySender { deviceId, token, events ->
+        TelemetryGrpc.TelemetryServiceCoroutineStub(channel)
+            .withCallCredentials(BearerToken(token))
+            .reportBatch(TelemetryBatch.newBuilder().setDeviceId(deviceId).addAllEvents(events).build())
+            .acceptedCount
     }
 
     fun shutdown() {

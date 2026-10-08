@@ -1,52 +1,68 @@
 package com.fleetml.sdk
 
-import android.app.ActivityManager
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
-import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
-import com.fleetml.sdk.internal.TokenManager
-import fleetml.telemetry.v1.Telemetry.TelemetryBatch
+import com.fleetml.sdk.internal.TelemetryQueue
 import fleetml.telemetry.v1.Telemetry.TelemetryEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.concurrent.ConcurrentLinkedQueue
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
+
+/** Sends a batch of telemetry for a registered device; returns the accepted count. */
+internal fun interface TelemetrySender {
+    suspend fun send(deviceId: String, token: String, events: List<TelemetryEvent>): Int
+}
+
+/** The registered device's identity, or null before registration. */
+internal data class DeviceCredentials(val deviceId: String, val token: String)
 
 /**
  * Reports inference telemetry to the FleetML server.
  *
- * Events are buffered in memory and sent in batches for efficiency.
+ * Events go into a persistent, bounded queue first ([TelemetryQueue]): they
+ * survive process death and are kept while the device is offline or not yet
+ * registered. A background loop sends them in batches every flush interval;
+ * after a failed send it backs off exponentially (up to 5 minutes) and it
+ * flushes immediately when the connection comes back.
  *
- * Usage:
  * ```kotlin
- * val reporter = FleetML.getTelemetryReporter()
- * reporter.reportInference(
- *     modelVersionId = "...",
- *     latencyMs = 45,
- *     confidence = 0.92f,
- *     predictionLabel = "legitimate"
- * )
+ * FleetML.getTelemetryReporter().reportInference(model, latencyMs = 12, confidence = 0.93f, predictionLabel = "setosa")
  * ```
  */
 class TelemetryReporter internal constructor(
-    private val grpcClient: GrpcClient,
-    private val tokenManager: TokenManager,
-    private val config: FleetMLConfig,
-    private val context: Context
+    private val queue: TelemetryQueue,
+    private val sender: TelemetrySender,
+    private val credentials: () -> DeviceCredentials?,
+    batchSize: Int,
+    flushIntervalSeconds: Long,
+    private val availableMemoryMb: () -> Int = { 0 },
+    private val batteryPercent: () -> Float = { 0f },
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
-    private val buffer = ConcurrentLinkedQueue<TelemetryEvent>()
-    private var flushJob: Job? = null
-    private val batchSize = config.telemetryBatchSize
+    @Volatile private var batchSize = batchSize.coerceAtLeast(1)
+    @Volatile private var flushIntervalMs = flushIntervalSeconds.coerceAtLeast(1) * 1000
+    private val sendLock = Mutex()
+    private val arms = ConcurrentHashMap<String, String>() // model version ID -> experiment arm ID
+    private var loopJob: Job? = null
+    private var scope: CoroutineScope? = null
 
-    /**
-     * Report a single inference event.
-     * Events are buffered and sent in batches.
-     */
+    /** Number of events waiting to be sent. */
+    val pendingCount: Int get() = queue.size
+
+    /** Report one inference by the given active model. */
+    fun reportInference(
+        model: ActiveModel,
+        latencyMs: Int,
+        confidence: Float = 0f,
+        predictionLabel: String = "",
+        errorMessage: String = "",
+    ) = reportInference(model.versionId, latencyMs, confidence, predictionLabel, errorMessage = errorMessage)
+
+    /** Report one inference for a model version ID. */
     fun reportInference(
         modelVersionId: String,
         latencyMs: Int,
@@ -54,133 +70,103 @@ class TelemetryReporter internal constructor(
         predictionLabel: String = "",
         memoryUsageMb: Int? = null,
         batteryPercent: Float? = null,
-        errorMessage: String = ""
+        errorMessage: String = "",
     ) {
-        val event = TelemetryEvent.newBuilder()
-            .setModelVersionId(modelVersionId)
-            .setType(TelemetryEvent.EventType.INFERENCE)
-            .setLatencyMs(latencyMs)
-            .setConfidenceScore(confidence)
-            .setPredictionLabel(predictionLabel)
-            .setMemoryUsageMb(memoryUsageMb ?: getAvailableMemoryMB())
-            .setBatteryPercent(batteryPercent ?: getBatteryPercent())
-            .setErrorMessage(errorMessage)
-            .setTimestampUnixMs(System.currentTimeMillis())
-            .build()
-
-        buffer.add(event)
-
-        if (buffer.size >= batchSize) {
-            flush()
-        }
+        enqueue(
+            event(modelVersionId, TelemetryEvent.EventType.INFERENCE, latencyMs, errorMessage)
+                .setConfidenceScore(confidence)
+                .setPredictionLabel(predictionLabel)
+                .setMemoryUsageMb(memoryUsageMb ?: availableMemoryMb())
+                .setBatteryPercent(batteryPercent ?: batteryPercent())
+                .build()
+        )
     }
 
-    /**
-     * Report a model lifecycle event (load, download, error).
-     */
+    /** Report a model lifecycle event (MODEL_LOAD, MODEL_LOAD_FAILED, OOM, ERROR). */
     fun reportModelStatus(
         modelVersionId: String,
         type: TelemetryEvent.EventType,
         latencyMs: Int = 0,
-        errorMessage: String = ""
-    ) {
-        val event = TelemetryEvent.newBuilder()
-            .setModelVersionId(modelVersionId)
+        errorMessage: String = "",
+    ) = enqueue(event(modelVersionId, type, latencyMs, errorMessage).build())
+
+    private fun event(versionId: String, type: TelemetryEvent.EventType, latencyMs: Int, error: String) =
+        TelemetryEvent.newBuilder()
+            .setModelVersionId(versionId)
+            .setExperimentArmId(arms[versionId].orEmpty())
             .setType(type)
-            .setLatencyMs(latencyMs)
-            .setErrorMessage(errorMessage)
-            .setTimestampUnixMs(System.currentTimeMillis())
-            .build()
+            .setLatencyMs(latencyMs.coerceAtLeast(0))
+            .setErrorMessage(error)
+            .setTimestampUnixMs(now())
 
-        buffer.add(event)
+    private fun enqueue(event: TelemetryEvent) {
+        queue.add(event)
+        if (queue.size >= batchSize) scope?.launch { flushNow() }
     }
 
-    /** Start periodic flush (every 30 seconds). */
-    fun start(scope: CoroutineScope) {
-        flushJob = scope.launch {
+    /** Arms from the latest heartbeat: events for these versions are tagged with the arm ID. */
+    internal fun setExperimentArms(versionToArm: Map<String, String>) {
+        arms.clear()
+        arms.putAll(versionToArm)
+    }
+
+    /** Apply the server's telemetry settings (DeviceConfig). */
+    internal fun configure(batchSize: Int, flushIntervalSeconds: Long) {
+        if (batchSize > 0) this.batchSize = batchSize
+        if (flushIntervalSeconds > 0) this.flushIntervalMs = flushIntervalSeconds * 1000
+    }
+
+    /** Start the periodic flush loop. */
+    internal fun start(scope: CoroutineScope) {
+        this.scope = scope
+        loopJob?.cancel()
+        loopJob = scope.launch {
+            var failures = 0
             while (isActive) {
-                delay(30_000)
-                flush()
+                delay(if (failures == 0) flushIntervalMs else backoffMs(failures))
+                failures = if (flushNow()) 0 else failures + 1
             }
         }
     }
 
-    /** Stop periodic flushing and send remaining events. */
-    fun stop() {
-        flushJob?.cancel()
-        flushJob = null
-        flush()
+    /** Called when the server is reachable again: send what queued up. */
+    internal fun onReconnected() {
+        scope?.launch { flushNow() }
+    }
+
+    internal fun stop() {
+        loopJob?.cancel()
+        loopJob = null
+        scope = null
     }
 
     /**
-     * Get available RAM in MB using ActivityManager.
+     * Sends queued events in batches until the queue is empty. Returns false
+     * if a send failed (the events stay queued). Unregistered devices keep
+     * everything queued and return true.
      */
-    private fun getAvailableMemoryMB(): Int {
-        return try {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            val memInfo = ActivityManager.MemoryInfo()
-            am.getMemoryInfo(memInfo)
-            (memInfo.availMem / (1024 * 1024)).toInt()
-        } catch (e: Exception) {
-            0
-        }
-    }
-
-    /**
-     * Get current battery percentage using BatteryManager.
-     */
-    private fun getBatteryPercent(): Float {
-        return try {
-            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            val batteryStatus = context.registerReceiver(null, filter)
-            if (batteryStatus != null) {
-                val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                if (level >= 0 && scale > 0) level.toFloat() / scale.toFloat() * 100f else 0f
-            } else {
-                0f
+    internal suspend fun flushNow(): Boolean = sendLock.withLock {
+        val creds = credentials() ?: return true
+        var batch = queue.peek(batchSize)
+        while (batch.isNotEmpty()) {
+            try {
+                val accepted = sender.send(creds.deviceId, creds.token, batch)
+                queue.remove(batch.size)
+                Logger.d("Telemetry flushed: ${batch.size} sent, $accepted accepted")
+            } catch (e: Exception) {
+                Logger.w("Telemetry flush failed, ${queue.size} events kept: ${e.message}")
+                return false
             }
-        } catch (e: Exception) {
-            0f
+            batch = queue.peek(batchSize)
         }
+        true
     }
 
-    /** Flush buffered events to the server. */
-    private fun flush() {
-        val events = mutableListOf<TelemetryEvent>()
-        while (true) {
-            val event = buffer.poll() ?: break
-            events.add(event)
-            if (events.size >= batchSize) break
-        }
+    companion object {
+        private const val BASE_BACKOFF_MS = 5_000L
+        private const val MAX_BACKOFF_MS = 300_000L
 
-        if (events.isEmpty()) return
-
-        val token = tokenManager.getAuthToken() ?: return
-        val deviceId = tokenManager.getDeviceId() ?: return
-
-        try {
-            val batch = TelemetryBatch.newBuilder()
-                .setDeviceId(deviceId)
-                .addAllEvents(events)
-                .build()
-
-            // Use blocking stub with auth metadata in a background thread
-            Thread {
-                try {
-                    val blockingStub = fleetml.telemetry.v1.TelemetryServiceGrpc.newBlockingStub(
-                        grpcClient.channel
-                    ).withCallCredentials(com.fleetml.sdk.internal.BearerToken(token))
-                    val ack = blockingStub.reportBatch(batch)
-                    Logger.d("Telemetry flushed: accepted=${ack.acceptedCount} rejected=${ack.rejectedCount}")
-                } catch (e: Exception) {
-                    Logger.w("Telemetry flush failed: ${e.message}")
-                    events.forEach { buffer.add(it) }
-                }
-            }.start()
-        } catch (e: Exception) {
-            Logger.w("Telemetry flush error: ${e.message}")
-            events.forEach { buffer.add(it) }
-        }
+        internal fun backoffMs(failures: Int): Long =
+            (BASE_BACKOFF_MS shl (failures - 1).coerceIn(0, 10)).coerceAtMost(MAX_BACKOFF_MS)
     }
 }

@@ -1,8 +1,10 @@
 package com.fleetml.sdk
 
 import android.content.Context
+import com.fleetml.sdk.internal.DeviceStats
 import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
+import com.fleetml.sdk.internal.TelemetryQueue
 import com.fleetml.sdk.internal.TokenManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +63,20 @@ object FleetML {
             grpcClient, tokenManager, downloader, cache, callback, config,
             reRegister = { registrar.register() }
         )
-        val telemetryReporter = TelemetryReporter(grpcClient, tokenManager, config, appContext)
+        val stats = DeviceStats(appContext)
+        val telemetryReporter = TelemetryReporter(
+            queue = TelemetryQueue(File(appContext.filesDir, "fleetml/telemetry.queue")),
+            sender = grpcClient.telemetrySender,
+            credentials = {
+                val id = tokenManager.getDeviceId()
+                val token = tokenManager.getAuthToken()
+                if (id != null && token != null) DeviceCredentials(id, token) else null
+            },
+            batchSize = config.telemetryBatchSize,
+            flushIntervalSeconds = config.telemetryFlushIntervalSeconds,
+            availableMemoryMb = stats::availableMemoryMb,
+            batteryPercent = stats::batteryPercent,
+        )
 
         val inst = FleetMLInstance(
             config = config,
@@ -134,12 +149,15 @@ internal class FleetMLInstance(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun start() {
+        // Telemetry is queued from the start; it is sent once the device is registered.
+        telemetryReporter.start(scope)
         scope.launch {
             try {
                 val result = registrar.register()
                 callback?.onRegistered(result.deviceId)
+                telemetryReporter.configure(result.telemetryBatchSize, 0)
+                telemetryReporter.onReconnected()
                 heartbeatManager.start(scope)
-                telemetryReporter.start(scope)
             } catch (e: Exception) {
                 Logger.e("Registration failed: ${e.message}", e)
                 callback?.onConnectionStatusChanged(false)

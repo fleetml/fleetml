@@ -14,6 +14,8 @@ package com.fleetml.sdk
  * @param labels Custom device labels sent to the server (e.g., environment, region).
  * @param downloadOnWifiOnly If true, model downloads are restricted to WiFi connections.
  * @param autoStart If true, registration and heartbeat start immediately on init.
+ * @param telemetryBatchSize Events per telemetry request (the server's DeviceConfig overrides it).
+ * @param telemetryFlushIntervalSeconds How often queued telemetry is sent (the server's DeviceConfig overrides it).
  */
 data class FleetMLConfig(
     val serverHost: String,
@@ -26,4 +28,5 @@ data class FleetMLConfig(
     val downloadOnWifiOnly: Boolean = true,
     val autoStart: Boolean = true,
     val telemetryBatchSize: Int = 50,
+    val telemetryFlushIntervalSeconds: Long = 30,
 )
