@@ -15,11 +15,38 @@ var (
 	validStatuses   = map[string]bool{"PENDING": true, "ROLLING_OUT": true, "PAUSED": true, "COMPLETE": true, "ROLLED_BACK": true, "FAILED": true, "CANCELLED": true}
 )
 
+// VersionChecker reports how many READY (sha256-verified) variants a model
+// version has. A version without one cannot be rolled out.
+type VersionChecker interface {
+	ReadyVariantCount(ctx context.Context, versionID uuid.UUID) (int, error)
+}
+
 // Service orchestrates deployment business logic.
 type Service struct {
-	repo   Repository
-	engine *Engine
-	logger *slog.Logger
+	repo     Repository
+	engine   *Engine
+	versions VersionChecker
+	logger   *slog.Logger
+}
+
+// SetVersionChecker makes Create reject versions without a READY variant.
+func (s *Service) SetVersionChecker(v VersionChecker) {
+	s.versions = v
+}
+
+// requireDeployable returns ErrNotDeployable if the version has no READY variant.
+func requireDeployable(ctx context.Context, v VersionChecker, versionID uuid.UUID) error {
+	if v == nil {
+		return nil
+	}
+	n, err := v.ReadyVariantCount(ctx, versionID)
+	if err != nil {
+		return fmt.Errorf("checking variants: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: model version %s has no READY variant (upload a blob and finalize it first)", ErrNotDeployable, versionID)
+	}
+	return nil
 }
 
 // NewService creates a new deployment service.
@@ -59,6 +86,10 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 	}
 	if !validStrategies[strategy] {
 		return nil, fmt.Errorf("%w: strategy must be one of ALL_AT_ONCE, CANARY, ROLLING", ErrInvalidInput)
+	}
+
+	if err := requireDeployable(ctx, s.versions, input.ModelVersionID); err != nil {
+		return nil, err
 	}
 
 	if input.TargetSelector == nil {

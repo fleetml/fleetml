@@ -67,6 +67,8 @@ func handleServiceError(c *gin.Context, err error) {
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	case errors.Is(err, registry.ErrInvalidTransition):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, registry.ErrIntegrity):
+		respondError(c, http.StatusUnprocessableEntity, "INTEGRITY_ERROR", err.Error())
 	default:
 		internalError(c, err, "An internal error occurred")
 	}

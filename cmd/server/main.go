@@ -113,6 +113,8 @@ func run() error {
 	deviceCountAdapter := deploy.NewDeviceCountAdapter(pool)
 	deployEngine := deploy.NewEngine(deployRepo, telemetryAdapter, deviceCountAdapter, logger)
 	deploySvc.SetEngine(deployEngine)
+	versionChecker := deploy.NewVersionAdapter(pool)
+	deploySvc.SetVersionChecker(versionChecker)
 	deployTicker := deploy.NewTicker(deployEngine, deployRepo, 30*time.Second, logger)
 	go deployTicker.Start(ctx)
 
@@ -153,6 +155,7 @@ func run() error {
 	// Experiment service
 	experimentRepo := experiment.NewRepository(pool)
 	experimentSvc := experiment.NewService(experimentRepo, logger)
+	experimentSvc.SetVersionChecker(versionChecker)
 	experimentTicker := experiment.NewTicker(experimentSvc, 60*time.Second, logger)
 	go experimentTicker.Start(ctx)
 	experimentBridge := experiment.NewBridge(experimentSvc, orchestrator, logger)

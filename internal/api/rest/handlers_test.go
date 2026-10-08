@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -274,6 +275,15 @@ func (m *mockVariantRepo) ListByVersion(_ context.Context, versionID uuid.UUID) 
 	return result, nil
 }
 
+func (m *mockVariantRepo) UpdateStatus(_ context.Context, id uuid.UUID, status string) error {
+	v, ok := m.variants[id]
+	if !ok {
+		return fmt.Errorf("variant.UpdateStatus: %w", registry.ErrNotFound)
+	}
+	v.Status = status
+	return nil
+}
+
 func (m *mockVariantRepo) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := m.variants[id]; !ok {
 		return fmt.Errorf("variant.Delete: %w", registry.ErrNotFound)
@@ -284,10 +294,11 @@ func (m *mockVariantRepo) Delete(_ context.Context, id uuid.UUID) error {
 
 type mockStorage struct {
 	objects map[string]int64
+	content map[string][]byte
 }
 
 func newMockStorage() *mockStorage {
-	return &mockStorage{objects: make(map[string]int64)}
+	return &mockStorage{objects: make(map[string]int64), content: make(map[string][]byte)}
 }
 
 func (m *mockStorage) GeneratePresignedUpload(_ context.Context, key string, _ time.Duration) (string, error) {
@@ -306,6 +317,18 @@ func (m *mockStorage) ObjectExists(_ context.Context, key string) (bool, error) 
 func (m *mockStorage) DeleteObject(_ context.Context, key string) error {
 	delete(m.objects, key)
 	return nil
+}
+
+// OpenObject returns the stored content, or size zero bytes if none was set.
+func (m *mockStorage) OpenObject(_ context.Context, key string) (io.ReadCloser, error) {
+	size, ok := m.objects[key]
+	if !ok {
+		return nil, fmt.Errorf("object not found")
+	}
+	if data, ok := m.content[key]; ok {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+	return io.NopCloser(bytes.NewReader(make([]byte, size))), nil
 }
 
 func (m *mockStorage) GetObjectInfo(_ context.Context, key string) (int64, error) {

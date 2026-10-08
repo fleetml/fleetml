@@ -108,6 +108,11 @@ type ExperimentAssigner interface {
 	ComputeExperimentAssignments(ctx context.Context, dev *Device, currentlyLoaded []ModelStatus) ([]ModelAssignment, error)
 }
 
+// DownloadURLSigner creates presigned download URLs for model blobs.
+type DownloadURLSigner interface {
+	GeneratePresignedDownload(ctx context.Context, key string, expiry time.Duration) (string, error)
+}
+
 // EnrollmentVerifier checks a per-project enrollment key and returns its project.
 type EnrollmentVerifier interface {
 	VerifyEnrollmentKey(ctx context.Context, key string) (uuid.UUID, error)
@@ -119,7 +124,7 @@ type Service struct {
 	classes        DeviceClassRepository
 	deployments    DeploymentQuerier
 	variants       VariantQuerier
-	storage        registry.StorageClient
+	storage        DownloadURLSigner
 	assignmentComp AssignmentComputer
 	experimentComp ExperimentAssigner
 	enrollment     EnrollmentVerifier
@@ -134,7 +139,7 @@ func NewService(
 	classes DeviceClassRepository,
 	deployments DeploymentQuerier,
 	variants VariantQuerier,
-	storage registry.StorageClient,
+	storage DownloadURLSigner,
 	tokenSecret string,
 	logger *slog.Logger,
 ) *Service {

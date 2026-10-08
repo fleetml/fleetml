@@ -46,6 +46,7 @@ type VariantRepository interface {
 	Create(ctx context.Context, v *RegistryVariant) error
 	GetByID(ctx context.Context, id uuid.UUID) (*RegistryVariant, error)
 	ListByVersion(ctx context.Context, versionID uuid.UUID) ([]RegistryVariant, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -417,14 +418,14 @@ func NewVariantRepo(pool *pgxpool.Pool) *VariantRepo {
 func (r *VariantRepo) Create(ctx context.Context, v *RegistryVariant) error {
 	query := `
 		INSERT INTO model_variants (version_id, quantization, target_runtime, min_ram_mb, min_npu_tflops,
-			blob_key, blob_size_bytes, blob_sha256, benchmark_latency_ms, benchmark_accuracy)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, created_at`
+			blob_key, blob_size_bytes, blob_sha256, benchmark_latency_ms, benchmark_accuracy, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE(NULLIF($11, ''), 'UPLOADING'))
+		RETURNING id, status, created_at`
 
 	err := r.pool.QueryRow(ctx, query,
 		v.VersionID, v.Quantization, v.TargetRuntime, v.MinRAMMB, v.MinNPUTflops,
-		v.BlobKey, v.BlobSizeBytes, v.BlobSHA256, v.BenchmarkLatencyMs, v.BenchmarkAccuracy,
-	).Scan(&v.ID, &v.CreatedAt)
+		v.BlobKey, v.BlobSizeBytes, v.BlobSHA256, v.BenchmarkLatencyMs, v.BenchmarkAccuracy, v.Status,
+	).Scan(&v.ID, &v.Status, &v.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return fmt.Errorf("variant.Create: %w: variant %s/%s for version", ErrConflict, v.Quantization, v.TargetRuntime)
@@ -436,14 +437,14 @@ func (r *VariantRepo) Create(ctx context.Context, v *RegistryVariant) error {
 
 func (r *VariantRepo) GetByID(ctx context.Context, id uuid.UUID) (*RegistryVariant, error) {
 	query := `SELECT id, version_id, quantization, target_runtime, min_ram_mb, min_npu_tflops,
-		blob_key, blob_size_bytes, blob_sha256, benchmark_latency_ms, benchmark_accuracy, created_at
+		blob_key, blob_size_bytes, blob_sha256, benchmark_latency_ms, benchmark_accuracy, status, created_at
 		FROM model_variants WHERE id = $1`
 
 	v := &RegistryVariant{}
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&v.ID, &v.VersionID, &v.Quantization, &v.TargetRuntime, &v.MinRAMMB, &v.MinNPUTflops,
 		&v.BlobKey, &v.BlobSizeBytes, &v.BlobSHA256, &v.BenchmarkLatencyMs, &v.BenchmarkAccuracy,
-		&v.CreatedAt,
+		&v.Status, &v.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -456,7 +457,7 @@ func (r *VariantRepo) GetByID(ctx context.Context, id uuid.UUID) (*RegistryVaria
 
 func (r *VariantRepo) ListByVersion(ctx context.Context, versionID uuid.UUID) ([]RegistryVariant, error) {
 	query := `SELECT id, version_id, quantization, target_runtime, min_ram_mb, min_npu_tflops,
-		blob_key, blob_size_bytes, blob_sha256, benchmark_latency_ms, benchmark_accuracy, created_at
+		blob_key, blob_size_bytes, blob_sha256, benchmark_latency_ms, benchmark_accuracy, status, created_at
 		FROM model_variants WHERE version_id = $1 ORDER BY created_at`
 
 	rows, err := r.pool.Query(ctx, query, versionID)
@@ -470,7 +471,7 @@ func (r *VariantRepo) ListByVersion(ctx context.Context, versionID uuid.UUID) ([
 		var v RegistryVariant
 		if err := rows.Scan(&v.ID, &v.VersionID, &v.Quantization, &v.TargetRuntime, &v.MinRAMMB, &v.MinNPUTflops,
 			&v.BlobKey, &v.BlobSizeBytes, &v.BlobSHA256, &v.BenchmarkLatencyMs, &v.BenchmarkAccuracy,
-			&v.CreatedAt); err != nil {
+			&v.Status, &v.CreatedAt); err != nil {
 			return nil, fmt.Errorf("variant.ListByVersion: scanning row: %w", err)
 		}
 		variants = append(variants, v)
@@ -479,6 +480,17 @@ func (r *VariantRepo) ListByVersion(ctx context.Context, versionID uuid.UUID) ([
 		return nil, fmt.Errorf("variant.ListByVersion: %w", err)
 	}
 	return variants, nil
+}
+
+func (r *VariantRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE model_variants SET status = $1 WHERE id = $2`, status, id)
+	if err != nil {
+		return fmt.Errorf("variant.UpdateStatus: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("variant.UpdateStatus: %w", ErrNotFound)
+	}
+	return nil
 }
 
 func (r *VariantRepo) Delete(ctx context.Context, id uuid.UUID) error {

@@ -33,10 +33,21 @@ type Repo interface {
 	GetCohortStats(ctx context.Context, experimentID, versionID uuid.UUID, since time.Time, cohort string) (*CohortStats, error)
 }
 
+// VersionChecker reports how many READY variants a model version has.
+type VersionChecker interface {
+	ReadyVariantCount(ctx context.Context, versionID uuid.UUID) (int, error)
+}
+
 // Service provides business logic for experiments.
 type Service struct {
-	repo   Repo
-	logger *slog.Logger
+	repo     Repo
+	versions VersionChecker
+	logger   *slog.Logger
+}
+
+// SetVersionChecker makes Create reject arms whose version has no READY variant.
+func (s *Service) SetVersionChecker(v VersionChecker) {
+	s.versions = v
 }
 
 // NewService creates a new experiment service.
@@ -72,6 +83,17 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Experiment, e
 	}
 	if input.ControlVersionID == input.TreatmentVersionID {
 		return nil, fmt.Errorf("%w: control and treatment must be different versions", ErrInvalidInput)
+	}
+	if s.versions != nil {
+		for _, v := range []uuid.UUID{input.ControlVersionID, input.TreatmentVersionID} {
+			n, err := s.versions.ReadyVariantCount(ctx, v)
+			if err != nil {
+				return nil, fmt.Errorf("checking variants: %w", err)
+			}
+			if n == 0 {
+				return nil, fmt.Errorf("%w: model version %s has no READY variant", ErrNotDeployable, v)
+			}
+		}
 	}
 	if input.TrafficPercent <= 0 {
 		input.TrafficPercent = 100

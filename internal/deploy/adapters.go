@@ -39,3 +39,23 @@ func (a *TelemetryAdapter) GetRecentStats(ctx context.Context, modelVersionID uu
 	}
 	return stats, nil
 }
+
+// VersionAdapter implements VersionChecker using pgxpool.
+type VersionAdapter struct {
+	pool *pgxpool.Pool
+}
+
+// NewVersionAdapter creates a new VersionAdapter.
+func NewVersionAdapter(pool *pgxpool.Pool) *VersionAdapter {
+	return &VersionAdapter{pool: pool}
+}
+
+func (a *VersionAdapter) ReadyVariantCount(ctx context.Context, versionID uuid.UUID) (int, error) {
+	var n int
+	err := a.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM model_variants WHERE version_id = $1 AND status = 'READY'`, versionID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("versionAdapter.ReadyVariantCount: %w", err)
+	}
+	return n, nil
+}

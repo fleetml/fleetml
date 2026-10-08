@@ -12,6 +12,8 @@ var (
 	ErrConflict          = errors.New("already exists")
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrInvalidTransition = errors.New("invalid status transition")
+	// ErrNotDeployable means an arm's model version has no READY (verified) variant.
+	ErrNotDeployable = errors.New("model version not deployable")
 )
 
 // Experiment represents an A/B test between two model versions.

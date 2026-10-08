@@ -158,3 +158,22 @@ func TestDeleteDeployment(t *testing.T) {
 	err = svc.Delete(ctx, d.ID)
 	assert.ErrorIs(t, err, ErrNotFound)
 }
+
+type fakeVersions map[uuid.UUID]int
+
+func (f fakeVersions) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, error) {
+	return f[id], nil
+}
+
+func TestCreate_RequiresReadyVariant(t *testing.T) {
+	ready, unverified := uuid.New(), uuid.New()
+	svc := NewService(newMockRepo(), nil)
+	svc.SetVersionChecker(fakeVersions{ready: 1, unverified: 0})
+
+	_, err := svc.Create(context.Background(), CreateInput{ProjectID: uuid.New(), ModelVersionID: unverified})
+	assert.ErrorIs(t, err, ErrNotDeployable)
+
+	d, err := svc.Create(context.Background(), CreateInput{ProjectID: uuid.New(), ModelVersionID: ready})
+	require.NoError(t, err)
+	assert.Equal(t, "PENDING", d.Status)
+}

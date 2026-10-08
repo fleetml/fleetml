@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"time"
@@ -111,6 +112,15 @@ func (s *S3Client) DeleteObject(ctx context.Context, key string) error {
 		return fmt.Errorf("deleting object: %w", err)
 	}
 	return nil
+}
+
+// OpenObject streams an object's contents. The caller must close the reader.
+func (s *S3Client) OpenObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("opening object: %w", err)
+	}
+	return obj, nil
 }
 
 // GetObjectInfo returns the size of an object.

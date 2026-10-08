@@ -219,3 +219,21 @@ func TestCreate_InvalidMetric(t *testing.T) {
 	_, err := svc.Create(context.Background(), input)
 	assert.ErrorIs(t, err, ErrInvalidInput)
 }
+
+type fakeVersions map[uuid.UUID]int
+
+func (f fakeVersions) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, error) {
+	return f[id], nil
+}
+
+func TestCreate_ArmsNeedReadyVariants(t *testing.T) {
+	svc := newTestService()
+	in := validInput()
+	svc.SetVersionChecker(fakeVersions{in.ControlVersionID: 1})
+	_, err := svc.Create(context.Background(), in)
+	assert.ErrorIs(t, err, ErrNotDeployable, "treatment has no READY variant")
+
+	svc.SetVersionChecker(fakeVersions{in.ControlVersionID: 1, in.TreatmentVersionID: 2})
+	_, err = svc.Create(context.Background(), in)
+	assert.NoError(t, err)
+}

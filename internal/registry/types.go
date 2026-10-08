@@ -44,6 +44,13 @@ type RegistryVersion struct {
 	PromotedBy   *string                `json:"promoted_by"`
 }
 
+// Variant statuses. Only READY variants are assigned to devices.
+const (
+	VariantUploading = "UPLOADING"
+	VariantReady     = "READY"
+	VariantFailed    = "FAILED"
+)
+
 // RegistryVariant represents a specific quantization/runtime variant of a model version.
 type RegistryVariant struct {
 	ID                 uuid.UUID `json:"id"`
@@ -57,5 +64,6 @@ type RegistryVariant struct {
 	BlobSHA256         string    `json:"blob_sha256"`
 	BenchmarkLatencyMs *float64  `json:"benchmark_latency_ms"`
 	BenchmarkAccuracy  *float64  `json:"benchmark_accuracy"`
+	Status             string    `json:"status"` // UPLOADING, READY, FAILED
 	CreatedAt          time.Time `json:"created_at"`
 }

@@ -233,6 +233,8 @@ func handleExpError(c *gin.Context, err error) {
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	case errors.Is(err, experiment.ErrInvalidTransition):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+	case errors.Is(err, experiment.ErrNotDeployable):
+		respondError(c, http.StatusUnprocessableEntity, "NOT_DEPLOYABLE", err.Error())
 	default:
 		internalError(c, err, "An internal error occurred")
 	}

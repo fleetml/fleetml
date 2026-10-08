@@ -25,7 +25,7 @@ func (a *VariantRepoAdapter) GetByVersionID(ctx context.Context, versionID uuid.
 		COALESCE(ver.metadata_json, '{}'::jsonb)
 		FROM model_variants mv
 		JOIN model_versions ver ON ver.id = mv.version_id
-		WHERE mv.version_id = $1`
+		WHERE mv.version_id = $1 AND mv.status = 'READY'`
 
 	rows, err := a.pool.Query(ctx, query, versionID)
 	if err != nil {

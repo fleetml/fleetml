@@ -2,8 +2,11 @@ package registry
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -13,6 +16,8 @@ import (
 
 var (
 	ErrInvalidTransition = errors.New("invalid status transition")
+	// ErrIntegrity means an uploaded blob does not match its declared sha256.
+	ErrIntegrity = errors.New("integrity check failed")
 
 	validFrameworks    = map[string]bool{"TFLITE": true, "ONNX": true, "COREML": true, "GGUF": true, "CUSTOM": true}
 	validTaskTypes     = map[string]bool{"CLASSIFICATION": true, "DETECTION": true, "SEGMENTATION": true, "LLM": true, "STT": true, "TTS": true, "VLM": true, "RECOMMENDATION": true, "ANOMALY": true, "CUSTOM": true}
@@ -40,6 +45,7 @@ type StorageClient interface {
 	ObjectExists(ctx context.Context, key string) (bool, error)
 	DeleteObject(ctx context.Context, key string) error
 	GetObjectInfo(ctx context.Context, key string) (int64, error)
+	OpenObject(ctx context.Context, key string) (io.ReadCloser, error)
 }
 
 // AuditLogger defines the audit logging interface the service needs.
@@ -406,6 +412,7 @@ func (s *Service) CreateVariant(ctx context.Context, input CreateVariantInput) (
 		BlobSHA256:         input.BlobSHA256,
 		BenchmarkLatencyMs: input.BenchmarkLatencyMs,
 		BenchmarkAccuracy:  input.BenchmarkAccuracy,
+		Status:             VariantUploading,
 	}
 
 	if err := s.variants.Create(ctx, v); err != nil {
@@ -439,6 +446,10 @@ func (s *Service) GetVariantDownloadURL(ctx context.Context, id uuid.UUID) (stri
 	return s.storage.GeneratePresignedDownload(ctx, v.BlobKey, DownloadURLExpiry)
 }
 
+// FinalizeVariant verifies an uploaded blob and marks the variant READY.
+// The blob is streamed from storage and its sha256 compared with the declared
+// one; on mismatch the blob is deleted, the variant is marked FAILED and
+// ErrIntegrity is returned. Only READY variants are assigned to devices.
 func (s *Service) FinalizeVariant(ctx context.Context, id uuid.UUID) (*RegistryVariant, error) {
 	v, err := s.variants.GetByID(ctx, id)
 	if err != nil {
@@ -458,13 +469,52 @@ func (s *Service) FinalizeVariant(ctx context.Context, id uuid.UUID) (*RegistryV
 		return nil, fmt.Errorf("getting blob info: %w", err)
 	}
 	if size != v.BlobSizeBytes {
-		return nil, fmt.Errorf("%w: uploaded blob size %d does not match declared size %d", ErrInvalidInput, size, v.BlobSizeBytes)
+		return nil, s.failVariant(ctx, v, fmt.Sprintf("uploaded blob size %d does not match declared size %d", size, v.BlobSizeBytes))
 	}
 
+	actual, err := s.hashObject(ctx, v.BlobKey)
+	if err != nil {
+		return nil, fmt.Errorf("hashing blob: %w", err)
+	}
+	if !strings.EqualFold(actual, v.BlobSHA256) {
+		return nil, s.failVariant(ctx, v, fmt.Sprintf("uploaded blob sha256 %s does not match declared %s", actual, v.BlobSHA256))
+	}
+
+	if err := s.variants.UpdateStatus(ctx, v.ID, VariantReady); err != nil {
+		return nil, fmt.Errorf("marking variant ready: %w", err)
+	}
+	v.Status = VariantReady
+
 	s.audit.Log(ctx, "system", "finalize", "model_variant", v.ID.String(), //nolint:errcheck // audit logging is best-effort
-		map[string]any{"blob_key": v.BlobKey, "size": size})
+		map[string]any{"blob_key": v.BlobKey, "size": size, "sha256": actual})
 
 	return v, nil
+}
+
+// failVariant deletes a bad blob, marks the variant FAILED and returns ErrIntegrity.
+func (s *Service) failVariant(ctx context.Context, v *RegistryVariant, reason string) error {
+	if err := s.storage.DeleteObject(ctx, v.BlobKey); err != nil {
+		s.logger.Warn("failed to delete rejected blob", "key", v.BlobKey, "error", err)
+	}
+	if err := s.variants.UpdateStatus(ctx, v.ID, VariantFailed); err != nil {
+		s.logger.Warn("failed to mark variant FAILED", "variant_id", v.ID, "error", err)
+	}
+	s.audit.Log(ctx, "system", "finalize_failed", "model_variant", v.ID.String(), //nolint:errcheck // audit logging is best-effort
+		map[string]any{"reason": reason})
+	return fmt.Errorf("%w: %s; the blob was deleted, upload it again", ErrIntegrity, reason)
+}
+
+func (s *Service) hashObject(ctx context.Context, key string) (string, error) {
+	r, err := s.storage.OpenObject(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = r.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (s *Service) DeleteVariant(ctx context.Context, id uuid.UUID) error {

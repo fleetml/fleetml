@@ -60,7 +60,7 @@ func NewVariantAdapter(pool *pgxpool.Pool) *VariantAdapter {
 func (a *VariantAdapter) ListByVersion(ctx context.Context, versionID uuid.UUID) ([]VariantInfo, error) {
 	query := `SELECT id, version_id, quantization, target_runtime, min_ram_mb, min_npu_tflops,
 		blob_key, blob_size_bytes, blob_sha256
-		FROM model_variants WHERE version_id = $1`
+		FROM model_variants WHERE version_id = $1 AND status = 'READY'`
 
 	rows, err := a.pool.Query(ctx, query, versionID)
 	if err != nil {

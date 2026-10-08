@@ -1,8 +1,13 @@
 package registry
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -269,6 +274,15 @@ func (m *mockVariantRepo) ListByVersion(_ context.Context, versionID uuid.UUID) 
 	return result, nil
 }
 
+func (m *mockVariantRepo) UpdateStatus(_ context.Context, id uuid.UUID, status string) error {
+	v, ok := m.variants[id]
+	if !ok {
+		return fmt.Errorf("variant.UpdateStatus: %w", ErrNotFound)
+	}
+	v.Status = status
+	return nil
+}
+
 func (m *mockVariantRepo) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := m.variants[id]; !ok {
 		return fmt.Errorf("variant.Delete: %w", ErrNotFound)
@@ -278,11 +292,12 @@ func (m *mockVariantRepo) Delete(_ context.Context, id uuid.UUID) error {
 }
 
 type mockStorage struct {
-	objects map[string]int64 // key -> size
+	objects map[string]int64  // key -> size
+	content map[string][]byte // key -> bytes (optional; zeros of size otherwise)
 }
 
 func newMockStorage() *mockStorage {
-	return &mockStorage{objects: make(map[string]int64)}
+	return &mockStorage{objects: make(map[string]int64), content: make(map[string][]byte)}
 }
 
 func (m *mockStorage) GeneratePresignedUpload(_ context.Context, key string, _ time.Duration) (string, error) {
@@ -301,6 +316,18 @@ func (m *mockStorage) ObjectExists(_ context.Context, key string) (bool, error) 
 func (m *mockStorage) DeleteObject(_ context.Context, key string) error {
 	delete(m.objects, key)
 	return nil
+}
+
+// OpenObject returns the stored content, or size zero bytes if none was set.
+func (m *mockStorage) OpenObject(_ context.Context, key string) (io.ReadCloser, error) {
+	size, ok := m.objects[key]
+	if !ok {
+		return nil, fmt.Errorf("object not found")
+	}
+	if data, ok := m.content[key]; ok {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+	return io.NopCloser(bytes.NewReader(make([]byte, size))), nil
 }
 
 func (m *mockStorage) GetObjectInfo(_ context.Context, key string) (int64, error) {
@@ -614,31 +641,57 @@ func TestFinalizeVariant(t *testing.T) {
 	model := createTestModel(t, svc, proj.ID)
 	ver := createTestVersion(t, svc, model.ID)
 
+	blob := bytes.Repeat([]byte("model-bytes-"), 100)
+	sum := sha256.Sum256(blob)
 	out, err := svc.CreateVariant(ctx, CreateVariantInput{
 		VersionID:     ver.ID,
 		Quantization:  "INT8",
 		TargetRuntime: "TFLITE",
-		BlobSizeBytes: 1024,
-		BlobSHA256:    "abc123",
+		BlobSizeBytes: int64(len(blob)),
+		BlobSHA256:    hex.EncodeToString(sum[:]),
 	})
 	require.NoError(t, err)
+	assert.Equal(t, VariantUploading, env.variants.variants[out.Variant.ID].Status, "new variants are not assignable")
+	key := out.Variant.BlobKey
 
 	t.Run("blob not uploaded", func(t *testing.T) {
 		_, err := svc.FinalizeVariant(ctx, out.Variant.ID)
 		assert.ErrorIs(t, err, ErrInvalidInput)
 	})
 
-	t.Run("size mismatch", func(t *testing.T) {
-		storage.objects[out.Variant.BlobKey] = 999
+	t.Run("size mismatch deletes the blob and fails the variant", func(t *testing.T) {
+		storage.objects[key] = 999
 		_, err := svc.FinalizeVariant(ctx, out.Variant.ID)
-		assert.ErrorIs(t, err, ErrInvalidInput)
+		assert.ErrorIs(t, err, ErrIntegrity)
+		assert.NotContains(t, storage.objects, key)
+		assert.Equal(t, VariantFailed, env.variants.variants[out.Variant.ID].Status)
 	})
 
-	t.Run("success", func(t *testing.T) {
-		storage.objects[out.Variant.BlobKey] = 1024
+	t.Run("same size, wrong content", func(t *testing.T) {
+		tampered := bytes.Repeat([]byte("other-bytes-"), 100)
+		storage.objects[key] = int64(len(tampered))
+		storage.content[key] = tampered
+		_, err := svc.FinalizeVariant(ctx, out.Variant.ID)
+		assert.ErrorIs(t, err, ErrIntegrity)
+		assert.Contains(t, err.Error(), "sha256")
+		assert.NotContains(t, storage.objects, key, "a blob that fails verification is deleted")
+		assert.Equal(t, VariantFailed, env.variants.variants[out.Variant.ID].Status)
+	})
+
+	t.Run("re-upload with the right bytes succeeds", func(t *testing.T) {
+		storage.objects[key] = int64(len(blob))
+		storage.content[key] = blob
 		v, err := svc.FinalizeVariant(ctx, out.Variant.ID)
 		require.NoError(t, err)
 		assert.Equal(t, out.Variant.ID, v.ID)
+		assert.Equal(t, VariantReady, v.Status)
+		assert.Equal(t, VariantReady, env.variants.variants[out.Variant.ID].Status)
+	})
+
+	t.Run("declared hash is compared case-insensitively", func(t *testing.T) {
+		env.variants.variants[out.Variant.ID].BlobSHA256 = strings.ToUpper(hex.EncodeToString(sum[:]))
+		_, err := svc.FinalizeVariant(ctx, out.Variant.ID)
+		require.NoError(t, err)
 	})
 }
 
