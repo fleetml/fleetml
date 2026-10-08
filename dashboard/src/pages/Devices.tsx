@@ -12,8 +12,8 @@ export default function Devices() {
   return (
     <div>
       <h2 className="text-2xl font-semibold text-gray-900 mb-6">Devices</h2>
-      <div className="border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="border border-gray-200 rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-max">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
@@ -43,7 +43,7 @@ export default function Devices() {
             <h3 className="text-sm font-semibold text-gray-900">Device Profile</h3>
             <CopyableId id={selected.device_id} />
           </div>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">Class</span><span className="text-gray-900">{selected.device_class}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Score</span><span className="text-gray-900">{selected.score}/100</span></div>
             <div className="flex justify-between"><span className="text-gray-500">OS</span><span className="text-gray-900">{selected.os}</span></div>

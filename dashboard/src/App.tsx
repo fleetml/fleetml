@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Settings as SettingsIcon, ShieldAlert } from 'lucide-react'
 import { AUTH_EVENT, getApiKey } from './api/auth'
-import Dashboard from './pages/Dashboard'
-import Devices from './pages/Devices'
-import Models from './pages/Models'
-import Deployments from './pages/Deployments'
-import Experiments from './pages/Experiments'
-import Telemetry from './pages/Telemetry'
-import Drift from './pages/Drift'
-import Settings from './pages/Settings'
+
+// Each page is its own chunk, so the first load stays small (charts load with Telemetry).
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Devices = lazy(() => import('./pages/Devices'))
+const Models = lazy(() => import('./pages/Models'))
+const Deployments = lazy(() => import('./pages/Deployments'))
+const Experiments = lazy(() => import('./pages/Experiments'))
+const Telemetry = lazy(() => import('./pages/Telemetry'))
+const Drift = lazy(() => import('./pages/Drift'))
+const Settings = lazy(() => import('./pages/Settings'))
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -33,30 +35,30 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex h-screen bg-white">
-      <nav className="w-56 border-r border-gray-200 bg-gray-50/50 flex flex-col">
-        <div className="px-5 py-5">
-          <h1 className="text-lg font-bold text-gray-900">FleetML</h1>
+    <div className="flex flex-col md:flex-row h-screen bg-white">
+      <nav className="md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50/50 flex md:flex-col items-center md:items-stretch">
+        <div className="pl-3 pr-1 md:px-5 py-3 md:py-5">
+          <h1 className="text-base md:text-lg font-bold text-gray-900">FleetML</h1>
         </div>
-        <div className="flex flex-col gap-0.5 px-3">
+        <div className="flex md:flex-col gap-0.5 pr-2 md:px-3 overflow-x-auto">
           {navItems.map(item => {
             const Icon = item.icon
             const active = location.pathname === item.path
             return (
-              <Link key={item.path} to={item.path}
-                className={`px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2.5
+              <Link key={item.path} to={item.path} aria-label={item.label} title={item.label}
+                className={`px-2 md:px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2.5 whitespace-nowrap
                   ${active
-                    ? 'bg-indigo-50 text-indigo-700 border-l-[3px] border-indigo-600 -ml-px'
+                    ? 'bg-indigo-50 text-indigo-700 md:border-l-[3px] md:border-indigo-600 md:-ml-px'
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
                 <Icon size={18} strokeWidth={1.75} />
-                {item.label}
+                <span className="hidden md:inline">{item.label}</span>
               </Link>
             )
           })}
         </div>
       </nav>
       <main className="flex-1 overflow-auto bg-white">
-        <div className="max-w-7xl mx-auto p-8">
+        <div className="max-w-7xl mx-auto p-4 md:p-8">
           {authError && (
             <div role="alert" className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <ShieldAlert size={18} className="mt-0.5 text-red-600 shrink-0" strokeWidth={1.75} />
@@ -69,6 +71,7 @@ export default function App() {
               </div>
             </div>
           )}
+          <Suspense fallback={<p className="text-sm text-gray-400">Loading…</p>}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/devices" element={<Devices />} />
@@ -79,6 +82,7 @@ export default function App() {
             <Route path="/drift" element={<Drift />} />
             <Route path="/settings" element={<Settings onKeySaved={() => setAuthError('')} />} />
           </Routes>
+          </Suspense>
         </div>
       </main>
     </div>

@@ -1,16 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { getTelemetrySummary, getTelemetryTimeSeries } from '../api/client'
 import { UnauthorizedError } from '../api/auth'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { TelemetrySummary, TimeSeriesPoint } from '../types/api'
+import { useCatalog } from '../hooks/useCatalog'
+import VersionPicker from '../components/VersionPicker'
 
 export default function Telemetry() {
-  const [versionId, setVersionId] = useState('')
+  const catalog = useCatalog()
+  const [params, setParams] = useSearchParams()
+  const versionId = params.get('version') || ''
   const [summary, setSummary] = useState<TelemetrySummary | null>(null)
   const [timeSeries, setTimeSeries] = useState<TimeSeriesPoint[]>([])
   const [error, setError] = useState('')
 
+  useEffect(() => { load() }, [versionId])
+
   const load = async () => {
+    setSummary(null)
+    setTimeSeries([])
     if (!versionId) return
     setError('')
     try {
@@ -26,15 +35,7 @@ export default function Telemetry() {
   return (
     <div>
       <h2 className="text-2xl font-semibold text-gray-900 mb-6">Telemetry</h2>
-      <div className="flex gap-2 mb-6">
-        <input
-          value={versionId}
-          onChange={e => setVersionId(e.target.value)}
-          placeholder="Model Version ID"
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-        <button onClick={load} className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700">Load</button>
-      </div>
+      <VersionPicker catalog={catalog} value={versionId} onChange={id => setParams(id ? { version: id } : {})} />
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
       {summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -66,7 +67,7 @@ export default function Telemetry() {
           </ResponsiveContainer>
         </div>
       )}
-      {!summary && !error && <p className="text-sm text-gray-400">Enter a model version ID to view telemetry.</p>}
+      {!versionId && <p className="text-sm text-gray-400">Choose a model version to view its telemetry.</p>}
     </div>
   )
 }

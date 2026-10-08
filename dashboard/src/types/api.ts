@@ -7,6 +7,37 @@ export interface Project {
   updated_at: string;
 }
 
+export interface Model {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  framework: string;
+  task_type: string;
+  created_at: string;
+}
+
+export interface ModelVersion {
+  id: string;
+  model_id: string;
+  version: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  release_notes: string;
+  created_at: string;
+}
+
+export interface ModelVariant {
+  id: string;
+  version_id: string;
+  quantization: string;
+  target_runtime: string;
+  blob_size_bytes: number;
+  blob_sha256: string;
+  status: string;
+  created_at: string;
+}
+
 export interface Device {
   id: string;
   project_id: string | null;
@@ -44,7 +75,10 @@ export interface Deployment {
   strategy: string;
   status: string;
   current_stage: number;
+  target_selector?: Record<string, string> | null;
   canary_stages?: CanaryStage[];
+  rolling_config?: { batch_size?: number; batch_size_percent?: number; batch_interval: string; max_unavailable: number };
+  previous_version_id?: string;
   health_gate?: { max_error_rate: number; min_events: number; on_failure: string };
   rollback_reason?: string;
   created_at: string;
@@ -60,6 +94,7 @@ export interface CanaryStage {
 
 export interface Experiment {
   id: string;
+  project_id: string;
   name: string;
   status: string;
   control_version_id: string;
@@ -70,6 +105,8 @@ export interface Experiment {
   min_sample_size: number;
   confidence_level: number;
   auto_conclude: boolean;
+  target_selector?: Record<string, string> | null;
+  winner_version_id?: string | null;
   result?: ExperimentResult;
   created_at: string;
 }
