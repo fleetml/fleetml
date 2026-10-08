@@ -51,6 +51,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newPreviewCmd())
 	root.AddCommand(newExperimentCmd())
 	root.AddCommand(newDriftCmd())
+	root.AddCommand(newSimulateCmd())
 
 	return root
 }
