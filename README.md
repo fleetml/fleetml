@@ -66,7 +66,7 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; alert sinks; login with server-side sessions (the API key is not kept in the browser); works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
 | **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
-| **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1` | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
+| **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1`; a Grafana dashboard (compose profile `observability`); telemetry delivered at least once through NATS JetStream and stored once per event ID | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
 | **Artifact signing.** Per-project ed25519 keys sign each model when it is published; the Android and iOS SDKs and the Linux agent verify the signature before downloading, and keys rotate with a grace period | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
 
 The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
@@ -138,7 +138,7 @@ the test scripts. The essentials:
 | `SIGNING_MASTER_KEY` | *(required)* | Encrypts the projects' artifact signing keys; at least 32 characters, different from `JWT_SECRET`; keep it |
 | `FLEETML_ADMIN_KEY` | *(generated)* | First admin API key; if unset, one is generated and logged once |
 | `REST_PORT`, `GRPC_PORT` | `18080`, `19090` | REST API and device gRPC API |
-| `NATS_URL` | `nats://localhost:14222` | Telemetry pipeline and alerts |
+| `NATS_URL` | `nats://localhost:14222` | Telemetry pipeline (JetStream must be enabled) and alerts |
 | `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_SECRET` | *(unset)* | Server-wide signed webhook for rollback and drift alerts (per-project sinks are set in the dashboard) |
 
 The server checks its configuration at start-up and names every missing or

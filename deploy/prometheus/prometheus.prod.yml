@@ -1,0 +1,7 @@
+# Scrapes the FleetML server container of docker-compose.prod.yml.
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: fleetml
+    static_configs:
+      - targets: ["server:18080"]

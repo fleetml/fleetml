@@ -105,6 +105,7 @@ public final class TelemetryReporter {
 
     private func event(versionID: String, type: Fleetml_Telemetry_V1_TelemetryEvent.EventType, latencyMs: Int, error: String) -> Fleetml_Telemetry_V1_TelemetryEvent {
         var e = Fleetml_Telemetry_V1_TelemetryEvent()
+        e.eventID = UUID().uuidString // stored once, even if the batch is sent again
         e.modelVersionID = versionID
         e.experimentArmID = lock.withLock { arms[versionID] ?? "" }
         e.type = type

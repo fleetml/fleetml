@@ -64,6 +64,11 @@ nonisolated struct Fleetml_Telemetry_V1_TelemetryEvent: Sendable {
   /// inference's values fell into each bin.
   var features: [Fleetml_Telemetry_V1_FeatureHistogram] = []
 
+  /// A UUID the client gives each event when it creates it. The server stores
+  /// an event once per ID, so a batch sent again after a lost acknowledgement
+  /// is not counted twice. Without one the server assigns an ID.
+  var eventID: String = String()
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   nonisolated enum EventType: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -200,7 +205,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryBatch: SwiftProtobuf.Message
 
 nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".TelemetryEvent"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_version_id\0\u{3}experiment_arm_id\0\u{1}type\0\u{3}latency_ms\0\u{3}confidence_score\0\u{3}prediction_label\0\u{3}memory_usage_mb\0\u{3}battery_percent\0\u{3}error_message\0\u{3}timestamp_unix_ms\0\u{1}features\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_version_id\0\u{3}experiment_arm_id\0\u{1}type\0\u{3}latency_ms\0\u{3}confidence_score\0\u{3}prediction_label\0\u{3}memory_usage_mb\0\u{3}battery_percent\0\u{3}error_message\0\u{3}timestamp_unix_ms\0\u{1}features\0\u{3}event_id\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -219,6 +224,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
       case 9: try { try decoder.decodeSingularStringField(value: &self.errorMessage) }()
       case 10: try { try decoder.decodeSingularInt64Field(value: &self.timestampUnixMs) }()
       case 11: try { try decoder.decodeRepeatedMessageField(value: &self.features) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.eventID) }()
       default: break
       }
     }
@@ -258,6 +264,9 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
     if !self.features.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.features, fieldNumber: 11)
     }
+    if !self.eventID.isEmpty {
+      try visitor.visitSingularStringField(value: self.eventID, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -273,6 +282,7 @@ nonisolated extension Fleetml_Telemetry_V1_TelemetryEvent: SwiftProtobuf.Message
     if lhs.errorMessage != rhs.errorMessage {return false}
     if lhs.timestampUnixMs != rhs.timestampUnixMs {return false}
     if lhs.features != rhs.features {return false}
+    if lhs.eventID != rhs.eventID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

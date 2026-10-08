@@ -61,6 +61,10 @@ func (s *Service) IngestEvents(ctx context.Context, deviceID uuid.UUID, events [
 		if e.RecordedAt.IsZero() {
 			e.RecordedAt = now
 		}
+		if e.EventID == uuid.Nil {
+			// From here on the ID is fixed, so a redelivery is still recognised.
+			e.EventID = uuid.New()
+		}
 
 		e.DeviceID = deviceID
 		valid = append(valid, e)
@@ -73,26 +77,28 @@ func (s *Service) IngestEvents(ctx context.Context, deviceID uuid.UUID, events [
 		return 0, rejected, nil
 	}
 
-	// Try NATS async pipeline
-	if s.publisher != nil && s.publisher.IsConnected() {
-		if err := s.publisher.Publish(valid); err != nil {
-			s.logger.Warn("NATS publish failed, falling back to direct insert", "error", err)
-		} else {
-			s.logger.Info("ingested telemetry events", "device_id", deviceID, "count", len(valid))
+	// The JetStream stream stores the batch before the device is answered.
+	if s.publisher != nil {
+		pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := s.publisher.Publish(pctx, valid)
+		cancel()
+		if err == nil {
+			s.logger.Debug("ingested telemetry events", "device_id", deviceID, "count", len(valid))
 			return len(valid), rejected, nil
 		}
+		s.logger.Warn("JetStream publish failed, falling back to a direct insert", "error", err)
 	}
 
-	// Fallback: direct DB insert
+	// Fallback: direct DB insert (idempotent, like the consumer's).
 	if s.repo == nil {
-		return 0, rejected, fmt.Errorf("no NATS connection and no database repository available")
+		return 0, rejected, fmt.Errorf("no JetStream and no database repository available")
 	}
-	count, err := s.repo.InsertEvents(ctx, valid)
+	stored, err := s.repo.InsertEvents(ctx, valid)
 	if err != nil {
 		return 0, rejected, fmt.Errorf("direct insert failed: %w", err)
 	}
-	s.logger.Info("ingested telemetry events (direct)", "device_id", deviceID, "count", count)
-	return count, rejected, nil
+	s.logger.Info("ingested telemetry events (direct)", "device_id", deviceID, "count", len(valid), "new", stored)
+	return len(valid), rejected, nil
 }
 
 // dropUnknownVersions removes events whose model_version_id does not exist,

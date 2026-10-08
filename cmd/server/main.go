@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	grpclib "google.golang.org/grpc"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
@@ -213,10 +214,17 @@ func run() error {
 
 	// Telemetry
 	telemetryRepo := telemetry.NewRepository(pool)
-	telemetryPub := telemetry.NewPublisher(nc, logger)
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return fmt.Errorf("JetStream: %w", err)
+	}
+	if _, err := telemetry.EnsureStream(ctx, js); err != nil {
+		return fmt.Errorf("creating the telemetry stream (NATS must run with JetStream, nats-server -js): %w", err)
+	}
+	telemetryPub := telemetry.NewPublisher(js, logger)
 	telemetrySvc := telemetry.NewService(telemetryRepo, telemetryPub, logger)
-	telemetryConsumer := telemetry.NewConsumer(nc, telemetryRepo, logger)
-	metrics.RegisterTelemetryDropped(telemetryConsumer.Dropped)
+	telemetryConsumer := telemetry.NewConsumer(js, telemetryRepo, logger)
+	metrics.RegisterTelemetryConsumer(telemetryConsumer.Dropped, telemetryConsumer.Redelivered, telemetryConsumer.Duplicates, telemetryConsumer.Pending)
 	metrics.RegisterDeployments(pool, logger)
 	consumerDone := make(chan struct{})
 	go func() {

@@ -127,6 +127,7 @@ class TelemetryReporter internal constructor(
 
     private fun event(versionId: String, type: TelemetryEvent.EventType, latencyMs: Int, error: String) =
         TelemetryEvent.newBuilder()
+            .setEventId(java.util.UUID.randomUUID().toString()) // stored once, even if the batch is sent again
             .setModelVersionId(versionId)
             .setExperimentArmId(arms[versionId].orEmpty())
             .setType(type)

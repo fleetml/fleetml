@@ -54,6 +54,7 @@ class TelemetryReporterTest {
         assertTrue(r.flushNow())
         assertEquals(listOf(3, 2), sent.map { it.size })
         assertEquals("sent in order", (0..4).toList(), sent.flatten().map { it.latencyMs })
+        assertEquals("each event has its own ID", 5, sent.flatten().map { it.eventId }.toSet().size)
         assertEquals(0, r.pendingCount)
     }
 

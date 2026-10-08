@@ -18,15 +18,21 @@ psql_admin() { docker compose -f deploy/docker-compose.yml exec -T postgres psql
 cleanup() {
   [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
   psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)" >/dev/null 2>&1 || true
+  [ -n "${NATS_NAME:-}" ] && docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 psql_admin "CREATE DATABASE $DB"
+# Its own NATS: telemetry goes through a JetStream work queue, so a second
+# server must not share the dev stack's stream with `make dev`.
+NATS_NAME="fleetml-e2e-nats-$$"
+docker run -d --rm --name "$NATS_NAME" -p 127.0.0.1::4222 nats:2.12.1 --jetstream >/dev/null
+NATS_PORT=$(docker port "$NATS_NAME" 4222/tcp | head -1 | sed 's/.*://')
 go build -o bin/fleetml-e2e-server ./cmd/server
 
 env DATABASE_URL="$PG_HOST_URL/$DB?sslmode=disable" MIGRATE_ON_START=true \
   S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
-  NATS_URL="nats://localhost:${FLEETML_NATS_PORT:-14222}" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
+  NATS_URL="nats://localhost:$NATS_PORT" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
   SIGNING_MASTER_KEY="$(head -c 32 /dev/urandom | base64)" \
   REST_PORT="$REST_PORT" GRPC_PORT="$GRPC_PORT" FLEETML_ADMIN_KEY="$KEY" CORS_ORIGINS="" \
   DEPLOY_TICK_INTERVAL=1s EXPERIMENT_TICK_INTERVAL=2s LOG_LEVEL=warn LOG_FORMAT=text \

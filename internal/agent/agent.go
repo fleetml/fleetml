@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/google/uuid"
+
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 	"github.com/fleetml/fleetml/internal/artifact"
 	"github.com/fleetml/fleetml/internal/features"
@@ -515,6 +517,7 @@ func (a *Agent) report(versionID string, typ fleetmlv1.TelemetryEvent_EventType,
 	arm := a.arms[versionID]
 	a.mu.Unlock()
 	err := a.queue.Add(&fleetmlv1.TelemetryEvent{
+		EventId:        uuid.NewString(), // stored once, even if the batch is sent again
 		ModelVersionId: versionID, ExperimentArmId: arm, Type: typ, LatencyMs: latencyMs,
 		ConfidenceScore: confidence, PredictionLabel: label, ErrorMessage: errMsg, TimestampUnixMs: a.now().UnixMilli(),
 		Features: hist,

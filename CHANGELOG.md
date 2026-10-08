@@ -24,8 +24,21 @@ change APIs).
   feature (metric `feature:<name>`) with the usual deduplication and alerts.
   Every check's PSI is kept (`GET /drift/{id}/points`) and the Drift page draws
   it over time.
+- At-least-once telemetry: accepted batches go into a NATS JetStream stream
+  (`FLEETML_TELEMETRY`, file storage) before the device is answered, and a
+  durable consumer acknowledges them only after the database commit. Events
+  carry an `event_id` (set by the SDKs and the agent) and are stored once per
+  ID. New metrics `fleetml_telemetry_consumer_pending`,
+  `fleetml_telemetry_redelivered_total` and `fleetml_telemetry_duplicates_total`;
+  a Grafana dashboard and Prometheus in the compose profile `observability`.
 
 ### Changed
+
+- NATS must run with JetStream; both compose files enable it, pin
+  `nats:2.12.1` and keep its data in a volume. `scripts/e2e.sh` and the demos
+  start their own NATS, so they no longer share the dev stack's.
+- The telemetry consumer drops only events the database can never accept
+  (invalid values, unknown model versions); other database errors are retried.
 
 - The Linux agent applies a telemetry flush interval from the server at once
   instead of after its first 30-second wait.

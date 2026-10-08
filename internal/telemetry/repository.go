@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,39 +21,95 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-// InsertEvents batch-inserts telemetry events using CopyFrom for high throughput.
+var eventColumns = []string{"event_id", "device_id", "model_version_id", "experiment_arm_id", "event_type",
+	"latency_ms", "confidence_score", "prediction_label",
+	"memory_usage_mb", "battery_impact_pct", "error_message", "recorded_at"}
+
+func eventRow(e Event) []interface{} {
+	return []interface{}{
+		e.EventID, e.DeviceID, e.ModelVersionID, e.ExperimentArmID, e.EventType,
+		e.LatencyMs, e.Confidence, e.PredictionLabel,
+		e.MemoryUsageMB, e.BatteryPercent, e.ErrorMessage, e.RecordedAt,
+	}
+}
+
+// withIDs gives events without an ID one (normally the ingest service does).
+func withIDs(events []Event) []Event {
+	var out []Event
+	for i, e := range events {
+		if e.EventID != uuid.Nil {
+			continue
+		}
+		if out == nil {
+			out = append([]Event(nil), events...)
+		}
+		out[i].EventID = uuid.New()
+	}
+	if out == nil {
+		return events
+	}
+	return out
+}
+
+// InsertEvents stores events in one transaction, skipping events whose ID is
+// already stored, and returns how many were new. Rows are copied into a
+// temporary table first (COPY cannot skip conflicts).
 func (r *Repository) InsertEvents(ctx context.Context, events []Event) (int, error) {
 	if len(events) == 0 {
 		return 0, nil
 	}
-
-	rows := make([][]interface{}, len(events))
-	for i, e := range events {
-		rows[i] = []interface{}{
-			e.DeviceID, e.ModelVersionID, e.ExperimentArmID, e.EventType,
-			e.LatencyMs, e.Confidence, e.PredictionLabel,
-			e.MemoryUsageMB, e.BatteryPercent, e.ErrorMessage, e.RecordedAt,
-		}
-	}
-
-	count, err := r.pool.CopyFrom(ctx,
-		pgx.Identifier{"telemetry_events"},
-		[]string{"device_id", "model_version_id", "experiment_arm_id", "event_type",
-			"latency_ms", "confidence_score", "prediction_label",
-			"memory_usage_mb", "battery_impact_pct", "error_message", "recorded_at"},
-		pgx.CopyFromRows(rows),
-	)
+	events = withIDs(events)
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
 	}
-	if err := r.insertFeatures(ctx, events); err != nil {
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `CREATE TEMP TABLE telemetry_in (LIKE telemetry_events INCLUDING DEFAULTS) ON COMMIT DROP`); err != nil {
+		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
+	}
+	rows := make([][]interface{}, len(events))
+	for i, e := range events {
+		rows[i] = eventRow(e)
+	}
+	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"telemetry_in"}, eventColumns, pgx.CopyFromRows(rows)); err != nil {
+		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
+	}
+	cols := strings.Join(eventColumns, ", ")
+	res, err := tx.Query(ctx, `INSERT INTO telemetry_events (`+cols+`) SELECT `+cols+` FROM telemetry_in
+		ON CONFLICT (event_id, recorded_at) DO NOTHING RETURNING event_id`)
+	if err != nil {
+		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
+	}
+	stored := map[uuid.UUID]bool{}
+	for res.Next() {
+		var id uuid.UUID
+		if err := res.Scan(&id); err != nil {
+			res.Close()
+			return 0, err
+		}
+		stored[id] = true
+	}
+	res.Close()
+	if err := res.Err(); err != nil {
+		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
+	}
+	var fresh []Event
+	for _, e := range events {
+		if stored[e.EventID] {
+			fresh = append(fresh, e)
+		}
+	}
+	if err := insertFeatures(ctx, tx, fresh); err != nil {
 		return 0, err
 	}
-	return int(count), nil
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("telemetry.InsertEvents: %w", err)
+	}
+	return len(stored), nil
 }
 
 // insertFeatures stores the events' input histograms for feature-level drift.
-func (r *Repository) insertFeatures(ctx context.Context, events []Event) error {
+func insertFeatures(ctx context.Context, tx pgx.Tx, events []Event) error {
 	var rows [][]interface{}
 	for _, e := range events {
 		for name, counts := range e.Features {
@@ -62,7 +119,7 @@ func (r *Repository) insertFeatures(ctx context.Context, events []Event) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	_, err := r.pool.CopyFrom(ctx, pgx.Identifier{"feature_histograms"},
+	_, err := tx.CopyFrom(ctx, pgx.Identifier{"feature_histograms"},
 		[]string{"recorded_at", "model_version_id", "feature", "counts"}, pgx.CopyFromRows(rows))
 	if err != nil {
 		return fmt.Errorf("telemetry.insertFeatures: %w", err)
@@ -70,22 +127,32 @@ func (r *Repository) insertFeatures(ctx context.Context, events []Event) error {
 	return nil
 }
 
-// InsertEvent inserts a single telemetry event. Used as a fallback when a
-// batch CopyFrom fails, so that one bad row does not block the others.
-func (r *Repository) InsertEvent(ctx context.Context, e Event) error {
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO telemetry_events (device_id, model_version_id, experiment_arm_id, event_type,
-			latency_ms, confidence_score, prediction_label,
-			memory_usage_mb, battery_impact_pct, error_message, recorded_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		e.DeviceID, e.ModelVersionID, e.ExperimentArmID, e.EventType,
-		e.LatencyMs, e.Confidence, e.PredictionLabel,
-		e.MemoryUsageMB, e.BatteryPercent, e.ErrorMessage, e.RecordedAt,
-	)
+// InsertEvent stores one event unless its ID is already stored, and reports
+// whether it was new. The consumer falls back to it when a batch fails, so
+// that one bad row does not block the others.
+func (r *Repository) InsertEvent(ctx context.Context, e Event) (bool, error) {
+	e = withIDs([]Event{e})[0]
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("telemetry.InsertEvent: %w", err)
+		return false, fmt.Errorf("telemetry.InsertEvent: %w", err)
 	}
-	return r.insertFeatures(ctx, []Event{e})
+	defer func() { _ = tx.Rollback(ctx) }()
+	placeholders := make([]string, len(eventColumns))
+	for i := range placeholders {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO telemetry_events (`+strings.Join(eventColumns, ", ")+`) VALUES (`+strings.Join(placeholders, ", ")+`)
+		ON CONFLICT (event_id, recorded_at) DO NOTHING`, eventRow(e)...)
+	if err != nil {
+		return false, fmt.Errorf("telemetry.InsertEvent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	if err := insertFeatures(ctx, tx, []Event{e}); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }
 
 // KnownModelVersions returns the subset of ids that are model versions in the

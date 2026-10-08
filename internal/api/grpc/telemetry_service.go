@@ -70,7 +70,9 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 			recordedAt = time.UnixMilli(ts)
 		}
 
+		eventID, _ := uuid.Parse(pe.GetEventId()) // the service assigns one if it is missing or invalid
 		events = append(events, telemetry.Event{
+			EventID:         eventID,
 			DeviceID:        deviceID,
 			ModelVersionID:  modelVersionID,
 			ExperimentArmID: armID,

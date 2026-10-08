@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,8 +38,14 @@ func TestRepository_Integration(t *testing.T) {
 	n, err := repo.InsertEvents(ctx, events)
 	require.NoError(t, err)
 	assert.Equal(t, 3, n)
-	require.NoError(t, repo.InsertEvent(ctx, Event{DeviceID: dev, ModelVersionID: fx.VersionID, EventType: "OOM", RecordedAt: now}))
-	err = repo.InsertEvent(ctx, Event{DeviceID: dev, ModelVersionID: uuid.New(), EventType: "INFERENCE", RecordedAt: now})
+	oom := Event{EventID: uuid.New(), DeviceID: dev, ModelVersionID: fx.VersionID, EventType: "OOM", RecordedAt: now}
+	stored, err := repo.InsertEvent(ctx, oom)
+	require.NoError(t, err)
+	assert.True(t, stored)
+	stored, err = repo.InsertEvent(ctx, oom)
+	require.NoError(t, err)
+	assert.False(t, stored, "the same event ID is stored once")
+	_, err = repo.InsertEvent(ctx, Event{DeviceID: dev, ModelVersionID: uuid.New(), EventType: "INFERENCE", RecordedAt: now})
 	assert.Error(t, err, "unknown model version violates the foreign key")
 
 	var tagged int
@@ -98,8 +105,9 @@ func TestRepository_Integration(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// The NATS pipeline end to end: publish -> consumer -> hypertable, with one
-// poison event that the row-by-row fallback discards.
+// The JetStream pipeline end to end: publish -> consumer -> hypertable, with
+// one poison event that the row-by-row fallback discards, and a batch
+// published twice that is stored once.
 func TestPipeline_Integration(t *testing.T) {
 	natsURL := os.Getenv("FLEETML_TEST_NATS_URL")
 	if natsURL == "" {
@@ -113,28 +121,36 @@ func TestPipeline_Integration(t *testing.T) {
 	nc, err := nats.Connect(natsURL)
 	require.NoError(t, err)
 	defer nc.Close()
+	js, err := jetstream.New(nc)
+	require.NoError(t, err)
 
-	consumer := NewConsumer(nc, repo, discard())
-	consumer.flushInterval = 100 * time.Millisecond
+	consumer := NewConsumer(js, repo, discard())
+	consumer.fetchWait = 100 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = consumer.Start(ctx); close(done) }()
-	time.Sleep(200 * time.Millisecond)
 
-	pub := NewPublisher(nc, discard())
-	require.True(t, pub.IsConnected())
-	require.NoError(t, pub.Publish([]Event{
-		{DeviceID: dev, ModelVersionID: fx.VersionID, EventType: "INFERENCE", LatencyMs: 7, RecordedAt: time.Now()},
-		{DeviceID: dev, ModelVersionID: uuid.New(), EventType: "INFERENCE", LatencyMs: 7, RecordedAt: time.Now()},
-	}))
-	require.Eventually(t, func() bool {
+	pub := NewPublisher(js, discard())
+	batch := []Event{
+		{EventID: uuid.New(), DeviceID: dev, ModelVersionID: fx.VersionID, EventType: "INFERENCE", LatencyMs: 7, RecordedAt: time.Now()},
+		{EventID: uuid.New(), DeviceID: dev, ModelVersionID: uuid.New(), EventType: "INFERENCE", LatencyMs: 7, RecordedAt: time.Now()},
+	}
+	require.Eventually(t, func() bool { return pub.Publish(ctx, batch) == nil }, 5*time.Second, 100*time.Millisecond, "the stream exists")
+	count := func() int {
 		var n int
 		_ = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM telemetry_events WHERE device_id = $1`, dev).Scan(&n)
-		return n == 1
-	}, 5*time.Second, 100*time.Millisecond)
+		return n
+	}
+	require.Eventually(t, func() bool { return count() == 1 }, 5*time.Second, 100*time.Millisecond)
 	assert.Equal(t, int64(1), consumer.Dropped())
+
+	// The same events again (a device resending after a lost acknowledgement,
+	// published outside the stream's duplicate window): stored once.
+	stored, err := repo.InsertEvents(context.Background(), batch[:1])
+	require.NoError(t, err)
+	assert.Zero(t, stored, "an event ID is stored once")
+	assert.Equal(t, 1, count())
 
 	cancel()
 	<-done
-	require.NoError(t, consumer.Stop())
 }

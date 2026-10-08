@@ -21,7 +21,8 @@ type fakeWriter struct {
 	mu        sync.Mutex
 	known     map[uuid.UUID]bool
 	stored    []Event
-	transient bool // when true, single-row inserts fail with a non-Postgres error
+	transient bool  // when true, single-row inserts fail with a non-Postgres error
+	failWith  error // when set, every insert fails with it
 	ctxErrs   []error
 }
 
@@ -29,6 +30,9 @@ func (f *fakeWriter) InsertEvents(ctx context.Context, events []Event) (int, err
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+	if f.failWith != nil {
+		return 0, f.failWith
+	}
 	for _, e := range events {
 		if !f.known[e.ModelVersionID] {
 			return 0, errors.New("telemetry.InsertEvents: ERROR: violates foreign key constraint (SQLSTATE 23503)")
@@ -38,27 +42,25 @@ func (f *fakeWriter) InsertEvents(ctx context.Context, events []Event) (int, err
 	return len(events), nil
 }
 
-func (f *fakeWriter) InsertEvent(ctx context.Context, e Event) error {
+func (f *fakeWriter) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+	if f.failWith != nil {
+		return false, f.failWith
+	}
 	if f.transient {
-		return errors.New("connection refused")
+		return false, errors.New("connection refused")
 	}
 	if !f.known[e.ModelVersionID] {
-		return &pgconn.PgError{Code: "23503", Message: "violates foreign key constraint"}
+		return false, &pgconn.PgError{Code: "23503", Message: "violates foreign key constraint"}
 	}
 	f.stored = append(f.stored, e)
-	return nil
+	return true, nil
 }
 
 func newTestConsumer(w eventWriter) *Consumer {
-	return &Consumer{
-		repo:          w,
-		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		batchSize:     defaultBatchSize,
-		flushInterval: defaultFlushInterval,
-	}
+	return &Consumer{repo: w, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 }
 
 func goodEvents(versionID uuid.UUID, n int) []Event {
@@ -69,8 +71,8 @@ func goodEvents(versionID uuid.UUID, n int) []Event {
 	return out
 }
 
-// Regression: one bad event used to fail the CopyFrom, get re-buffered, and
-// block every later event forever.
+// Regression: one bad event used to fail the whole batch and block every
+// later event forever.
 func TestConsumer_PoisonEventDoesNotStallIngestion(t *testing.T) {
 	version := uuid.New()
 	w := &fakeWriter{known: map[uuid.UUID]bool{version: true}}
@@ -80,48 +82,47 @@ func TestConsumer_PoisonEventDoesNotStallIngestion(t *testing.T) {
 	unknownVersion := Event{DeviceID: uuid.New(), ModelVersionID: uuid.New(), EventType: "INFERENCE", RecordedAt: time.Now()}
 	nilVersion := Event{DeviceID: uuid.New(), EventType: "INFERENCE", RecordedAt: time.Now()}
 
-	c.addToBuffer(ctx, []Event{unknownVersion, nilVersion})
-	c.addToBuffer(ctx, goodEvents(version, 3))
-	c.flush(ctx)
-
+	assert.True(t, c.write(ctx, append([]Event{unknownVersion, nilVersion}, goodEvents(version, 3)...)), "the messages are acknowledged")
 	assert.Len(t, w.stored, 3, "good events must land despite the bad ones")
 	assert.Equal(t, int64(2), c.Dropped())
-	assert.Empty(t, c.buffer, "nothing should be re-buffered for permanent failures")
 
-	// Later events keep flowing.
-	c.addToBuffer(ctx, goodEvents(version, 2))
-	c.flush(ctx)
+	assert.True(t, c.write(ctx, goodEvents(version, 2)), "later events keep flowing")
 	assert.Len(t, w.stored, 5)
 	assert.Equal(t, int64(2), c.Dropped())
 }
 
-func TestConsumer_TransientFailureIsRequeued(t *testing.T) {
+// A transient failure leaves the messages unacknowledged, so JetStream
+// delivers them again.
+func TestConsumer_TransientFailureIsRedelivered(t *testing.T) {
 	version := uuid.New()
 	w := &fakeWriter{known: map[uuid.UUID]bool{}, transient: true}
 	c := newTestConsumer(w)
-	ctx := context.Background()
-
-	c.addToBuffer(ctx, goodEvents(version, 3))
-	c.flush(ctx)
-
+	assert.False(t, c.write(context.Background(), goodEvents(version, 3)))
 	assert.Empty(t, w.stored)
-	assert.Len(t, c.buffer, 3, "non-Postgres errors are retried on the next flush")
 	assert.Equal(t, int64(0), c.Dropped())
 }
 
-func TestConsumer_FinalFlushUsesLiveContext(t *testing.T) {
+// A Postgres error that is not about the row (here a schema without the
+// event_id migration) must not drop events: the batch is retried.
+func TestConsumer_SchemaErrorIsRetriedNotDropped(t *testing.T) {
+	version := uuid.New()
+	w := &fakeWriter{known: map[uuid.UUID]bool{version: true}, failWith: &pgconn.PgError{Code: "42703", Message: `column "event_id" does not exist`}}
+	c := newTestConsumer(w)
+	assert.False(t, c.write(context.Background(), goodEvents(version, 3)))
+	assert.Equal(t, int64(0), c.Dropped())
+}
+
+// During shutdown the batch in hand is still written, on a live context.
+func TestConsumer_WriteOutlivesShutdown(t *testing.T) {
 	version := uuid.New()
 	w := &fakeWriter{known: map[uuid.UUID]bool{version: true}}
 	c := newTestConsumer(w)
-
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	c.addToBuffer(cancelled, goodEvents(version, 2))
-	c.finalFlush()
-
+	require.True(t, c.write(cancelled, goodEvents(version, 2)))
 	require.Len(t, w.stored, 2)
 	for _, err := range w.ctxErrs {
-		assert.NoError(t, err, "final flush must not run on the cancelled context")
+		assert.NoError(t, err)
 	}
 }
 

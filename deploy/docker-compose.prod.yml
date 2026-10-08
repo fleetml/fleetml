@@ -51,7 +51,11 @@ services:
     restart: "no"
 
   nats:
-    image: nats:latest
+    image: nats:2.12.1
+    # JetStream keeps accepted telemetry until it is in the database.
+    command: ["--jetstream", "--store_dir", "/data", "--http_port", "8222"]
+    volumes:
+      - natsdata:/data
 
 
   server:
@@ -102,6 +106,30 @@ services:
     depends_on:
       - server
 
+  # docker compose -f deploy/docker-compose.prod.yml --profile observability up -d:
+  # Prometheus (internal) and Grafana on :13000 with the FleetML dashboard.
+  # Anonymous users can only view; Grafana asks for a new admin password at the
+  # first login (admin/admin).
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["observability"]
+    volumes:
+      - ./prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fleetml.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "13000:3000"
+
 volumes:
   pgdata:
   modeldata:
+  natsdata:

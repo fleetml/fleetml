@@ -9,6 +9,8 @@ import (
 // Event represents a single telemetry event from a device.
 // Maps to the telemetry_events table.
 type Event struct {
+	// EventID makes storing idempotent: an event is stored once per ID.
+	EventID        uuid.UUID `json:"event_id"`
 	DeviceID       uuid.UUID `json:"device_id"`
 	ModelVersionID uuid.UUID `json:"model_version_id"`
 	// ExperimentArmID attributes the event to an experiment arm (nil if none).

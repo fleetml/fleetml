@@ -39,6 +39,7 @@ cleanup() {
   if [ "${KEEP:-}" != 1 ]; then
     [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
     psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)" >/dev/null 2>&1 || true
+    [ -n "${NATS_NAME:-}" ] && docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true
     rm -rf "$WORK"
   fi
 }
@@ -48,11 +49,16 @@ say "Starting the dev stack and a demo server"
 docker compose -f deploy/docker-compose.yml up -d >/dev/null 2>&1
 docker compose -f deploy/docker-compose.yml wait migrate >/dev/null
 psql_admin "CREATE DATABASE $DB"
+# Its own NATS: telemetry goes through a JetStream work queue, so a second
+# server must not share the dev stack's stream with `make dev`.
+NATS_NAME="fleetml-demo-nats-$$"
+docker run -d --rm --name "$NATS_NAME" -p 127.0.0.1::4222 nats:2.12.1 --jetstream >/dev/null
+NATS_PORT=$(docker port "$NATS_NAME" 4222/tcp | head -1 | sed 's/.*://')
 go build -o "$WORK/server" ./cmd/server
 go build -o "$WORK/fleetml" ./cmd/fleetml
 env DATABASE_URL="$PG_HOST_URL/$DB?sslmode=disable" MIGRATE_ON_START=true \
   S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
-  NATS_URL="nats://localhost:${FLEETML_NATS_PORT:-14222}" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
+  NATS_URL="nats://localhost:$NATS_PORT" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
   SIGNING_MASTER_KEY="$(head -c 32 /dev/urandom | base64)" \
   REST_PORT="$REST_PORT" GRPC_PORT="$GRPC_PORT" FLEETML_ADMIN_KEY="$KEY" \
   DEPLOY_TICK_INTERVAL=1s EXPERIMENT_TICK_INTERVAL=1s DRIFT_TICK_INTERVAL=1h \
@@ -126,5 +132,5 @@ say "Done in $(( $(date +%s) - STORY ))s (plus $(( STORY - START ))s of setup)"
 note "The same steps work against your devices with the Android and iOS SDKs (docs/ANDROID_SDK.md, docs/IOS_SDK.md)."
 if [ "${KEEP:-}" = 1 ]; then
   note "The demo server keeps running: FLEETML_SERVER=$API FLEETML_API_KEY=$KEY ./bin/fleetml deploy list"
-  note "Stop it with: kill $SERVER_PID"
+  note "Stop it with: kill $SERVER_PID; docker rm -f $NATS_NAME"
 fi

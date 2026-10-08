@@ -144,12 +144,28 @@ Planning rules:
 flowchart LR
   sdk[SDK queue<br/>persistent, bounded] -- ReportBatch --> v{valid, and the version<br/>belongs to the device's project?}
   v -- no --> rej[rejected count]
-  v -- yes --> pub[publish to NATS]
-  pub --> cons[consumer<br/>batches of 500 or 5 s]
-  cons --> ht[(telemetry_events<br/>hypertable, 30-day retention)]
+  v -- yes --> pub[JetStream stream<br/>FLEETML_TELEMETRY, file storage]
+  pub -- stored: ack the device --> sdk
+  pub --> cons[durable consumer<br/>telemetry-writer]
+  cons -- one transaction,<br/>skip known event IDs --> ht[(telemetry_events<br/>hypertable, 30-day retention)]
+  ht -- committed: ack the message --> cons
   ht --> agg[(telemetry_hourly_stats<br/>continuous aggregate)]
-  pub -. NATS down .-> direct[direct insert] --> ht
+  pub -. JetStream unavailable .-> direct[direct insert] --> ht
 ```
+
+Telemetry is delivered at least once and stored once. `ReportBatch` answers
+only after the JetStream stream has stored the batch, and the consumer
+acknowledges a message only after its events are committed, so a crash at
+any point redelivers instead of losing events. Every event carries an
+`event_id` (the SDKs and the agent set one per event, the server assigns one
+if it is missing), and `telemetry_events` has a unique index on it, so a
+redelivered message, or a batch a device sends again after a lost
+acknowledgement, is not stored twice; the stream also drops a batch published
+twice within two minutes. A row the database can never accept (an unknown
+model version, an invalid value) is dropped and counted; any other failure
+(the database is down, a migration is missing) is retried. Lag
+(`fleetml_telemetry_consumer_pending`), redeliveries and duplicates are
+Prometheus metrics, and `deploy/grafana` has a dashboard for them.
 
 Events for a model in an experiment carry the device's arm ID, so results are
 computed per arm.
@@ -282,8 +298,9 @@ device agent) must too:
   `MODEL_LOAD_FAILED`. A replacement arrives as `UPDATE` (new) plus `UNLOAD`
   (old): keep the old one until the new one is active.
 - **Telemetry.** Queue events persistently, send them in batches (never one
-  request per event), tag events of a model in an experiment with its
-  `arm_id`, and back off after failures. Bin input feature values with the
+  request per event), give each event an `event_id` (a UUID, kept with the
+  queued event so a resent batch is recognised), tag events of a model in an
+  experiment with its `arm_id`, and back off after failures. Bin input feature values with the
   model's `DeviceConfig.feature_bins` (a value `v` falls into bin `i` where
   `edges[i-1] <= v < edges[i]`) and send only the counts.
 

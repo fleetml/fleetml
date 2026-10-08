@@ -68,11 +68,23 @@ func Result(err error) string {
 	return "ok"
 }
 
-// RegisterTelemetryDropped exposes events the telemetry consumer could not store.
-func RegisterTelemetryDropped(dropped func() int64) {
-	Registry.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
-		Name: "fleetml_telemetry_events_dropped_total", Help: "Accepted telemetry events the consumer could not store.",
-	}, func() float64 { return float64(dropped()) }))
+// RegisterTelemetryConsumer exposes the telemetry consumer's counters and lag.
+func RegisterTelemetryConsumer(dropped, redelivered, duplicates, pending func() int64) {
+	f := func(fn func() int64) func() float64 { return func() float64 { return float64(fn()) } }
+	Registry.MustRegister(
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name: "fleetml_telemetry_events_dropped_total", Help: "Accepted telemetry events the consumer could not store.",
+		}, f(dropped)),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name: "fleetml_telemetry_redelivered_total", Help: "Telemetry stream messages delivered to the consumer more than once (after a crash or a failed write).",
+		}, f(redelivered)),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name: "fleetml_telemetry_duplicates_total", Help: "Telemetry events skipped because an event with the same ID was already stored.",
+		}, f(duplicates)),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "fleetml_telemetry_consumer_pending", Help: "Telemetry stream messages not yet stored: undelivered plus delivered and not yet acknowledged (the consumer's lag).",
+		}, f(pending)),
+	)
 }
 
 // RegisterDeployments exposes the number of deployments in each status, read at scrape time.

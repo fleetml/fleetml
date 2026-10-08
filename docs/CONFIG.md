@@ -29,7 +29,7 @@ missing or invalid variable.
 | `S3_USE_SSL` | `false` | Reach the object store over HTTPS |
 | `S3_BUCKET` | `fleetml-models` | Bucket for model files; created at start-up if missing |
 | `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100` |
-| `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline and alerts |
+| `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline and alerts. JetStream must be enabled (`nats-server --jetstream`, as in both compose files): the server creates the `FLEETML_TELEMETRY` stream at startup and refuses to start without it. Servers that share a NATS share the stream, so they must also share the database |
 | `MIGRATE_ON_START` | `false` | Apply the embedded database migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
 
 At start-up the server waits up to 60 seconds for Postgres, the object store
@@ -103,6 +103,8 @@ NATS) publishes its services on these host ports:
 | `FLEETML_S3_PORT` | `19000` | SeaweedFS S3 API |
 | `FLEETML_NATS_PORT` | `14222` | NATS |
 | `FLEETML_NATS_MONITOR_PORT` | `18222` | NATS monitoring |
+| `FLEETML_PROMETHEUS_PORT` | `19091` | Prometheus (profile `observability`) |
+| `FLEETML_GRAFANA_PORT` | `13000` | Grafana with the FleetML dashboard (profile `observability`) |
 
 `deploy/docker-compose.prod.yml` (server, dashboard and their dependencies)
 publishes the dashboard on `:80`, the REST and gRPC APIs on `:18080` and

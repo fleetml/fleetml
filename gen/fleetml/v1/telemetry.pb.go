@@ -153,7 +153,11 @@ type TelemetryEvent struct {
 	// Optional input histograms for feature-level drift: for each configured
 	// feature of the model (DeviceConfig.feature_bins), how many of this
 	// inference's values fell into each bin.
-	Features      []*FeatureHistogram `protobuf:"bytes,11,rep,name=features,proto3" json:"features,omitempty"`
+	Features []*FeatureHistogram `protobuf:"bytes,11,rep,name=features,proto3" json:"features,omitempty"`
+	// A UUID the client gives each event when it creates it. The server stores
+	// an event once per ID, so a batch sent again after a lost acknowledgement
+	// is not counted twice. Without one the server assigns an ID.
+	EventId       string `protobuf:"bytes,12,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -263,6 +267,13 @@ func (x *TelemetryEvent) GetFeatures() []*FeatureHistogram {
 		return x.Features
 	}
 	return nil
+}
+
+func (x *TelemetryEvent) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
 }
 
 // Counts per bin for one feature; len(counts) == len(edges) + 1 (values below
@@ -378,7 +389,7 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x1afleetml/v1/telemetry.proto\x12\x14fleetml.telemetry.v1\"k\n" +
 	"\x0eTelemetryBatch\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12<\n" +
-	"\x06events\x18\x02 \x03(\v2$.fleetml.telemetry.v1.TelemetryEventR\x06events\"\xa6\x05\n" +
+	"\x06events\x18\x02 \x03(\v2$.fleetml.telemetry.v1.TelemetryEventR\x06events\"\xc1\x05\n" +
 	"\x0eTelemetryEvent\x12(\n" +
 	"\x10model_version_id\x18\x01 \x01(\tR\x0emodelVersionId\x12*\n" +
 	"\x11experiment_arm_id\x18\x02 \x01(\tR\x0fexperimentArmId\x12B\n" +
@@ -392,7 +403,8 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\rerror_message\x18\t \x01(\tR\ferrorMessage\x12*\n" +
 	"\x11timestamp_unix_ms\x18\n" +
 	" \x01(\x03R\x0ftimestampUnixMs\x12B\n" +
-	"\bfeatures\x18\v \x03(\v2&.fleetml.telemetry.v1.FeatureHistogramR\bfeatures\"\x9e\x01\n" +
+	"\bfeatures\x18\v \x03(\v2&.fleetml.telemetry.v1.FeatureHistogramR\bfeatures\x12\x19\n" +
+	"\bevent_id\x18\f \x01(\tR\aeventId\"\x9e\x01\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tINFERENCE\x10\x01\x12\x0e\n" +

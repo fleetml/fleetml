@@ -165,6 +165,18 @@ curl -s localhost:18080/metrics | grep -E '^fleetml_(deployments|alerts_sent_tot
 
 The gRPC port also serves the standard `grpc.health.v1` health service.
 
+Prometheus and Grafana with the FleetML dashboard (telemetry lag,
+redeliveries, request rates, deployments, alerts) run as a compose profile:
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
+open http://localhost:13000            # Grafana, dashboard "FleetML"
+```
+
+With the dev stack (`make dev`, server on the host), use
+`docker compose -f deploy/docker-compose.yml --profile observability up -d`;
+Prometheus is then on `:19091` and scrapes the server on `:18080`.
+
 ### Clean up
 
 ```bash

@@ -28,6 +28,10 @@ message TelemetryEvent {
   // feature of the model (DeviceConfig.feature_bins), how many of this
   // inference's values fell into each bin.
   repeated FeatureHistogram features = 11;
+  // A UUID the client gives each event when it creates it. The server stores
+  // an event once per ID, so a batch sent again after a lost acknowledgement
+  // is not counted twice. Without one the server assigns an ID.
+  string event_id = 12;
 
   enum EventType {
     EVENT_TYPE_UNSPECIFIED = 0;

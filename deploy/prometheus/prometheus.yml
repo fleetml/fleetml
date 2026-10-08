@@ -1,0 +1,8 @@
+# Scrapes the FleetML server's /metrics. With the dev stack the server runs on
+# the host (make dev); docker-compose.prod.yml mounts prometheus.prod.yml.
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: fleetml
+    static_configs:
+      - targets: ["host.docker.internal:18080"]
