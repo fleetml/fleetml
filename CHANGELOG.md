@@ -70,6 +70,8 @@ change APIs).
   `.env`.
 - The quickstart's dashboard hint mentions the login (it still pointed to
   Settings).
+- The dashboard's login asks for "your API key": any user's key logs in, not
+  only an admin's.
 - The 20 MB delta timing test no longer runs under the race detector, where
   it took minutes.
 

@@ -202,7 +202,7 @@ only the counts are sent.
 ## Tests
 
 ```bash
-make ios-test                     # swift test: 47 XCTests on macOS
+make ios-test                     # swift test: the unit tests on macOS
 cd ios/FleetMLSDK && xcodebuild test -scheme FleetMLSDK \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator
 FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh            # live test against make dev

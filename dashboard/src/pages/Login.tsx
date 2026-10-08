@@ -26,7 +26,7 @@ export default function Login({ notice, onLoggedIn }: { notice: string; onLogged
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-sm p-6">
         <h1 className="text-xl font-bold text-gray-900 mb-1">FleetML</h1>
-        <p className="text-sm text-gray-500 mb-5">Log in with an admin API key. The key is exchanged for a session; it is not stored in this browser.</p>
+        <p className="text-sm text-gray-500 mb-5">Log in with your API key. The key is exchanged for a session; it is not stored in this browser.</p>
         {notice && <p role="status" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{notice}</p>}
         <label className="block mb-4">
           <span className="block text-sm font-medium text-gray-700 mb-1">API key</span>

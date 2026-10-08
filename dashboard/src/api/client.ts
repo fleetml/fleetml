@@ -30,7 +30,7 @@ const apiPost = <T>(path: string, body?: unknown) => request<T>('POST', path, bo
 const apiPatch = <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
 const apiDelete = (path: string) => request<void>('DELETE', path)
 
-/** Exchanges an admin API key for a session cookie. A rejected key throws without signalling a logout. */
+/** Exchanges an API key for a session cookie. A rejected key throws without signalling a logout. */
 export async function login(apiKey: string): Promise<SessionInfo> {
   const res = await fetch('/api/v1/auth/login', {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },

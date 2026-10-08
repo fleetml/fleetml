@@ -11,6 +11,13 @@ failing rolls itself back. Your app runs the model with TensorFlow Lite,
 Core ML, ONNX Runtime or anything else; FleetML moves files and telemetry, not
 inferences.
 
+**What FleetML is not.** It is not an inference runtime: it never loads your
+model to answer requests; your app or inference process does. It is
+not a model trainer or converter: it starts from a file you already have. And
+it is not a hosted service: you run the server, its Postgres, NATS and object
+store yourself, with Docker Compose or the Helm chart, and your models and
+telemetry stay there.
+
 ## The 60-second story
 
 ![Four Linux edge boxes take a canary of a broken model; the health gate rolls it back](docs/screenshots/demo.gif)
@@ -60,12 +67,12 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **Drift detection.** PSI on inference latency, confidence and input features (histograms binned on the device), last 24 hours against the 7 days before, with history and PSI over time; a change into CRITICAL raises one alert | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
 | **Alerts.** Rollback and drift alerts on NATS and to per-project sinks: HMAC-signed webhooks, Slack (Block Kit) and email, with a test button, five attempts and a delivery log with dead letters | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
 | **Android SDK.** Kotlin, minSdk 26: resumable verified downloads, validation before activation, last-known-good, offline start, persistent telemetry | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
-| **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md) |
+| **iOS SDK.** Swift package, iOS 15: the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md), `swift test`, simulator `LiveServerTests` |
 | **Linux device agent.** A static binary (amd64, arm64) and systemd service for Jetson, Raspberry Pi and x86 edge boxes: the same rollout, validation and last-known-good rules, models behind a `current` symlink, a command validator, a post-activate hook, and a local HTTP endpoint for inference telemetry | DONE | [LINUX_AGENT.md](docs/LINUX_AGENT.md), `go test ./internal/agent` |
 | **Battery and data.** Heartbeats and telemetry on a timer only in the foreground; in the background one check per hour (WorkManager, BGAppRefreshTask); telemetry batched in a persistent queue; models download on an unmetered network or while charging unless the deployment is urgent; all tunable from the server | DONE | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data), e2e `TestE2E_UrgentAndDeviceConfig`, `LiveServerTests` |
 | **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; alert sinks; login with server-side sessions (the API key is not kept in the browser); works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
 | **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
-| **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
+| **Security.** API keys that act as users with per-project roles, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation`, `TestE2E_RolesAndAudit` |
 | **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1`; a Grafana dashboard (compose profile `observability`); telemetry delivered at least once through NATS JetStream and stored once per event ID | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
 | **Roles and audit log.** Users with a viewer, operator or admin role per project and global admins, enforced by a permission matrix that covers every route; every change and every refused request in an audit log, filterable and exportable as CSV, with a dashboard page | DONE | [ARCHITECTURE.md](docs/ARCHITECTURE.md#users-roles-and-the-audit-log) |
 | **Helm chart.** Server, dashboard and optional bundled Postgres, NATS and SeaweedFS; linted and rendered in CI, and the end-to-end suite runs against it in kind | DONE | [deploy/helm/fleetml](deploy/helm/fleetml) |

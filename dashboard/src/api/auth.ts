@@ -1,4 +1,4 @@
-// Dashboard session. Logging in exchanges the admin API key for an httpOnly
+// Dashboard session. Logging in exchanges an API key for an httpOnly
 // session cookie, so the key is never stored in the browser. Requests that
 // change state send the session's CSRF token, which lives only in memory and
 // is fetched again from GET /auth/session after a reload.

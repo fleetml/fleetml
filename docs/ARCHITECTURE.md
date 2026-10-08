@@ -31,7 +31,7 @@ flowchart LR
   hook([Webhook, Slack, email])
 
   dash -- session --> rest
-  cli -- admin API key --> rest
+  cli -- API key --> rest
   android -- device token --> grpc
   ios -- device token --> grpc
   agent -- device token --> grpc
@@ -387,7 +387,7 @@ flowchart LR
     tls[TLS termination]
   end
   subgraph core[FleetML server]
-    restb[REST /api/v1<br/>admin API key or session]
+    restb[REST /api/v1<br/>API key or session]
     probes["/livez, /readyz, /metrics<br/>no credentials"]
     grpcb[gRPC<br/>enrollment key or device token]
   end
