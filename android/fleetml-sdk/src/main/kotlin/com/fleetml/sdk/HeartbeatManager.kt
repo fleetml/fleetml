@@ -125,7 +125,8 @@ internal class HeartbeatManager(
                 val result = downloader.download(
                     variantId = assignment.variantId,
                     downloadUrl = assignment.downloadUrl,
-                    blobSha256 = assignment.blobSha256
+                    blobSha256 = assignment.blobSha256,
+                    expectedSize = assignment.blobSizeBytes,
                 )
                 when (result) {
                     is DownloadResult.Downloaded,

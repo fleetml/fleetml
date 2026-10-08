@@ -57,7 +57,8 @@ object FleetML {
         val tokenManager = TokenManager(appContext)
         val cacheDir = File(appContext.filesDir, "fleetml/models")
         val cache = ModelCache(cacheDir, config.maxCacheSizeMb)
-        val downloader = ModelDownloader(cache, config)
+        cache.cleanupTemp()
+        val downloader = ModelDownloader(cache)
         val registrar = DeviceRegistrar(grpcClient, tokenManager, config, appContext)
         val heartbeatManager = HeartbeatManager(
             grpcClient, tokenManager, downloader, cache, callback, config,

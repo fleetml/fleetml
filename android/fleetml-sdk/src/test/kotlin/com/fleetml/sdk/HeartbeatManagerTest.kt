@@ -52,36 +52,6 @@ class HeartbeatManagerTest {
         assertEquals(60, result.heartbeatIntervalSeconds)
     }
 
-    @Test
-    fun `ModelCache save returns null on sha mismatch`() {
-        val dir = File(System.getProperty("java.io.tmpdir"), "hb-test-${System.nanoTime()}")
-        dir.mkdirs()
-        try {
-            val cache = ModelCache(dir, 10)
-            val data = "test".toByteArray()
-            val result = cache.save("v1", data, "bad-sha")
-            assertNull(result)
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun `ModelCache caches correctly with valid sha`() {
-        val dir = File(System.getProperty("java.io.tmpdir"), "hb-test2-${System.nanoTime()}")
-        dir.mkdirs()
-        try {
-            val cache = ModelCache(dir, 10)
-            val data = "model bytes".toByteArray()
-            val sha = sha256(data)
-            val file = cache.save("v2", data, sha)
-            assertEquals(true, file != null)
-            assertEquals(true, cache.isCached("v2", sha))
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
     private fun sha256(data: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest(data).joinToString("") { "%02x".format(it) }

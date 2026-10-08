@@ -12,112 +12,79 @@ import java.io.File
 import java.security.MessageDigest
 
 class ModelCacheTest {
-
-    private lateinit var cacheDir: File
+    private lateinit var dir: File
     private lateinit var cache: ModelCache
 
     @Before
     fun setUp() {
-        cacheDir = File(System.getProperty("java.io.tmpdir"), "fleetml-test-cache-${System.nanoTime()}")
-        cacheDir.mkdirs()
-        cache = ModelCache(cacheDir, maxSizeMb = 10)
+        dir = File(System.getProperty("java.io.tmpdir"), "fleetml-cache-${System.nanoTime()}")
+        cache = ModelCache(dir, maxSizeMb = 10)
     }
 
     @After
     fun tearDown() {
-        cacheDir.deleteRecursively()
+        dir.deleteRecursively()
+    }
+
+    private fun put(c: ModelCache, variant: String, bytes: ByteArray): File? {
+        c.partFile(variant).writeBytes(bytes)
+        return c.commit(variant, c.partFile(variant), sha256(bytes))
     }
 
     @Test
-    fun `save and retrieve model`() {
-        val data = "model data".toByteArray()
-        val sha = sha256(data)
-
-        val file = cache.save("variant-1", data, sha)
+    fun `commit verifies and stores the model`() {
+        val file = put(cache, "v1", "model data".toByteArray())
         assertNotNull(file)
-        assertTrue(file!!.exists())
-        assertEquals("model data", file.readText())
+        assertEquals("model data", file!!.readText())
+        assertTrue(cache.isCached("v1", sha256("model data".toByteArray())))
+        assertFalse("the part is renamed into place", cache.partFile("v1").exists())
     }
 
     @Test
-    fun `isCached returns true for valid cached model`() {
-        val data = "cached model".toByteArray()
-        val sha = sha256(data)
-
-        cache.save("variant-2", data, sha)
-        assertTrue(cache.isCached("variant-2", sha))
+    fun `commit rejects a wrong sha256 and deletes the part`() {
+        cache.partFile("v2").writeBytes("tampered".toByteArray())
+        assertNull(cache.commit("v2", cache.partFile("v2"), sha256("original".toByteArray())))
+        assertFalse(cache.partFile("v2").exists())
+        assertNull(cache.getModelFile("v2"))
     }
 
     @Test
-    fun `isCached returns false for wrong SHA256`() {
-        val data = "cached model".toByteArray()
-        val sha = sha256(data)
-
-        cache.save("variant-3", data, sha)
-        assertFalse(cache.isCached("variant-3", "wrong-sha"))
+    fun `isCached compares the stored hash`() {
+        put(cache, "v3", "x".toByteArray())
+        assertFalse(cache.isCached("v3", "other"))
+        assertFalse(cache.isCached("missing", "any"))
     }
 
     @Test
-    fun `isCached returns false for missing file`() {
-        assertFalse(cache.isCached("nonexistent", "any-sha"))
+    fun `eviction never removes protected models`() {
+        val tiny = ModelCache(dir, maxSizeMb = 0) // every insert forces eviction
+        put(tiny, "active", ByteArray(100) { 1 })
+        put(tiny, "lkg", ByteArray(100) { 2 })
+        put(tiny, "old", ByteArray(100) { 3 })
+        File(dir, "old.bin").setLastModified(1) // least recently used
+        tiny.evictIfNeeded(100, protected = setOf("active", "lkg"))
+        assertNotNull(tiny.getModelFile("active"))
+        assertNotNull(tiny.getModelFile("lkg"))
+        assertNull(tiny.getModelFile("old"))
     }
 
     @Test
-    fun `save fails on SHA256 mismatch`() {
-        val data = "model data".toByteArray()
-        val file = cache.save("variant-4", data, "wrong-sha256")
-        assertNull(file)
+    fun `cleanup removes temp files and stale parts but keeps fresh parts`() {
+        File(dir, "x.tmp").writeText("t")
+        val stale = cache.partFile("stale").apply { writeText("p"); setLastModified(1_000) }
+        val fresh = cache.partFile("fresh").apply { writeText("p") }
+        cache.cleanupTemp(maxPartAgeMs = 60_000, now = System.currentTimeMillis())
+        assertFalse(File(dir, "x.tmp").exists())
+        assertFalse(stale.exists())
+        assertTrue(fresh.exists())
     }
 
     @Test
-    fun `getModelFile returns null for uncached variant`() {
-        assertNull(cache.getModelFile("missing"))
-    }
-
-    @Test
-    fun `getModelFile returns file for cached variant`() {
-        val data = "test".toByteArray()
-        cache.save("variant-5", data, sha256(data))
-        assertNotNull(cache.getModelFile("variant-5"))
-    }
-
-    @Test
-    fun `eviction removes oldest files when over limit`() {
-        val smallCache = ModelCache(cacheDir, maxSizeMb = 0) // 0MB limit forces eviction
-
-        val data1 = ByteArray(100) { 1 }
-        val data2 = ByteArray(100) { 2 }
-
-        smallCache.save("old", data1, sha256(data1))
-        Thread.sleep(10) // Ensure different last modified
-        smallCache.save("new", data2, sha256(data2))
-
-        // Old file should be evicted (cache limit is 0)
-        assertNull(smallCache.getModelFile("old"))
-    }
-
-    @Test
-    fun `clear removes all files`() {
-        val data = "data".toByteArray()
-        cache.save("v1", data, sha256(data))
-        cache.save("v2", data, sha256(data))
-
+    fun `clear empties the cache`() {
+        put(cache, "a", "1".toByteArray())
         cache.clear()
         assertEquals(0L, cache.currentSizeBytes())
     }
 
-    @Test
-    fun `currentSizeBytes reflects cache contents`() {
-        assertEquals(0L, cache.currentSizeBytes())
-
-        val data = ByteArray(1024)
-        cache.save("variant", data, sha256(data))
-
-        assertTrue(cache.currentSizeBytes() > 0)
-    }
-
-    private fun sha256(data: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        return digest.digest(data).joinToString("") { "%02x".format(it) }
-    }
+    private fun sha256(data: ByteArray) = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
 }
