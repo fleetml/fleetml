@@ -18,7 +18,6 @@ type Repository interface {
 	List(ctx context.Context, limit, offset int) ([]Deployment, int, error)
 	ListByStatus(ctx context.Context, statuses []string) ([]Deployment, error)
 	Update(ctx context.Context, d *Deployment) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -191,19 +190,6 @@ func (r *Repo) Update(ctx context.Context, d *Deployment) error {
 			return fmt.Errorf("deployment.Update: %w", ErrNotFound)
 		}
 		return fmt.Errorf("deployment.Update: %w", err)
-	}
-	return nil
-}
-
-func (r *Repo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	query := `UPDATE deployments SET status = $1 WHERE id = $2 RETURNING updated_at`
-	var updatedAt interface{}
-	err := r.pool.QueryRow(ctx, query, status, id).Scan(&updatedAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("deployment.UpdateStatus: %w", ErrNotFound)
-		}
-		return fmt.Errorf("deployment.UpdateStatus: %w", err)
 	}
 	return nil
 }

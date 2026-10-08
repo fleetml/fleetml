@@ -180,7 +180,7 @@ func TestDeployInvalidTransition(t *testing.T) {
 
 	// Try to start again → should fail
 	w := doJSON(r, "POST", fmt.Sprintf("/api/v1/deployments/%s/start", dep.ID), nil)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
 }
 
 func TestDeployPauseResume(t *testing.T) {

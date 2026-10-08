@@ -127,20 +127,74 @@ func TestCreateDeployment(t *testing.T) {
 	})
 }
 
+func newServiceWithEngine() *Service {
+	repo := newMockRepo()
+	svc := NewService(repo, nil)
+	svc.SetEngine(NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil))
+	return svc
+}
+
+// PATCH /status goes through the state machine: legal moves have their side
+// effects, illegal ones are rejected instead of being written blindly.
 func TestUpdateDeploymentStatus(t *testing.T) {
-	svc := NewService(newMockRepo(), nil)
+	svc := newServiceWithEngine()
 	ctx := context.Background()
 
-	d, err := svc.Create(ctx, CreateInput{
-		ProjectID: uuid.New(), ModelVersionID: uuid.New(),
-	})
+	d, err := svc.Create(ctx, CreateInput{ProjectID: uuid.New(), ModelVersionID: uuid.New(), Strategy: "CANARY"})
 	require.NoError(t, err)
 
-	err = svc.UpdateStatus(ctx, d.ID, "COMPLETE")
-	assert.NoError(t, err)
-
-	err = svc.UpdateStatus(ctx, d.ID, "INVALID")
+	_, err = svc.UpdateStatus(ctx, d.ID, "INVALID", "")
 	assert.ErrorIs(t, err, ErrInvalidInput)
+	_, err = svc.UpdateStatus(ctx, d.ID, "COMPLETE", "")
+	assert.ErrorIs(t, err, ErrInvalidTransition, "PENDING cannot jump to COMPLETE")
+	_, err = svc.UpdateStatus(ctx, d.ID, "FAILED", "")
+	assert.ErrorIs(t, err, ErrInvalidTransition, "FAILED is not settable")
+
+	got, err := svc.UpdateStatus(ctx, d.ID, "ROLLING_OUT", "")
+	require.NoError(t, err)
+	assert.Equal(t, "ROLLING_OUT", got.Status)
+	assert.Equal(t, "ACTIVE", got.CanaryStages[0].Status, "starting via PATCH has the same effect as /start")
+
+	got, err = svc.UpdateStatus(ctx, d.ID, "PAUSED", "")
+	require.NoError(t, err)
+	assert.Equal(t, "PAUSED", got.Status)
+	got, err = svc.UpdateStatus(ctx, d.ID, "ROLLING_OUT", "")
+	require.NoError(t, err)
+	assert.Equal(t, "ROLLING_OUT", got.Status)
+
+	got, err = svc.UpdateStatus(ctx, d.ID, "COMPLETE", "")
+	require.NoError(t, err)
+	assert.Equal(t, "COMPLETE", got.Status)
+	_, err = svc.UpdateStatus(ctx, d.ID, "PENDING", "")
+	assert.ErrorIs(t, err, ErrInvalidTransition)
+	_, err = svc.UpdateStatus(ctx, d.ID, "CANCELLED", "")
+	assert.ErrorIs(t, err, ErrInvalidTransition, "a COMPLETE deployment is rolled back, not cancelled")
+
+	got, err = svc.UpdateStatus(ctx, d.ID, "ROLLED_BACK", "bad metrics")
+	require.NoError(t, err)
+	assert.Equal(t, "ROLLED_BACK", got.Status)
+	assert.Equal(t, "bad metrics", got.RollbackReason)
+	_, err = svc.UpdateStatus(ctx, d.ID, "ROLLING_OUT", "")
+	assert.ErrorIs(t, err, ErrInvalidTransition, "ROLLED_BACK is terminal")
+}
+
+func TestCancelDeployment(t *testing.T) {
+	svc := newServiceWithEngine()
+	ctx := context.Background()
+	for _, start := range []bool{false, true} {
+		d, err := svc.Create(ctx, CreateInput{ProjectID: uuid.New(), ModelVersionID: uuid.New(), Strategy: "CANARY"})
+		require.NoError(t, err)
+		if start {
+			_, err = svc.StartDeployment(ctx, d.ID)
+			require.NoError(t, err)
+		}
+		got, err := svc.CancelDeployment(ctx, d.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "CANCELLED", got.Status)
+		assert.NotNil(t, got.CompletedAt)
+		_, err = svc.CancelDeployment(ctx, d.ID)
+		assert.ErrorIs(t, err, ErrInvalidTransition)
+	}
 }
 
 func TestDeleteDeployment(t *testing.T) {
@@ -163,6 +217,28 @@ type fakeVersions map[uuid.UUID]int
 
 func (f fakeVersions) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, error) {
 	return f[id], nil
+}
+
+func (f fakeVersions) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
+	return nil, nil
+}
+
+// currentVersion reports a fixed current version for every model.
+type currentVersion struct{ id uuid.UUID }
+
+func (c currentVersion) ReadyVariantCount(context.Context, uuid.UUID) (int, error) { return 1, nil }
+func (c currentVersion) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
+	return &c.id, nil
+}
+
+func TestCreate_RecordsPreviousVersion(t *testing.T) {
+	v1 := uuid.New()
+	svc := NewService(newMockRepo(), nil)
+	svc.SetVersionChecker(currentVersion{id: v1})
+	d, err := svc.Create(context.Background(), CreateInput{ProjectID: uuid.New(), ModelVersionID: uuid.New()})
+	require.NoError(t, err)
+	require.NotNil(t, d.PreviousVersionID)
+	assert.Equal(t, v1, *d.PreviousVersionID)
 }
 
 func TestCreate_RequiresReadyVariant(t *testing.T) {

@@ -22,11 +22,13 @@ type DeploymentStats struct {
 	AvgLatencyMs float64
 }
 
-// Valid state transitions.
+// Valid state transitions. ROLLED_BACK and CANCELLED are terminal.
+// Rolling back a COMPLETE deployment reverts devices to the previous version.
 var validTransitions = map[string]map[string]bool{
-	"PENDING":     {"ROLLING_OUT": true},
-	"ROLLING_OUT": {"PAUSED": true, "COMPLETE": true, "ROLLED_BACK": true},
-	"PAUSED":      {"ROLLING_OUT": true, "ROLLED_BACK": true},
+	"PENDING":     {"ROLLING_OUT": true, "CANCELLED": true},
+	"ROLLING_OUT": {"PAUSED": true, "COMPLETE": true, "ROLLED_BACK": true, "CANCELLED": true},
+	"PAUSED":      {"ROLLING_OUT": true, "COMPLETE": true, "ROLLED_BACK": true, "CANCELLED": true},
+	"COMPLETE":    {"ROLLED_BACK": true},
 }
 
 const defaultMaxRollingBatches = 10
@@ -244,9 +246,13 @@ func (e *Engine) RollbackDeployment(ctx context.Context, deploymentID uuid.UUID,
 	return e.doRollback(ctx, dep, reason)
 }
 
+// doRollback marks the deployment ROLLED_BACK. If the previous version is
+// known, a COMPLETE revert deployment of it is created so every targeted
+// device gets an explicit LOAD/UPDATE back to that version; otherwise devices
+// fall back to the next older active deployment of the same model.
 func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason string) (*Deployment, error) {
-	if dep.Status != "ROLLING_OUT" && dep.Status != "PAUSED" {
-		return nil, fmt.Errorf("%w: cannot rollback from %s", ErrInvalidTransition, dep.Status)
+	if err := e.validateTransition(dep.Status, "ROLLED_BACK"); err != nil {
+		return nil, err
 	}
 	dep.Status = "ROLLED_BACK"
 	dep.RollbackReason = reason
@@ -278,11 +284,55 @@ func (e *Engine) doRollback(ctx context.Context, dep *Deployment, reason string)
 		}
 		revertNow := time.Now()
 		revert.CompletedAt = &revertNow
-		_ = e.repo.Create(ctx, revert) // Best effort
+		if err := e.repo.Create(ctx, revert); err != nil && e.logger != nil {
+			// The rollback itself stands: devices fall back to the previous active deployment.
+			e.logger.Error("creating revert deployment failed", "deployment_id", dep.ID, "error", err)
+		}
 	}
 
 	if e.logger != nil {
 		e.logger.Info("deployment rolled back", "id", dep.ID, "reason", reason)
+	}
+	return dep, nil
+}
+
+// CancelDeployment stops a deployment that has not finished. Its devices fall
+// back to the previous active deployment of the same model.
+func (e *Engine) CancelDeployment(ctx context.Context, deploymentID uuid.UUID) (*Deployment, error) {
+	dep, err := e.repo.GetByID(ctx, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.validateTransition(dep.Status, "CANCELLED"); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	dep.Status = "CANCELLED"
+	dep.CompletedAt = &now
+	if err := e.repo.Update(ctx, dep); err != nil {
+		return nil, fmt.Errorf("cancelling deployment: %w", err)
+	}
+	if e.logger != nil {
+		e.logger.Info("deployment cancelled", "id", dep.ID)
+	}
+	return dep, nil
+}
+
+// CompleteDeployment promotes a rolling-out or paused deployment to every
+// targeted device immediately.
+func (e *Engine) CompleteDeployment(ctx context.Context, deploymentID uuid.UUID) (*Deployment, error) {
+	dep, err := e.repo.GetByID(ctx, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.validateTransition(dep.Status, "COMPLETE"); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	dep.Status = "COMPLETE"
+	dep.CompletedAt = &now
+	if err := e.repo.Update(ctx, dep); err != nil {
+		return nil, fmt.Errorf("completing deployment: %w", err)
 	}
 	return dep, nil
 }

@@ -2,10 +2,12 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,4 +60,23 @@ func (a *VersionAdapter) ReadyVariantCount(ctx context.Context, versionID uuid.U
 		return 0, fmt.Errorf("versionAdapter.ReadyVariantCount: %w", err)
 	}
 	return n, nil
+}
+
+func (a *VersionAdapter) CurrentVersion(ctx context.Context, projectID, versionID uuid.UUID) (*uuid.UUID, error) {
+	var current uuid.UUID
+	err := a.pool.QueryRow(ctx, `
+		SELECT d.model_version_id
+		FROM deployments d
+		JOIN model_versions dv ON dv.id = d.model_version_id
+		WHERE d.project_id = $1 AND d.status = 'COMPLETE' AND d.model_version_id <> $2
+		  AND dv.model_id = (SELECT model_id FROM model_versions WHERE id = $2)
+		ORDER BY d.created_at DESC
+		LIMIT 1`, projectID, versionID).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("versionAdapter.CurrentVersion: %w", err)
+	}
+	return &current, nil
 }

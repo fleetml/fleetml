@@ -59,17 +59,18 @@ func NewDeploymentRepoAdapter(pool *pgxpool.Pool) *DeploymentRepoAdapter {
 	return &DeploymentRepoAdapter{pool: pool}
 }
 
-// ListActiveDeployments returns all active deployments with parsed target selectors.
+// ListActiveDeployments returns active deployments, newest first, with parsed target selectors.
 // Computes effective canary percentage from canary_stages + current_stage.
 func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]DeploymentData, error) {
 	query := `SELECT d.id, COALESCE(mv.model_id, '00000000-0000-0000-0000-000000000000'::uuid), d.model_version_id,
 		COALESCE(m.name, ''), COALESCE(mv.version, ''),
-		d.target_selector, d.strategy, COALESCE(d.canary_percentage, 0),
+		d.target_selector, d.strategy, d.status, COALESCE(d.canary_percentage, 0),
 		COALESCE(d.canary_stages, '[]'::jsonb), COALESCE(d.current_stage, 0)
 		FROM deployments d
 		LEFT JOIN model_versions mv ON mv.id = d.model_version_id
 		LEFT JOIN models m ON m.id = mv.model_id
-		WHERE d.status IN ('ROLLING_OUT', 'COMPLETE')`
+		WHERE d.status IN ('ROLLING_OUT', 'COMPLETE')
+		ORDER BY d.created_at DESC`
 
 	rows, err := a.pool.Query(ctx, query)
 	if err != nil {
@@ -83,7 +84,7 @@ func (a *DeploymentRepoAdapter) ListActiveDeployments(ctx context.Context) ([]De
 		var selectorJSON, stagesJSON []byte
 		var currentStage int
 		if err := rows.Scan(&d.ID, &d.ModelID, &d.ModelVersionID, &d.ModelName, &d.VersionString,
-			&selectorJSON, &d.Strategy, &d.CanaryPercent, &stagesJSON, &currentStage); err != nil {
+			&selectorJSON, &d.Strategy, &d.Status, &d.CanaryPercent, &stagesJSON, &currentStage); err != nil {
 			return nil, fmt.Errorf("deploymentRepoAdapter.ListActive: scanning: %w", err)
 		}
 		selector, err := ParseTargetSelector(selectorJSON)

@@ -2,8 +2,6 @@ package intelligence
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fleetml/fleetml/internal/device"
+	"github.com/fleetml/fleetml/internal/rollout"
 )
 
 const downloadURLExpiry = 1 * time.Hour
@@ -46,7 +45,21 @@ type DeploymentData struct {
 	VersionString  string
 	TargetSelector TargetSelector
 	Strategy       string
+	Status         string // ROLLING_OUT or COMPLETE
 	CanaryPercent  int
+}
+
+// exposes reports whether the deployment currently delivers to this device.
+// A COMPLETE deployment covers every targeted device; a canary covers its
+// current stage's slice of the hash ring.
+func (d DeploymentData) exposes(deviceID uuid.UUID) bool {
+	if d.Status == "COMPLETE" {
+		return true
+	}
+	if d.Strategy == "CANARY" && d.CanaryPercent > 0 && d.CanaryPercent < 100 {
+		return rollout.InCanary(deviceID, d.ID, d.CanaryPercent)
+	}
+	return true
 }
 
 // LoadedModelInfo represents a model currently loaded on a device.
@@ -107,6 +120,12 @@ func (o *Orchestrator) GetSelector() *Selector {
 }
 
 // ComputeAssignments determines which models a device should have.
+//
+// activeDeployments must be ordered newest first. For each model the device
+// gets the newest deployment that targets it, exposes it and has a variant it
+// can run; older deployments of the same model are superseded. So devices
+// outside a canary keep the previously completed version, and rolling back or
+// cancelling a deployment hands its devices back to the one before it.
 func (o *Orchestrator) ComputeAssignments(
 	ctx context.Context,
 	dev *device.Device,
@@ -122,9 +141,13 @@ func (o *Orchestrator) ComputeAssignments(
 	}
 
 	activeVariantIDs := make(map[string]bool)
+	servedModels := make(map[uuid.UUID]bool)
 	var desired []Assignment
 
 	for _, dep := range activeDeployments {
+		if dep.ModelID != uuid.Nil && servedModels[dep.ModelID] {
+			continue // superseded by a newer deployment of the same model
+		}
 		if !dep.TargetSelector.Matches(profile, dev.Labels) {
 			if o.logger != nil {
 				o.logger.Debug("device does not match deployment targeting",
@@ -133,11 +156,8 @@ func (o *Orchestrator) ComputeAssignments(
 			continue
 		}
 
-		// Canary filter
-		if dep.Strategy == "CANARY" && dep.CanaryPercent > 0 && dep.CanaryPercent < 100 {
-			if !isInCanary(dev.ID, dep.ID, dep.CanaryPercent) {
-				continue
-			}
+		if !dep.exposes(dev.ID) {
+			continue
 		}
 
 		variants, err := o.variantRepo.GetByVersionID(ctx, dep.ModelVersionID)
@@ -172,6 +192,9 @@ func (o *Orchestrator) ComputeAssignments(
 		}
 
 		activeVariantIDs[result.VariantID.String()] = true
+		if dep.ModelID != uuid.Nil {
+			servedModels[dep.ModelID] = true
+		}
 
 		if _, loaded := loadedVariants[result.VariantID.String()]; loaded {
 			continue
@@ -262,10 +285,4 @@ func findBlobSHA(variants []VariantData, id uuid.UUID) string {
 		}
 	}
 	return ""
-}
-
-func isInCanary(deviceID, deploymentID uuid.UUID, canaryPct int) bool {
-	h := sha256.Sum256([]byte(deviceID.String() + deploymentID.String()))
-	bucket := int(binary.BigEndian.Uint32(h[:4])) % 100
-	return bucket < canaryPct
 }

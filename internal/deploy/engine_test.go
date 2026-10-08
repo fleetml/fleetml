@@ -76,15 +76,6 @@ func (m *mockRepo) Update(_ context.Context, d *Deployment) error {
 	return nil
 }
 
-func (m *mockRepo) UpdateStatus(_ context.Context, id uuid.UUID, status string) error {
-	d, ok := m.deployments[id]
-	if !ok {
-		return fmt.Errorf("deployment.UpdateStatus: %w", ErrNotFound)
-	}
-	d.Status = status
-	return nil
-}
-
 func (m *mockRepo) Delete(_ context.Context, id uuid.UUID) error {
 	if _, ok := m.deployments[id]; !ok {
 		return fmt.Errorf("deployment.Delete: %w", ErrNotFound)
@@ -381,4 +372,47 @@ func TestEngine_EffectiveCanaryPercent(t *testing.T) {
 	d = &Deployment{Strategy: "CANARY", Status: "ROLLING_OUT", CurrentStage: 1,
 		CanaryStages: []CanaryStage{{Percentage: 1}, {Percentage: 10}, {Percentage: 50}, {Percentage: 100}}}
 	assert.Equal(t, 10, d.EffectiveCanaryPercent())
+}
+
+// Rolling back a COMPLETE deployment creates a COMPLETE revert deployment of
+// the previous version, so devices get an explicit LOAD/UPDATE back to it.
+func TestEngine_RollbackFromComplete_CreatesRevert(t *testing.T) {
+	repo := newMockRepo()
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil)
+	dep := createPendingDep(repo, "ALL_AT_ONCE", nil, nil)
+	prev := uuid.New()
+	dep.PreviousVersionID = &prev
+
+	got, err := engine.StartDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	require.Equal(t, "COMPLETE", got.Status)
+
+	got, err = engine.RollbackDeployment(context.Background(), dep.ID, "regression found after release")
+	require.NoError(t, err)
+	assert.Equal(t, "ROLLED_BACK", got.Status)
+
+	var revert *Deployment
+	for _, d := range repo.deployments {
+		if d.ID != dep.ID {
+			revert = d
+		}
+	}
+	require.NotNil(t, revert, "a revert deployment is created")
+	assert.Equal(t, prev, revert.ModelVersionID)
+	assert.Equal(t, "COMPLETE", revert.Status)
+	assert.Equal(t, dep.TargetSelector, revert.TargetSelector)
+
+	_, err = engine.RollbackDeployment(context.Background(), dep.ID, "again")
+	assert.ErrorIs(t, err, ErrInvalidTransition, "ROLLED_BACK is terminal")
+}
+
+func TestEngine_RollbackWithoutPreviousVersion(t *testing.T) {
+	repo := newMockRepo()
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, nil, nil)
+	dep := createPendingDep(repo, "ALL_AT_ONCE", nil, nil)
+	_, err := engine.StartDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	_, err = engine.RollbackDeployment(context.Background(), dep.ID, "no previous")
+	require.NoError(t, err)
+	assert.Len(t, repo.deployments, 1, "no revert without a previous version")
 }

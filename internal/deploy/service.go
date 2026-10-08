@@ -15,10 +15,14 @@ var (
 	validStatuses   = map[string]bool{"PENDING": true, "ROLLING_OUT": true, "PAUSED": true, "COMPLETE": true, "ROLLED_BACK": true, "FAILED": true, "CANCELLED": true}
 )
 
-// VersionChecker reports how many READY (sha256-verified) variants a model
-// version has. A version without one cannot be rolled out.
+// VersionChecker answers questions about model versions for new deployments.
 type VersionChecker interface {
+	// ReadyVariantCount is the number of READY (sha256-verified) variants;
+	// a version without one cannot be rolled out.
 	ReadyVariantCount(ctx context.Context, versionID uuid.UUID) (int, error)
+	// CurrentVersion is the version of the newest COMPLETE deployment of the
+	// same model other than versionID, or nil if there is none.
+	CurrentVersion(ctx context.Context, projectID, versionID uuid.UUID) (*uuid.UUID, error)
 }
 
 // Service orchestrates deployment business logic.
@@ -91,6 +95,14 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 	if err := requireDeployable(ctx, s.versions, input.ModelVersionID); err != nil {
 		return nil, err
 	}
+	var previous *uuid.UUID
+	if s.versions != nil {
+		p, err := s.versions.CurrentVersion(ctx, input.ProjectID, input.ModelVersionID)
+		if err != nil {
+			return nil, fmt.Errorf("finding current version: %w", err)
+		}
+		previous = p
+	}
 
 	if input.TargetSelector == nil {
 		input.TargetSelector = map[string]string{}
@@ -100,13 +112,14 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 	}
 
 	d := &Deployment{
-		ProjectID:      input.ProjectID,
-		ModelVersionID: input.ModelVersionID,
-		Name:           input.Name,
-		TargetSelector: input.TargetSelector,
-		Strategy:       strategy,
-		Status:         "PENDING",
-		CreatedBy:      input.CreatedBy,
+		ProjectID:         input.ProjectID,
+		ModelVersionID:    input.ModelVersionID,
+		Name:              input.Name,
+		TargetSelector:    input.TargetSelector,
+		Strategy:          strategy,
+		Status:            "PENDING",
+		CreatedBy:         input.CreatedBy,
+		PreviousVersionID: previous,
 	}
 
 	// Build canary stages
@@ -192,13 +205,48 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]Deployment, in
 	return s.repo.List(ctx, limit, offset)
 }
 
-// UpdateStatus changes a deployment's status.
-func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+// UpdateStatus moves a deployment to a new status through the state machine,
+// with the same side effects as the dedicated endpoints.
+func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status, reason string) (*Deployment, error) {
+	if s.engine == nil {
+		return nil, fmt.Errorf("deployment engine not configured")
+	}
 	status = strings.ToUpper(strings.TrimSpace(status))
 	if !validStatuses[status] {
-		return fmt.Errorf("%w: invalid status %q", ErrInvalidInput, status)
+		return nil, fmt.Errorf("%w: invalid status %q", ErrInvalidInput, status)
 	}
-	return s.repo.UpdateStatus(ctx, id, status)
+	switch status {
+	case "ROLLING_OUT":
+		dep, err := s.repo.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if dep.Status == "PENDING" {
+			return s.engine.StartDeployment(ctx, id)
+		}
+		return s.engine.ResumeDeployment(ctx, id)
+	case "PAUSED":
+		return s.engine.PauseDeployment(ctx, id)
+	case "COMPLETE":
+		return s.engine.CompleteDeployment(ctx, id)
+	case "ROLLED_BACK":
+		if reason == "" {
+			reason = "manual rollback"
+		}
+		return s.engine.RollbackDeployment(ctx, id, reason)
+	case "CANCELLED":
+		return s.engine.CancelDeployment(ctx, id)
+	default:
+		return nil, fmt.Errorf("%w: cannot set status %s directly", ErrInvalidTransition, status)
+	}
+}
+
+// CancelDeployment delegates to the engine.
+func (s *Service) CancelDeployment(ctx context.Context, id uuid.UUID) (*Deployment, error) {
+	if s.engine == nil {
+		return nil, fmt.Errorf("deployment engine not configured")
+	}
+	return s.engine.CancelDeployment(ctx, id)
 }
 
 // Delete removes a deployment.

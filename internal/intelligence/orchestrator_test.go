@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fleetml/fleetml/internal/device"
+	"github.com/fleetml/fleetml/internal/rollout"
 )
 
 type mockVariantRepo struct {
@@ -294,4 +295,64 @@ func TestComputeAssignments_ModelAndVersionIDs(t *testing.T) {
 	got, err = orch2.ComputeAssignments(context.Background(), dev, nil, deps, legacy)
 	require.NoError(t, err)
 	assert.Equal(t, "UPDATE", got[0].Action)
+}
+
+// The newest active deployment of a model wins; older ones are superseded.
+func TestComputeAssignments_NewestDeploymentSupersedes(t *testing.T) {
+	modelID, v1, v2 := uuid.New(), uuid.New(), uuid.New()
+	var1, var2 := uuid.New(), uuid.New()
+	orch := newTestOrchestrator(map[uuid.UUID][]VariantData{
+		v1: {{ID: var1, VersionID: v1, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "v1.bin", BlobSize: 1024, BlobSHA256: "sha-v1"}},
+		v2: {{ID: var2, VersionID: v2, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "v2.bin", BlobSize: 1024, BlobSHA256: "sha-v2"}},
+	})
+	dev := &device.Device{ID: uuid.New(), OS: "ANDROID", RAMMB: 4096, Labels: map[string]string{}}
+	older := DeploymentData{ID: uuid.New(), ModelID: modelID, ModelVersionID: v1, Strategy: "ALL_AT_ONCE", Status: "COMPLETE"}
+	newer := DeploymentData{ID: uuid.New(), ModelID: modelID, ModelVersionID: v2, Strategy: "ALL_AT_ONCE", Status: "COMPLETE"}
+
+	got, err := orch.ComputeAssignments(context.Background(), dev, nil, []DeploymentData{newer, older}, nil)
+	require.NoError(t, err)
+	require.Len(t, got, 1, "only one version of a model is assigned")
+	assert.Equal(t, var2.String(), got[0].VariantID)
+
+	// Rolled back: the newer deployment is no longer active, the device returns to v1.
+	loaded := []LoadedModelInfo{{ModelID: modelID.String(), VariantID: var2.String()}}
+	got, err = orch.ComputeAssignments(context.Background(), dev, nil, []DeploymentData{older}, loaded)
+	require.NoError(t, err)
+	byAction := map[string]Assignment{}
+	for _, a := range got {
+		byAction[a.Action] = a
+	}
+	assert.Equal(t, var1.String(), byAction["UPDATE"].VariantID)
+	assert.Equal(t, "sha-v1", byAction["UPDATE"].BlobSHA256)
+	assert.NotEmpty(t, byAction["UPDATE"].DownloadURL)
+	assert.Equal(t, var2.String(), byAction["UNLOAD"].VariantID)
+}
+
+// Devices outside a canary keep the previously completed version.
+func TestComputeAssignments_CanaryOutsidersKeepPreviousVersion(t *testing.T) {
+	modelID, v1, v2 := uuid.New(), uuid.New(), uuid.New()
+	var1, var2 := uuid.New(), uuid.New()
+	orch := newTestOrchestrator(map[uuid.UUID][]VariantData{
+		v1: {{ID: var1, VersionID: v1, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "v1.bin", BlobSize: 1024, BlobSHA256: "sha-v1"}},
+		v2: {{ID: var2, VersionID: v2, Quantization: "INT8", Runtime: "TFLITE", BlobKey: "v2.bin", BlobSize: 1024, BlobSHA256: "sha-v2"}},
+	})
+	older := DeploymentData{ID: uuid.New(), ModelID: modelID, ModelVersionID: v1, Strategy: "ALL_AT_ONCE", Status: "COMPLETE"}
+	canary := DeploymentData{ID: uuid.New(), ModelID: modelID, ModelVersionID: v2, Strategy: "CANARY", Status: "ROLLING_OUT", CanaryPercent: 25}
+
+	inside, outside := 0, 0
+	for i := 0; i < 400; i++ {
+		dev := &device.Device{ID: uuid.New(), OS: "ANDROID", RAMMB: 4096, Labels: map[string]string{}}
+		got, err := orch.ComputeAssignments(context.Background(), dev, nil, []DeploymentData{canary, older}, nil)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		if got[0].VariantID == var2.String() {
+			inside++
+			assert.True(t, rollout.InCanary(dev.ID, canary.ID, 25))
+		} else {
+			outside++
+			assert.Equal(t, var1.String(), got[0].VariantID)
+		}
+	}
+	assert.InDelta(t, 100, inside, 40)
+	assert.Equal(t, 400, inside+outside)
 }

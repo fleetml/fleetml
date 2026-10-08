@@ -32,6 +32,7 @@ func (h *DeploymentHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/deployments/:deployment_id/pause", h.pause)
 	rg.POST("/deployments/:deployment_id/resume", h.resume)
 	rg.POST("/deployments/:deployment_id/rollback", h.rollback)
+	rg.POST("/deployments/:deployment_id/cancel", h.cancel)
 	rg.POST("/deployments/:deployment_id/progress", h.progress)
 	rg.GET("/deployments/:deployment_id/health", h.health)
 	rg.PATCH("/deployments/:deployment_id/status", h.updateStatus)
@@ -200,6 +201,20 @@ func (h *DeploymentHandler) health(c *gin.Context) {
 
 type updateDeploymentStatusRequest struct {
 	Status string `json:"status" binding:"required"`
+	Reason string `json:"reason"`
+}
+
+func (h *DeploymentHandler) cancel(c *gin.Context) {
+	id, ok := parseUUID(c, "deployment_id")
+	if !ok {
+		return
+	}
+	d, err := h.service.CancelDeployment(c.Request.Context(), id)
+	if err != nil {
+		handleDeployError(c, err)
+		return
+	}
+	respondData(c, http.StatusOK, d)
 }
 
 func (h *DeploymentHandler) updateStatus(c *gin.Context) {
@@ -212,11 +227,7 @@ func (h *DeploymentHandler) updateStatus(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "status is required")
 		return
 	}
-	if err := h.service.UpdateStatus(c.Request.Context(), id, req.Status); err != nil {
-		handleDeployError(c, err)
-		return
-	}
-	d, err := h.service.Get(c.Request.Context(), id)
+	d, err := h.service.UpdateStatus(c.Request.Context(), id, req.Status, req.Reason)
 	if err != nil {
 		handleDeployError(c, err)
 		return
@@ -233,7 +244,7 @@ func handleDeployError(c *gin.Context, err error) {
 	case errors.Is(err, deploy.ErrInvalidInput):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	case errors.Is(err, deploy.ErrInvalidTransition):
-		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		respondError(c, http.StatusConflict, "INVALID_TRANSITION", err.Error())
 	case errors.Is(err, deploy.ErrNotDeployable):
 		respondError(c, http.StatusUnprocessableEntity, "NOT_DEPLOYABLE", err.Error())
 	default:
