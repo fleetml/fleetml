@@ -44,7 +44,9 @@ The first release.
   HMAC-SHA256-signed webhook with retries.
 - Security: admin API keys on the REST API, per-project enrollment keys,
   revocable and refreshable device tokens, devices confined to their project's
-  deployments, experiments and telemetry, locked-down CORS.
+  deployments, experiments and telemetry (a device moves to another project
+  only with its own token and that project's enrollment key), locked-down
+  CORS.
 - Operations: `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1`,
   gRPC reflection behind `GRPC_REFLECTION`, start-up that waits for its
   dependencies, and configuration checked at start-up with every invalid
