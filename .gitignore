@@ -48,3 +48,10 @@ tmp/
 
 # Coverage
 coverage.out
+
+# iOS / Swift Package Manager
+ios/**/.build/
+ios/**/.swiftpm/
+ios/**/*.xcodeproj/
+ios/**/DerivedData/
+xcuserdata/

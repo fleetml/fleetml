@@ -1,4 +1,4 @@
-.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
+.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto proto-swift ios-test migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev
 
 -include .env
 
@@ -58,6 +58,12 @@ lint:
 
 proto:
 	./scripts/proto-gen.sh
+
+proto-swift:
+	./scripts/proto-gen-swift.sh
+
+ios-test:
+	cd ios/FleetMLSDK && swift test
 
 migrate-up:
 	migrate -database "$(DATABASE_URL)" -path $(MIGRATIONS_PATH) up
