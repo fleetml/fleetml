@@ -3,7 +3,13 @@ import SwiftUI
 
 @main
 struct FleetMLSampleApp: App {
-    @StateObject private var state = AppState()
+    // Created at launch, also when iOS launches the app in the background for a refresh.
+    private let state: AppState
+
+    init() {
+        FleetML.registerBackgroundTask() // before the app finishes launching
+        state = AppState()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -60,7 +66,7 @@ final class AppState: ObservableObject, FleetMLDelegate {
         note("Starting FleetML against \(s.host):\(s.port)")
         do {
             try FleetML.initialize(config: FleetMLConfig(serverHost: s.host, serverPort: s.port, enrollmentKey: s.enrollmentKey,
-                                                         labels: ["app": "sample"], downloadOnWiFiOnly: false),
+                                                         labels: ["app": "sample"]),
                                    delegate: self)
         } catch {
             note("FleetML failed to start: \(error.localizedDescription)")

@@ -5,6 +5,15 @@
 	<!-- Model downloads from a dev stack on this machine are plain HTTP to
 	     localhost. NSAllowsLocalNetworking permits only local hosts; production
 	     servers should serve presigned URLs over HTTPS. -->
+	<!-- FleetML's background refresh (one heartbeat and one telemetry flush). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.fleetml.sdk.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

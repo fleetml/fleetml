@@ -13,12 +13,16 @@ public struct FleetMLConfig {
     public var useTLS: Bool
     /// Labels that deployments and experiments target.
     public var labels: [String: String]
-    /// Heartbeat interval until the server sends its own.
+    /// Heartbeat interval while the app is in the foreground, until the server sends its own.
     public var heartbeatIntervalSeconds: TimeInterval
+    /// Interval of the background refresh (one heartbeat and one telemetry flush) while the
+    /// app is in the background, until the server sends its own; iOS runs it at most every
+    /// 15 minutes and decides the exact time.
+    public var backgroundHeartbeatIntervalSeconds: TimeInterval
     /// Disk budget for models; the active and last-known-good models are never evicted.
     public var maxCacheSizeMB: Int
-    /// New models are downloaded only on a network that is not expensive (cellular, hotspot).
-    public var downloadOnWiFiOnly: Bool
+    /// Which networks non-urgent model downloads may use, until the server's DeviceConfig sets it.
+    public var downloadPolicy: DownloadPolicy
     /// Start registration and heartbeats as soon as the SDK is initialized.
     public var autoStart: Bool
     /// Telemetry batch size and flush interval until the server's DeviceConfig overrides them.
@@ -32,8 +36,9 @@ public struct FleetMLConfig {
         useTLS: Bool = false,
         labels: [String: String] = [:],
         heartbeatIntervalSeconds: TimeInterval = 30,
+        backgroundHeartbeatIntervalSeconds: TimeInterval = 3600,
         maxCacheSizeMB: Int = 500,
-        downloadOnWiFiOnly: Bool = true,
+        downloadPolicy: DownloadPolicy = .unmeteredOrCharging,
         autoStart: Bool = true,
         telemetryBatchSize: Int = 50,
         telemetryFlushIntervalSeconds: TimeInterval = 30
@@ -44,8 +49,9 @@ public struct FleetMLConfig {
         self.useTLS = useTLS
         self.labels = labels
         self.heartbeatIntervalSeconds = heartbeatIntervalSeconds
+        self.backgroundHeartbeatIntervalSeconds = backgroundHeartbeatIntervalSeconds
         self.maxCacheSizeMB = maxCacheSizeMB
-        self.downloadOnWiFiOnly = downloadOnWiFiOnly
+        self.downloadPolicy = downloadPolicy
         self.autoStart = autoStart
         self.telemetryBatchSize = telemetryBatchSize
         self.telemetryFlushIntervalSeconds = telemetryFlushIntervalSeconds

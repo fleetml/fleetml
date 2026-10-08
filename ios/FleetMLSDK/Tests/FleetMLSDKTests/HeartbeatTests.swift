@@ -69,10 +69,21 @@ final class HeartbeatManagerTests: XCTestCase {
                               validator: NoOpModelValidator(), telemetry: reporter, delegate: { d })
     }
 
+    private var configs: [Fleetml_Device_V1_DeviceConfig] = []
+
     private func manager(reRegister: @escaping () async -> Void = {}, now: @escaping () -> Date = Date.init) -> HeartbeatManager {
         let d = delegate!
         return HeartbeatManager(api: api, tokens: tokens, models: models, telemetry: reporter, delegate: { d },
-                                interval: 30, reRegister: reRegister, now: now)
+                                interval: 30, reRegister: reRegister, onConfig: { [weak self] in self?.configs.append($0) }, now: now)
+    }
+
+    func testPassesTheHeartbeatsDeviceConfigOn() async {
+        var config = Fleetml_Device_V1_DeviceConfig()
+        config.downloadPolicy = .anyNetwork
+        config.backgroundHeartbeatIntervalSeconds = 7200
+        api.response.config = config
+        await manager().beatOnce()
+        XCTAssertEqual(configs, [config])
     }
 
     func testAppliesTheServerIntervalAndExperimentArms() async {

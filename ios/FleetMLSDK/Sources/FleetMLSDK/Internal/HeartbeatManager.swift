@@ -19,6 +19,7 @@ final class HeartbeatManager {
     private let telemetry: TelemetryReporter?
     private let delegate: () -> FleetMLDelegate?
     private let reRegister: () async -> Void
+    private let onConfig: (Fleetml_Device_V1_DeviceConfig) -> Void
     private let now: () -> Date
     private let lock = NSLock()
     private var loop: Task<Void, Never>?
@@ -27,7 +28,8 @@ final class HeartbeatManager {
 
     init(api: DeviceAPI, tokens: TokenStore, models: ModelManager, telemetry: TelemetryReporter?,
          delegate: @escaping () -> FleetMLDelegate?, interval: TimeInterval,
-         reRegister: @escaping () async -> Void = {}, now: @escaping () -> Date = Date.init) {
+         reRegister: @escaping () async -> Void = {}, onConfig: @escaping (Fleetml_Device_V1_DeviceConfig) -> Void = { _ in },
+         now: @escaping () -> Date = Date.init) {
         self.api = api
         self.tokens = tokens
         self.models = models
@@ -35,6 +37,7 @@ final class HeartbeatManager {
         self.delegate = delegate
         self.interval = max(1, interval)
         self.reRegister = reRegister
+        self.onConfig = onConfig
         self.now = now
     }
 
@@ -81,6 +84,7 @@ final class HeartbeatManager {
             let response = try await api.heartbeat(token: token, request: request)
             setConnected(true)
             setInterval(TimeInterval(response.nextHeartbeatSeconds))
+            if response.hasConfig { onConfig(response.config) }
             telemetry?.setExperimentArms(Dictionary(response.experiments.map { ($0.modelVersionID, $0.armID) }, uniquingKeysWith: { a, _ in a }))
             await models.apply(response.assignments)
             return true

@@ -135,10 +135,10 @@ final class ModelManagerTests: XCTestCase {
         store = ModelStore(url: dir.appendingPathComponent("models.json"))
     }
 
-    private func manager(validator: ModelValidator = NoOpModelValidator(), canDownload: Bool = true) -> ModelManager {
+    private func manager(validator: ModelValidator = NoOpModelValidator(), canDownload: @escaping (Bool) -> Bool = { _ in true }) -> ModelManager {
         let d = delegate
         return ModelManager(store: store, cache: cache, downloader: ModelDownloader(cache: cache, configuration: StubURLProtocol.configuration()),
-                            validator: validator, telemetry: reporter, delegate: { d }, canDownload: { canDownload })
+                            validator: validator, telemetry: reporter, delegate: { d }, canDownload: canDownload)
     }
 
     private func assignment(_ action: Fleetml_Device_V1_ModelAssignment.Action, variant: String, version: String,
@@ -213,10 +213,21 @@ final class ModelManagerTests: XCTestCase {
     }
 
     func testDownloadsWaitWhenNotAllowed() async {
-        let m = manager(canDownload: false)
+        let m = manager(canDownload: { _ in false })
         await m.apply([assignment(.load, variant: "a", version: "1.0.0")])
         XCTAssertTrue(m.activeModels.isEmpty)
         XCTAssertTrue(StubURLProtocol.requests.isEmpty)
+    }
+
+    func testAnUrgentAssignmentDownloadsOnAnExpensiveNetwork() async {
+        let cellular = DeviceConditions(connected: true, expensive: true, charging: false)
+        let m = manager(canDownload: { urgent in BatteryPolicy.mayDownload(.unmeteredOrCharging, urgent: urgent, conditions: cellular) })
+        await m.apply([assignment(.load, variant: "a", version: "1.0.0")])
+        XCTAssertTrue(m.activeModels.isEmpty, "not urgent: waits")
+        var urgent = assignment(.load, variant: "a", version: "1.0.0")
+        urgent.urgent = true
+        await m.apply([urgent])
+        XCTAssertEqual(m.activeModels.map(\.version), ["1.0.0"])
     }
 
     func testActiveModelsSurviveARestart() async {

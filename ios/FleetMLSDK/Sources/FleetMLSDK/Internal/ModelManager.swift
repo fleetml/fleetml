@@ -10,12 +10,12 @@ final class ModelManager {
     private let validator: ModelValidator
     private let telemetry: TelemetryReporter?
     private let delegate: () -> FleetMLDelegate?
-    private let canDownload: () -> Bool
+    private let canDownload: (_ urgent: Bool) -> Bool
     private let now: () -> Date
 
     init(store: ModelStore, cache: ModelCache, downloader: ModelDownloader, validator: ModelValidator,
          telemetry: TelemetryReporter?, delegate: @escaping () -> FleetMLDelegate?,
-         canDownload: @escaping () -> Bool = { true }, now: @escaping () -> Date = Date.init) {
+         canDownload: @escaping (_ urgent: Bool) -> Bool = { _ in true }, now: @escaping () -> Date = Date.init) {
         self.store = store
         self.cache = cache
         self.downloader = downloader
@@ -58,7 +58,10 @@ final class ModelManager {
 
     private func install(_ a: Fleetml_Device_V1_ModelAssignment) async {
         if store.isActive(variantID: a.variantID) || store.recentlyFailed(a.variantID, now: now()) { return }
-        if cache.cachedFile(a.variantID) == nil && !canDownload() { return } // waits for an inexpensive network
+        if cache.cachedFile(a.variantID) == nil && !canDownload(a.urgent) {
+            Log.sdk.info("Download of \(a.modelName) \(a.version) waits for the download policy (inexpensive network or charging)")
+            return // the assignment is repeated on the next heartbeat
+        }
         guard let url = URL(string: a.downloadURL) else { return }
 
         let file: URL

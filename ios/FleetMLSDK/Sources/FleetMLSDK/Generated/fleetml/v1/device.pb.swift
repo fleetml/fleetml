@@ -20,6 +20,58 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// When a device may download a model that is not marked urgent. Urgent
+/// assignments download on any connected network.
+nonisolated enum Fleetml_Device_V1_DownloadPolicy: SwiftProtobuf.Enum, Swift.CaseIterable {
+  typealias RawValue = Int
+
+  /// The device keeps its own default (UNMETERED_OR_CHARGING in the SDKs).
+  case unspecified // = 0
+
+  /// An unmetered network (Wi-Fi, Ethernet), or any network while charging.
+  case unmeteredOrCharging // = 1
+
+  /// Only an unmetered network.
+  case unmeteredOnly // = 2
+
+  /// Any connected network.
+  case anyNetwork // = 3
+  case UNRECOGNIZED(Int)
+
+  init() {
+    self = .unspecified
+  }
+
+  init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unmeteredOrCharging
+    case 2: self = .unmeteredOnly
+    case 3: self = .anyNetwork
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unmeteredOrCharging: return 1
+    case .unmeteredOnly: return 2
+    case .anyNetwork: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  static let allCases: [Fleetml_Device_V1_DownloadPolicy] = [
+    .unspecified,
+    .unmeteredOrCharging,
+    .unmeteredOnly,
+    .anyNetwork,
+  ]
+
+}
+
 nonisolated struct Fleetml_Device_V1_RegisterRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -107,12 +159,13 @@ nonisolated struct Fleetml_Device_V1_RefreshTokenResponse: Sendable {
   init() {}
 }
 
-/// Settings the SDK applies after registering.
+/// Settings the device applies; sent at registration and with every heartbeat.
 nonisolated struct Fleetml_Device_V1_DeviceConfig: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// Heartbeat interval while the app is in the foreground.
   var heartbeatIntervalSeconds: UInt32 = 0
 
   var telemetryBatchSize: UInt32 = 0
@@ -120,6 +173,13 @@ nonisolated struct Fleetml_Device_V1_DeviceConfig: Sendable {
   var maxCacheSizeMb: UInt32 = 0
 
   var telemetryFlushIntervalSeconds: UInt32 = 0
+
+  /// Interval of the background check (one heartbeat and one telemetry flush)
+  /// while the app is in the background; the OS enforces at least 15 minutes.
+  var backgroundHeartbeatIntervalSeconds: UInt32 = 0
+
+  /// Which networks non-urgent model downloads may use.
+  var downloadPolicy: Fleetml_Device_V1_DownloadPolicy = .unspecified
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -198,9 +258,21 @@ nonisolated struct Fleetml_Device_V1_HeartbeatResponse: Sendable {
 
   var nextHeartbeatSeconds: UInt32 = 0
 
+  /// The current device settings; apply them like the ones from Register.
+  var config: Fleetml_Device_V1_DeviceConfig {
+    get {_config ?? Fleetml_Device_V1_DeviceConfig()}
+    set {_config = newValue}
+  }
+  /// Returns true if `config` has been explicitly set.
+  var hasConfig: Bool {self._config != nil}
+  /// Clears the value of `config`. Subsequent reads from it will return its default value.
+  mutating func clearConfig() {self._config = nil}
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
+
+  fileprivate var _config: Fleetml_Device_V1_DeviceConfig? = nil
 }
 
 nonisolated struct Fleetml_Device_V1_ModelAssignment: Sendable {
@@ -228,6 +300,10 @@ nonisolated struct Fleetml_Device_V1_ModelAssignment: Sendable {
 
   /// The model version this assignment delivers; use it as model_version_id in telemetry.
   var versionID: String = String()
+
+  /// Download now on any connected network, ignoring the download policy
+  /// (set by the deployment, and on rollbacks).
+  var urgent: Bool = false
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -299,6 +375,10 @@ nonisolated struct Fleetml_Device_V1_ExperimentAssignment: Sendable {
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "fleetml.device.v1"
+
+nonisolated extension Fleetml_Device_V1_DownloadPolicy: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0DOWNLOAD_POLICY_UNSPECIFIED\0\u{1}UNMETERED_OR_CHARGING\0\u{1}UNMETERED_ONLY\0\u{1}ANY_NETWORK\0")
+}
 
 nonisolated extension Fleetml_Device_V1_RegisterRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".RegisterRequest"
@@ -485,7 +565,7 @@ nonisolated extension Fleetml_Device_V1_RefreshTokenResponse: SwiftProtobuf.Mess
 
 nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".DeviceConfig"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}heartbeat_interval_seconds\0\u{3}telemetry_batch_size\0\u{3}max_cache_size_mb\0\u{3}telemetry_flush_interval_seconds\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}heartbeat_interval_seconds\0\u{3}telemetry_batch_size\0\u{3}max_cache_size_mb\0\u{3}telemetry_flush_interval_seconds\0\u{3}background_heartbeat_interval_seconds\0\u{3}download_policy\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -497,6 +577,8 @@ nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, Swi
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.telemetryBatchSize) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.maxCacheSizeMb) }()
       case 4: try { try decoder.decodeSingularUInt32Field(value: &self.telemetryFlushIntervalSeconds) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.backgroundHeartbeatIntervalSeconds) }()
+      case 6: try { try decoder.decodeSingularEnumField(value: &self.downloadPolicy) }()
       default: break
       }
     }
@@ -515,6 +597,12 @@ nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, Swi
     if self.telemetryFlushIntervalSeconds != 0 {
       try visitor.visitSingularUInt32Field(value: self.telemetryFlushIntervalSeconds, fieldNumber: 4)
     }
+    if self.backgroundHeartbeatIntervalSeconds != 0 {
+      try visitor.visitSingularUInt32Field(value: self.backgroundHeartbeatIntervalSeconds, fieldNumber: 5)
+    }
+    if self.downloadPolicy != .unspecified {
+      try visitor.visitSingularEnumField(value: self.downloadPolicy, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -523,6 +611,8 @@ nonisolated extension Fleetml_Device_V1_DeviceConfig: SwiftProtobuf.Message, Swi
     if lhs.telemetryBatchSize != rhs.telemetryBatchSize {return false}
     if lhs.maxCacheSizeMb != rhs.maxCacheSizeMb {return false}
     if lhs.telemetryFlushIntervalSeconds != rhs.telemetryFlushIntervalSeconds {return false}
+    if lhs.backgroundHeartbeatIntervalSeconds != rhs.backgroundHeartbeatIntervalSeconds {return false}
+    if lhs.downloadPolicy != rhs.downloadPolicy {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -664,7 +754,7 @@ nonisolated extension Fleetml_Device_V1_DeviceHealth: SwiftProtobuf.Message, Swi
 
 nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".HeartbeatResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}assignments\0\u{1}experiments\0\u{3}next_heartbeat_seconds\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}assignments\0\u{1}experiments\0\u{3}next_heartbeat_seconds\0\u{1}config\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -675,12 +765,17 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
       case 1: try { try decoder.decodeRepeatedMessageField(value: &self.assignments) }()
       case 2: try { try decoder.decodeRepeatedMessageField(value: &self.experiments) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.nextHeartbeatSeconds) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._config) }()
       default: break
       }
     }
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.assignments.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.assignments, fieldNumber: 1)
     }
@@ -690,6 +785,9 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
     if self.nextHeartbeatSeconds != 0 {
       try visitor.visitSingularUInt32Field(value: self.nextHeartbeatSeconds, fieldNumber: 3)
     }
+    try { if let v = self._config {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -697,6 +795,7 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
     if lhs.assignments != rhs.assignments {return false}
     if lhs.experiments != rhs.experiments {return false}
     if lhs.nextHeartbeatSeconds != rhs.nextHeartbeatSeconds {return false}
+    if lhs._config != rhs._config {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -704,7 +803,7 @@ nonisolated extension Fleetml_Device_V1_HeartbeatResponse: SwiftProtobuf.Message
 
 nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".ModelAssignment"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}model_name\0\u{1}version\0\u{3}variant_id\0\u{3}download_url\0\u{3}blob_size_bytes\0\u{3}blob_sha256\0\u{1}action\0\u{3}version_id\0")
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}model_name\0\u{1}version\0\u{3}variant_id\0\u{3}download_url\0\u{3}blob_size_bytes\0\u{3}blob_sha256\0\u{1}action\0\u{3}version_id\0\u{1}urgent\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -721,6 +820,7 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
       case 7: try { try decoder.decodeSingularStringField(value: &self.blobSha256) }()
       case 8: try { try decoder.decodeSingularEnumField(value: &self.action) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self.versionID) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.urgent) }()
       default: break
       }
     }
@@ -754,6 +854,9 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
     if !self.versionID.isEmpty {
       try visitor.visitSingularStringField(value: self.versionID, fieldNumber: 9)
     }
+    if self.urgent != false {
+      try visitor.visitSingularBoolField(value: self.urgent, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -767,6 +870,7 @@ nonisolated extension Fleetml_Device_V1_ModelAssignment: SwiftProtobuf.Message, 
     if lhs.blobSha256 != rhs.blobSha256 {return false}
     if lhs.action != rhs.action {return false}
     if lhs.versionID != rhs.versionID {return false}
+    if lhs.urgent != rhs.urgent {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
