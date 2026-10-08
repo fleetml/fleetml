@@ -1,0 +1,82 @@
+name: SDK bug (Android or iOS)
+description: The Android or iOS SDK misbehaves on a device, emulator or simulator.
+labels: [bug, needs-repro]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Device problems are hard to reproduce without the details below; please fill in what you can.
+        Remove API keys, enrollment keys and device tokens from anything you paste. Security problems go by email, see the security policy.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Android, iOS]
+    validations:
+      required: true
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      description: Android `BuildConfig.SDK_VERSION`, iOS `FleetML.sdkVersion`, or the commit you built from.
+    validations:
+      required: true
+  - type: input
+    id: server-version
+    attributes:
+      label: Server version
+      description: Release tag or commit of the FleetML server.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      description: For example "Pixel 7", "iPhone 13", or "emulator, Medium Phone API 35".
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      description: Android version and API level, or iOS version.
+    validations:
+      required: true
+  - type: dropdown
+    id: state
+    attributes:
+      label: App state when it happened
+      options: [Foreground, Background (WorkManager or BGAppRefreshTask), App start (including offline start), Not sure]
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      options: [Wi-Fi or Ethernet, Cellular (metered), Offline, Switching between networks, Not sure]
+  - type: dropdown
+    id: power
+    attributes:
+      label: Power
+      options: [Charging, On battery, Low power or battery saver mode, Not sure]
+  - type: input
+    id: runtime
+    attributes:
+      label: Model runtime and format
+      description: For example "TensorFlow Lite 2.16, .tflite, 3 MB" or "Core ML, .mlmodelc".
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Which callback fired (or did not), and with what reason.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The deployment or experiment you created (strategy, selector, policy), and what the device did.
+  - type: textarea
+    id: logs
+    attributes:
+      label: SDK logs
+      description: Android `adb logcat -s FleetML`; iOS the `[FleetML]` lines from the console. Include the server's log lines for the device if you have them.
+      render: text

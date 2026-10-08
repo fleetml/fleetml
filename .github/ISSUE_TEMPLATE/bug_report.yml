@@ -4,12 +4,12 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Please do not report security problems here; see the security policy instead.
+      value: Please do not report security problems here; see the security policy instead. For a problem on a phone or tablet, the SDK bug template asks for the device details we need.
   - type: dropdown
     id: component
     attributes:
       label: Component
-      options: [Server (REST/gRPC), Dashboard, CLI, Android SDK, iOS SDK, Deployment (Docker Compose), Documentation]
+      options: [Server (REST/gRPC), Dashboard, CLI, Linux agent, Android SDK, iOS SDK, Deployment (Docker Compose), Deployment (Helm), Documentation]
     validations:
       required: true
   - type: textarea
