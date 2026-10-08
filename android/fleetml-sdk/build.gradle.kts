@@ -90,6 +90,10 @@ dependencies {
     // HTTP
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // Model runtimes used by the default validators when the app includes them.
+    compileOnly("org.tensorflow:tensorflow-lite:2.16.1")
+    compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+
     // JSON (for metadata)
     implementation("org.json:json:20240303")
 

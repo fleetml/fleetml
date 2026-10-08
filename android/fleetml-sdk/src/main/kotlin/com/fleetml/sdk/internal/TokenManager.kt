@@ -8,7 +8,15 @@ import androidx.security.crypto.MasterKey
 /**
  * Manages encrypted storage of device registration credentials.
  */
-internal class TokenManager(context: Context) {
+/** Where the device's identity and token are kept. */
+internal interface TokenStore {
+    fun getDeviceId(): String?
+    fun getAuthToken(): String?
+    fun getTokenExpiresAtMillis(): Long
+    fun saveToken(authToken: String, tokenExpiresAtSeconds: Long)
+}
+
+internal class TokenManager(context: Context) : TokenStore {
 
     private val prefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)
@@ -24,18 +32,19 @@ internal class TokenManager(context: Context) {
         )
     }
 
-    fun saveRegistration(deviceId: String, authToken: String, tokenExpiresAtSeconds: Long) {
+    fun saveRegistration(deviceId: String, authToken: String, tokenExpiresAtSeconds: Long, signature: String = "") {
         prefs.edit()
             .putString(KEY_DEVICE_ID, deviceId)
             .putString(KEY_AUTH_TOKEN, authToken)
             .putLong(KEY_TOKEN_EXPIRES_AT, tokenExpiresAtSeconds * 1000)
             .putLong(KEY_REGISTERED_AT, System.currentTimeMillis())
+            .putString(KEY_SIGNATURE, signature)
             .apply()
         Logger.d("Registration saved for device $deviceId")
     }
 
     /** Stores a refreshed token. The previous token stops working on the server. */
-    fun saveToken(authToken: String, tokenExpiresAtSeconds: Long) {
+    override fun saveToken(authToken: String, tokenExpiresAtSeconds: Long) {
         prefs.edit()
             .putString(KEY_AUTH_TOKEN, authToken)
             .putLong(KEY_TOKEN_EXPIRES_AT, tokenExpiresAtSeconds * 1000)
@@ -43,13 +52,16 @@ internal class TokenManager(context: Context) {
     }
 
     /** Token expiry in epoch millis, or 0 if unknown (registered by an older SDK). */
-    fun getTokenExpiresAtMillis(): Long = prefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L)
+    override fun getTokenExpiresAtMillis(): Long = prefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L)
 
-    fun getDeviceId(): String? = prefs.getString(KEY_DEVICE_ID, null)
+    override fun getDeviceId(): String? = prefs.getString(KEY_DEVICE_ID, null)
 
-    fun getAuthToken(): String? = prefs.getString(KEY_AUTH_TOKEN, null)
+    override fun getAuthToken(): String? = prefs.getString(KEY_AUTH_TOKEN, null)
 
     fun isRegistered(): Boolean = getDeviceId() != null && getAuthToken() != null
+
+    /** What the device registered with (labels, SDK version); re-register when it changes. */
+    fun getRegistrationSignature(): String = prefs.getString(KEY_SIGNATURE, "") ?: ""
 
     fun clear() {
         prefs.edit().clear().apply()
@@ -61,5 +73,6 @@ internal class TokenManager(context: Context) {
         const val KEY_AUTH_TOKEN = "auth_token"
         const val KEY_REGISTERED_AT = "registered_at"
         const val KEY_TOKEN_EXPIRES_AT = "token_expires_at"
+        const val KEY_SIGNATURE = "registration_signature"
     }
 }

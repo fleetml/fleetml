@@ -45,7 +45,7 @@ internal class DeviceRegistrar(
         }
         val stub = currentToken?.let { grpcClient.authenticatedStub(it) } ?: grpcClient.deviceService
         val response = stub.register(request)
-        tokenManager.saveRegistration(response.deviceId, response.authToken, response.tokenExpiresAt)
+        tokenManager.saveRegistration(response.deviceId, response.authToken, response.tokenExpiresAt, signature())
 
         Logger.i("Registered as device ${response.deviceId}")
         return RegisterResult(
@@ -55,6 +55,12 @@ internal class DeviceRegistrar(
             maxCacheSizeMb = response.config.maxCacheSizeMb.toInt()
         )
     }
+
+    /** True if the device must (re-)register: never registered, or labels or SDK version changed. */
+    fun needsRegistration(): Boolean = !tokenManager.isRegistered() || tokenManager.getRegistrationSignature() != signature()
+
+    private fun signature(): String =
+        BuildConfig.SDK_VERSION + "|" + config.labels.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" }
 }
 
 /** Result of a successful device registration. */

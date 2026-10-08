@@ -3,10 +3,10 @@ package com.fleetml.sample
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.fleetml.sdk.ActiveModel
 import com.fleetml.sdk.FleetML
 import com.fleetml.sdk.FleetMLCallback
 import com.fleetml.sdk.FleetMLConfig
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,19 +39,19 @@ class MainActivity : AppCompatActivity(), FleetMLCallback {
         )
     }
 
-    override fun onModelReady(modelName: String, version: String, variantId: String, modelFile: File) {
+    override fun onModelReady(model: ActiveModel) {
         runOnUiThread {
-            appendLog("Model ready: $modelName v$version -> ${modelFile.absolutePath}")
-            modelsText.append("\n$modelName v$version (${modelFile.length() / 1024}KB)")
+            appendLog("Model ready: ${model.modelName} v${model.version} -> ${model.file.absolutePath}")
+            modelsText.append("\n${model.modelName} v${model.version} (${model.file.length() / 1024}KB)")
         }
     }
 
-    override fun onModelUnload(modelName: String, variantId: String) {
+    override fun onModelUnload(modelId: String, modelName: String, variantId: String) {
         runOnUiThread { appendLog("Model unloaded: $modelName") }
     }
 
-    override fun onModelDownloadFailed(modelName: String, version: String, reason: String) {
-        runOnUiThread { appendLog("Download failed: $modelName v$version - $reason") }
+    override fun onModelLoadFailed(modelName: String, version: String, reason: String) {
+        runOnUiThread { appendLog("Model failed: $modelName v$version - $reason") }
     }
 
     override fun onRegistered(deviceId: String) {

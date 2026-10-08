@@ -1,41 +1,29 @@
 package com.fleetml.sdk
 
-import java.io.File
-
 /**
- * Callback interface for app developers to receive FleetML lifecycle events.
- *
- * Implement this interface and pass it to [FleetML.init] to receive notifications
- * about model readiness, downloads, and connection status.
+ * Lifecycle events from the SDK. Every method has an empty default, so
+ * implement only what the app needs. Callbacks run on a background thread.
  */
 interface FleetMLCallback {
     /**
-     * Called when a new model is available on disk, ready to load.
-     *
-     * @param modelName The model name (e.g., "fraud-detector")
-     * @param version The semver version (e.g., "1.2.0")
-     * @param variantId The specific variant ID
-     * @param modelFile The local File path to the downloaded model
+     * A model was downloaded, verified (sha256) and validated, and is now the
+     * active version of its model: load [ActiveModel.file] and use it. Also
+     * called at start for models cached from a previous run (offline start).
      */
-    fun onModelReady(modelName: String, version: String, variantId: String, modelFile: File)
+    fun onModelReady(model: ActiveModel) {}
+
+    /** The server no longer assigns this model (e.g. its deployment was rolled back with nothing to return to). */
+    fun onModelUnload(modelId: String, modelName: String, variantId: String) {}
 
     /**
-     * Called when a model should be unloaded (e.g., deployment was rolled back).
+     * A new version could not be downloaded or failed validation. The
+     * previously active (last-known-good) version stays active.
      */
-    fun onModelUnload(modelName: String, variantId: String)
+    fun onModelLoadFailed(modelName: String, version: String, reason: String) {}
 
-    /**
-     * Called when model download fails.
-     */
-    fun onModelDownloadFailed(modelName: String, version: String, reason: String)
+    /** The device registered (or re-registered) with the server. */
+    fun onRegistered(deviceId: String) {}
 
-    /**
-     * Called when device registration completes.
-     */
-    fun onRegistered(deviceId: String)
-
-    /**
-     * Called when connection to FleetML server is lost or restored.
-     */
-    fun onConnectionStatusChanged(connected: Boolean)
+    /** The server became reachable or unreachable. */
+    fun onConnectionStatusChanged(connected: Boolean) {}
 }

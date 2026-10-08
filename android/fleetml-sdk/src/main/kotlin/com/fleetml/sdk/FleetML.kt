@@ -4,8 +4,12 @@ import android.content.Context
 import com.fleetml.sdk.internal.DeviceStats
 import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
+import com.fleetml.sdk.internal.ModelManager
+import com.fleetml.sdk.internal.ModelStore
 import com.fleetml.sdk.internal.TelemetryQueue
 import com.fleetml.sdk.internal.TokenManager
+import fleetml.device.v1.Device.HeartbeatRequest
+import fleetml.device.v1.Device.RefreshTokenRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,120 +21,81 @@ import java.io.File
 /**
  * FleetML Android SDK entry point.
  *
- * Initialize once in your Application or Activity:
+ * Initialize once, e.g. in `Application.onCreate()`:
  * ```kotlin
  * FleetML.init(
  *     context = this,
- *     config = FleetMLConfig(serverHost = "10.0.2.2"),
+ *     config = FleetMLConfig(serverHost = "10.0.2.2", enrollmentKey = "..."),
  *     callback = object : FleetMLCallback {
- *         override fun onModelReady(modelName: String, version: String, variantId: String, modelFile: File) {
- *             // Load the TFLite model from modelFile
- *         }
- *         // ... other callbacks
- *     }
+ *         override fun onModelReady(model: ActiveModel) { /* load model.file */ }
+ *     },
  * )
  * ```
+ *
+ * The SDK is offline-first: models activated in an earlier run are delivered
+ * through [FleetMLCallback.onModelReady] (and [activeModels]) as soon as
+ * [start] runs, before the server is reached; the server reconciles in the
+ * background.
  */
 object FleetML {
-    private var instance: FleetMLInstance? = null
+    @Volatile private var instance: FleetMLInstance? = null
 
     /**
-     * Initialize FleetML SDK. Call once in Application.onCreate() or Activity.onCreate().
-     * Subsequent calls are ignored with a warning.
+     * Initialize the SDK. A second call while initialized is ignored; call
+     * [stop] first to re-initialize (e.g. with a new config).
      *
-     * @param context Android context (application context is used internally)
-     * @param config SDK configuration
-     * @param callback Optional callback for lifecycle events
+     * @param validator checks a new model before it becomes active; defaults
+     *   to [ModelValidators.default] (TFLite or ONNX Runtime when present).
      */
+    @Synchronized
     fun init(
         context: Context,
         config: FleetMLConfig,
-        callback: FleetMLCallback? = null
+        callback: FleetMLCallback? = null,
+        validator: ModelValidator = ModelValidators.default(),
     ) {
         if (instance != null) {
             Logger.w("Already initialized — ignoring duplicate init()")
             return
         }
-
-        val appContext = context.applicationContext
-        val grpcClient = GrpcClient(config)
-        val tokenManager = TokenManager(appContext)
-        val cacheDir = File(appContext.filesDir, "fleetml/models")
-        val cache = ModelCache(cacheDir, config.maxCacheSizeMb)
-        cache.cleanupTemp()
-        val downloader = ModelDownloader(cache)
-        val registrar = DeviceRegistrar(grpcClient, tokenManager, config, appContext)
-        val heartbeatManager = HeartbeatManager(
-            grpcClient, tokenManager, downloader, cache, callback, config,
-            reRegister = { registrar.register() }
-        )
-        val stats = DeviceStats(appContext)
-        val telemetryReporter = TelemetryReporter(
-            queue = TelemetryQueue(File(appContext.filesDir, "fleetml/telemetry.queue")),
-            sender = grpcClient.telemetrySender,
-            credentials = {
-                val id = tokenManager.getDeviceId()
-                val token = tokenManager.getAuthToken()
-                if (id != null && token != null) DeviceCredentials(id, token) else null
-            },
-            batchSize = config.telemetryBatchSize,
-            flushIntervalSeconds = config.telemetryFlushIntervalSeconds,
-            availableMemoryMb = stats::availableMemoryMb,
-            batteryPercent = stats::batteryPercent,
-        )
-
-        val inst = FleetMLInstance(
-            config = config,
-            grpcClient = grpcClient,
-            tokenManager = tokenManager,
-            cache = cache,
-            registrar = registrar,
-            heartbeatManager = heartbeatManager,
-            telemetryReporter = telemetryReporter,
-            callback = callback
-        )
+        val inst = FleetMLInstance(context.applicationContext, config, callback, validator)
         instance = inst
-
-        if (config.autoStart) {
-            inst.start()
-        }
+        if (config.autoStart) inst.start()
     }
 
-    /**
-     * Manually trigger registration + heartbeat start.
-     * Only needed if [FleetMLConfig.autoStart] is false.
-     */
+    /** Start the SDK (only needed if [FleetMLConfig.autoStart] is false). */
     fun start() {
-        instance?.start() ?: error("FleetML not initialized. Call FleetML.init() first.")
+        (instance ?: error("FleetML not initialized. Call FleetML.init() first.")).start()
     }
 
-    /** Stop heartbeat and release resources. */
+    /** Stop background work and release resources. [init] can be called again afterwards. */
+    @Synchronized
     fun stop() {
         instance?.stop()
+        instance = null
     }
 
-    /**
-     * Get the local File for a cached model variant.
-     * Returns null if not yet downloaded.
-     */
-    fun getModelFile(variantId: String): File? {
-        return instance?.cache?.getModelFile(variantId)
-    }
+    /** True between [init] and [stop]. */
+    fun isInitialized(): Boolean = instance != null
 
-    /** Check if the device is registered with the FleetML server. */
-    fun isRegistered(): Boolean {
-        return instance?.tokenManager?.isRegistered() ?: false
-    }
+    /** The models currently active on this device (validated, on disk). */
+    fun activeModels(): List<ActiveModel> = instance?.models?.activeModels().orEmpty()
 
-    /**
-     * Get the telemetry reporter for sending inference metrics.
-     * @throws IllegalStateException if FleetML is not initialized
-     */
-    fun getTelemetryReporter(): TelemetryReporter {
-        return instance?.telemetryReporter ?: error("FleetML not initialized. Call FleetML.init() first.")
-    }
+    /** The active model with this name, or null. */
+    fun activeModel(modelName: String): ActiveModel? = activeModels().firstOrNull { it.modelName == modelName }
 
-    /** Clear all cached models and registration data. */
+    /** The local file of a cached variant, or null. */
+    fun getModelFile(variantId: String): File? = instance?.cache?.getModelFile(variantId)
+
+    /** True if the device has registered with the server. */
+    fun isRegistered(): Boolean = instance?.tokenManager?.isRegistered() ?: false
+
+    /** The telemetry reporter (events are queued even before registration). */
+    fun getTelemetryReporter(): TelemetryReporter =
+        instance?.telemetryReporter ?: error("FleetML not initialized. Call FleetML.init() first.")
+
+    /** Clear cached models and registration data, and stop. */
+    @Synchronized
     fun reset() {
         instance?.reset()
         instance = null
@@ -138,46 +103,98 @@ object FleetML {
 }
 
 internal class FleetMLInstance(
+    context: Context,
     val config: FleetMLConfig,
-    val grpcClient: GrpcClient,
-    val tokenManager: TokenManager,
-    val cache: ModelCache,
-    private val registrar: DeviceRegistrar,
-    private val heartbeatManager: HeartbeatManager,
-    val telemetryReporter: TelemetryReporter,
-    private val callback: FleetMLCallback?
+    private val callback: FleetMLCallback?,
+    validator: ModelValidator,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val root = File(context.filesDir, "fleetml")
+    private val grpcClient = GrpcClient(config)
+    val tokenManager = TokenManager(context)
+    val cache = ModelCache(File(root, "models"), config.maxCacheSizeMb).also { it.cleanupTemp() }
+    private val registrar = DeviceRegistrar(grpcClient, tokenManager, config, context)
+    private val stats = DeviceStats(context)
+
+    val telemetryReporter = TelemetryReporter(
+        queue = TelemetryQueue(File(root, "telemetry.queue")),
+        sender = grpcClient.telemetrySender,
+        credentials = {
+            val id = tokenManager.getDeviceId()
+            val token = tokenManager.getAuthToken()
+            if (id != null && token != null) DeviceCredentials(id, token) else null
+        },
+        batchSize = config.telemetryBatchSize,
+        flushIntervalSeconds = config.telemetryFlushIntervalSeconds,
+        availableMemoryMb = stats::availableMemoryMb,
+        batteryPercent = stats::batteryPercent,
+    )
+
+    val models = ModelManager(
+        store = ModelStore(File(root, "models.json")),
+        cache = cache,
+        downloader = ModelDownloader(cache),
+        validator = validator,
+        telemetry = telemetryReporter,
+        callback = { callback },
+    )
+
+    private val heartbeat = HeartbeatManager(
+        api = object : DeviceApi {
+            override suspend fun heartbeat(token: String, request: HeartbeatRequest) =
+                grpcClient.authenticatedStub(token).heartbeat(request)
+            override suspend fun refreshToken(token: String) =
+                grpcClient.authenticatedStub(token).refreshToken(RefreshTokenRequest.getDefaultInstance())
+        },
+        tokens = tokenManager,
+        models = models,
+        telemetry = telemetryReporter,
+        callback = { callback },
+        initialIntervalSeconds = config.heartbeatIntervalSeconds,
+        reRegister = { register() },
+    )
 
     fun start() {
-        // Telemetry is queued from the start; it is sent once the device is registered.
         telemetryReporter.start(scope)
         scope.launch {
-            try {
-                val result = registrar.register()
-                callback?.onRegistered(result.deviceId)
-                telemetryReporter.configure(result.telemetryBatchSize, 0)
-                telemetryReporter.onReconnected()
-                heartbeatManager.start(scope)
-            } catch (e: Exception) {
-                Logger.e("Registration failed: ${e.message}", e)
-                callback?.onConnectionStatusChanged(false)
-                delay(10_000)
-                start()
+            // Offline start: what was active last time is usable immediately.
+            models.activeModels().forEach { callback?.onModelReady(it) }
+            while (registrar.needsRegistration()) {
+                try {
+                    register()
+                } catch (e: Exception) {
+                    Logger.e("Registration failed: ${e.message}", e)
+                    callback?.onConnectionStatusChanged(false)
+                    delay(REGISTER_RETRY_MS)
+                }
             }
+            heartbeat.start(scope)
         }
+    }
+
+    private suspend fun register() {
+        val result = registrar.register()
+        heartbeat.setInterval(result.heartbeatIntervalSeconds.toLong())
+        telemetryReporter.configure(result.telemetryBatchSize, 0)
+        callback?.onRegistered(result.deviceId)
+        telemetryReporter.onReconnected()
     }
 
     fun stop() {
         telemetryReporter.stop()
-        heartbeatManager.stop()
-        grpcClient.shutdown()
+        heartbeat.stop()
         scope.cancel()
+        grpcClient.shutdown()
     }
 
     fun reset() {
         stop()
         tokenManager.clear()
         cache.clear()
+        root.deleteRecursively()
+    }
+
+    private companion object {
+        const val REGISTER_RETRY_MS = 10_000L
     }
 }

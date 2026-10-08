@@ -1,13 +1,12 @@
 package com.fleetml.sdk
 
-import com.fleetml.sdk.internal.GrpcClient
 import com.fleetml.sdk.internal.Logger
-import com.fleetml.sdk.internal.TokenManager
+import com.fleetml.sdk.internal.ModelManager
 import com.fleetml.sdk.internal.TokenRefreshPolicy
+import com.fleetml.sdk.internal.TokenStore
 import fleetml.device.v1.Device.HeartbeatRequest
-import fleetml.device.v1.Device.ModelAssignment
-import fleetml.device.v1.Device.ModelStatus
-import fleetml.device.v1.Device.RefreshTokenRequest
+import fleetml.device.v1.Device.HeartbeatResponse
+import fleetml.device.v1.Device.RefreshTokenResponse
 import io.grpc.Status
 import io.grpc.StatusException
 import kotlinx.coroutines.CoroutineScope
@@ -15,164 +14,111 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.concurrent.ConcurrentHashMap
+
+/** The authenticated device RPCs the heartbeat loop uses. */
+internal interface DeviceApi {
+    suspend fun heartbeat(token: String, request: HeartbeatRequest): HeartbeatResponse
+    suspend fun refreshToken(token: String): RefreshTokenResponse
+}
 
 /**
- * Manages the periodic heartbeat loop with the FleetML server.
- *
- * Sends loaded model status, receives assignments, and triggers downloads/unloads.
+ * The periodic heartbeat loop: refresh the token when it nears expiry,
+ * report the active models, apply the server's assignments and experiment
+ * arms. A rejected token triggers re-registration.
  */
 internal class HeartbeatManager(
-    private val grpcClient: GrpcClient,
-    private val tokenManager: TokenManager,
-    private val downloader: ModelDownloader,
-    private val cache: ModelCache,
-    private val callback: FleetMLCallback?,
-    private val config: FleetMLConfig,
+    private val api: DeviceApi,
+    private val tokens: TokenStore,
+    private val models: ModelManager,
+    private val telemetry: TelemetryReporter?,
+    private val callback: () -> FleetMLCallback?,
+    initialIntervalSeconds: Long,
     /** Called when the server rejects the token (revoked, superseded or expired). */
-    private val reRegister: suspend () -> Unit = {}
+    private val reRegister: suspend () -> Unit = {},
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     private var heartbeatJob: Job? = null
-    private var intervalSeconds: Long = config.heartbeatIntervalSeconds
-    private val loadedModels = ConcurrentHashMap<String, LoadedModelInfo>()
 
-    /** Start the periodic heartbeat loop. */
+    @Volatile var intervalSeconds: Long = initialIntervalSeconds.coerceAtLeast(1)
+        private set
+
+    @Volatile private var connected: Boolean? = null
+
     fun start(scope: CoroutineScope) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
             while (isActive) {
-                try {
-                    refreshTokenIfDue()
-                    sendHeartbeat()
-                } catch (e: StatusException) {
-                    if (e.status.code == Status.Code.UNAUTHENTICATED) {
-                        Logger.w("Token rejected by server, re-registering")
-                        try {
-                            reRegister()
-                        } catch (re: Exception) {
-                            Logger.w("Re-registration failed: ${re.message}")
-                        }
-                    } else {
-                        Logger.w("Heartbeat failed: ${e.message}")
-                    }
-                    callback?.onConnectionStatusChanged(false)
-                } catch (e: Exception) {
-                    Logger.w("Heartbeat failed: ${e.message}")
-                    callback?.onConnectionStatusChanged(false)
-                }
+                beatOnce()
                 delay(intervalSeconds * 1000)
             }
         }
     }
 
-    /** Stop the heartbeat loop. */
     fun stop() {
         heartbeatJob?.cancel()
         heartbeatJob = null
     }
 
-    /** Swap the token for a new one shortly before it expires. */
-    private suspend fun refreshTokenIfDue() {
-        val token = tokenManager.getAuthToken() ?: return
-        if (!TokenRefreshPolicy.needsRefresh(System.currentTimeMillis(), tokenManager.getTokenExpiresAtMillis())) return
-        try {
-            val response = grpcClient.authenticatedStub(token).refreshToken(RefreshTokenRequest.getDefaultInstance())
-            tokenManager.saveToken(response.authToken, response.tokenExpiresAt)
+    /** Applies the server's heartbeat interval (DeviceConfig / next_heartbeat_seconds). */
+    fun setInterval(seconds: Long) {
+        if (seconds > 0) intervalSeconds = seconds
+    }
+
+    /** One heartbeat. Returns true if the server was reached. */
+    internal suspend fun beatOnce(): Boolean {
+        val token = tokens.getAuthToken() ?: return false
+        val deviceId = tokens.getDeviceId() ?: return false
+        return try {
+            val current = refreshTokenIfDue(token)
+            val response = api.heartbeat(
+                current,
+                HeartbeatRequest.newBuilder().setDeviceId(deviceId).addAllLoadedModels(models.loadedStatuses()).build(),
+            )
+            setConnected(true)
+            setInterval(response.nextHeartbeatSeconds.toLong())
+            telemetry?.setExperimentArms(response.experimentsList.associate { it.modelVersionId to it.armId })
+            models.apply(response.assignmentsList)
+            true
+        } catch (e: StatusException) {
+            if (e.status.code == Status.Code.UNAUTHENTICATED) {
+                Logger.w("Token rejected by server, re-registering")
+                try {
+                    reRegister()
+                } catch (re: Exception) {
+                    Logger.w("Re-registration failed: ${re.message}")
+                }
+            } else {
+                Logger.w("Heartbeat failed: ${e.status}")
+            }
+            setConnected(false)
+            false
+        } catch (e: Exception) {
+            Logger.w("Heartbeat failed: ${e.message}")
+            setConnected(false)
+            false
+        }
+    }
+
+    /** Swaps the token for a new one shortly before it expires. Returns the token to use. */
+    private suspend fun refreshTokenIfDue(token: String): String {
+        if (!TokenRefreshPolicy.needsRefresh(now(), tokens.getTokenExpiresAtMillis())) return token
+        return try {
+            val response = api.refreshToken(token)
+            tokens.saveToken(response.authToken, response.tokenExpiresAt)
             Logger.i("Device token refreshed")
+            response.authToken
         } catch (e: StatusException) {
             // FAILED_PRECONDITION (too early, clock skew) is retried on the next heartbeat.
             if (e.status.code == Status.Code.UNAUTHENTICATED) throw e
             Logger.w("Token refresh failed: ${e.status}")
+            token
         }
     }
 
-    private suspend fun sendHeartbeat() {
-        val token = tokenManager.getAuthToken() ?: return
-        val deviceId = tokenManager.getDeviceId() ?: return
-
-        val stub = grpcClient.authenticatedStub(token)
-
-        val request = HeartbeatRequest.newBuilder()
-            .setDeviceId(deviceId)
-            .addAllLoadedModels(
-                loadedModels.values.map { model ->
-                    ModelStatus.newBuilder()
-                        .setModelId(model.modelId)
-                        .setVersion(model.version)
-                        .setVariantId(model.variantId)
-                        .setStatus("LOADED")
-                        .build()
-                }
-            )
-            .build()
-
-        val response = stub.heartbeat(request)
-        callback?.onConnectionStatusChanged(true)
-
-        if (response.nextHeartbeatSeconds > 0) {
-            intervalSeconds = response.nextHeartbeatSeconds.toLong()
-        }
-
-        for (assignment in response.assignmentsList) {
-            processAssignment(assignment)
-        }
-    }
-
-    private suspend fun processAssignment(assignment: ModelAssignment) {
-        when (assignment.action) {
-            ModelAssignment.Action.LOAD,
-            ModelAssignment.Action.UPDATE -> {
-                val result = downloader.download(
-                    variantId = assignment.variantId,
-                    downloadUrl = assignment.downloadUrl,
-                    blobSha256 = assignment.blobSha256,
-                    expectedSize = assignment.blobSizeBytes,
-                )
-                when (result) {
-                    is DownloadResult.Downloaded,
-                    is DownloadResult.Cached -> {
-                        val file = when (result) {
-                            is DownloadResult.Downloaded -> result.file
-                            is DownloadResult.Cached -> result.file
-                            else -> return
-                        }
-                        loadedModels[assignment.variantId] = LoadedModelInfo(
-                            modelId = assignment.modelId,
-                            versionId = assignment.versionId,
-                            modelName = assignment.modelName,
-                            version = assignment.version,
-                            variantId = assignment.variantId
-                        )
-                        callback?.onModelReady(
-                            assignment.modelName,
-                            assignment.version,
-                            assignment.variantId,
-                            file
-                        )
-                    }
-                    is DownloadResult.Failed -> {
-                        callback?.onModelDownloadFailed(
-                            assignment.modelName,
-                            assignment.version,
-                            result.reason
-                        )
-                    }
-                }
-            }
-            ModelAssignment.Action.UNLOAD -> {
-                loadedModels.remove(assignment.variantId)
-                callback?.onModelUnload(assignment.modelName, assignment.variantId)
-            }
-            else -> { /* ACTION_UNSPECIFIED — ignore */ }
-        }
+    private fun setConnected(value: Boolean) {
+        if (connected == value) return
+        connected = value
+        callback()?.onConnectionStatusChanged(value)
+        if (value) telemetry?.onReconnected()
     }
 }
-
-internal data class LoadedModelInfo(
-    val modelId: String,
-    /** Model version ID; send it as modelVersionId in telemetry. */
-    val versionId: String = "",
-    val modelName: String,
-    val version: String,
-    val variantId: String
-)
