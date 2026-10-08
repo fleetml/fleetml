@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getDriftStatus } from '../api/client'
+import { UnauthorizedError } from '../api/auth'
 import type { DriftResult } from '../types/api'
 
 const sevStyle: Record<string, string> = {
@@ -16,7 +17,7 @@ export default function Drift() {
   const load = () => {
     if (!versionId) return
     setError('')
-    getDriftStatus(versionId).then(r => setResults(r || [])).catch(e => setError(e.message))
+    getDriftStatus(versionId).then(r => setResults(r || [])).catch(e => { if (!(e instanceof UnauthorizedError)) setError(e.message) })
   }
 
   return (

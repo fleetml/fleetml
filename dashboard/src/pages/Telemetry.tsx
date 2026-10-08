@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getTelemetrySummary, getTelemetryTimeSeries } from '../api/client'
+import { UnauthorizedError } from '../api/auth'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { TelemetrySummary, TimeSeriesPoint } from '../types/api'
 
@@ -19,7 +20,7 @@ export default function Telemetry() {
       ])
       setSummary(s)
       setTimeSeries(ts || [])
-    } catch (e: any) { setError(e.message) }
+    } catch (e: any) { if (!(e instanceof UnauthorizedError)) setError(e.message) }
   }
 
   return (

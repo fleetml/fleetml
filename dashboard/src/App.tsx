@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, Cpu, Layers, Rocket, FlaskConical, Activity, AlertTriangle, Settings as SettingsIcon, ShieldAlert } from 'lucide-react'
+import { AUTH_EVENT, getApiKey } from './api/auth'
 import Dashboard from './pages/Dashboard'
 import Devices from './pages/Devices'
 import Models from './pages/Models'
@@ -7,6 +9,7 @@ import Deployments from './pages/Deployments'
 import Experiments from './pages/Experiments'
 import Telemetry from './pages/Telemetry'
 import Drift from './pages/Drift'
+import Settings from './pages/Settings'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -16,10 +19,19 @@ const navItems = [
   { path: '/experiments', label: 'Experiments', icon: FlaskConical },
   { path: '/telemetry', label: 'Telemetry', icon: Activity },
   { path: '/drift', label: 'Drift', icon: AlertTriangle },
+  { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
 export default function App() {
   const location = useLocation()
+  const [authError, setAuthError] = useState(getApiKey() ? '' : 'No API key set. Add your admin API key in Settings.')
+
+  useEffect(() => {
+    const onUnauthorized = (e: Event) => setAuthError((e as CustomEvent<string>).detail || 'API key missing or rejected.')
+    window.addEventListener(AUTH_EVENT, onUnauthorized)
+    return () => window.removeEventListener(AUTH_EVENT, onUnauthorized)
+  }, [])
+
   return (
     <div className="flex h-screen bg-white">
       <nav className="w-56 border-r border-gray-200 bg-gray-50/50 flex flex-col">
@@ -45,6 +57,18 @@ export default function App() {
       </nav>
       <main className="flex-1 overflow-auto bg-white">
         <div className="max-w-7xl mx-auto p-8">
+          {authError && (
+            <div role="alert" className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <ShieldAlert size={18} className="mt-0.5 text-red-600 shrink-0" strokeWidth={1.75} />
+              <div className="text-sm">
+                <p className="font-medium text-red-800">Not authorized</p>
+                <p className="text-red-700">{authError}</p>
+                {location.pathname !== '/settings' && (
+                  <Link to="/settings" className="mt-1 inline-block font-medium text-red-800 underline">Open Settings</Link>
+                )}
+              </div>
+            </div>
+          )}
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/devices" element={<Devices />} />
@@ -53,6 +77,7 @@ export default function App() {
             <Route path="/experiments" element={<Experiments />} />
             <Route path="/telemetry" element={<Telemetry />} />
             <Route path="/drift" element={<Drift />} />
+            <Route path="/settings" element={<Settings onKeySaved={() => setAuthError('')} />} />
           </Routes>
         </div>
       </main>
