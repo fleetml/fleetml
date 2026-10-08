@@ -45,3 +45,6 @@ android/.gradle/
 tmp/
 *.tmp
 *.log
+
+# Coverage
+coverage.out
