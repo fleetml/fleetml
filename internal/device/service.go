@@ -22,6 +22,7 @@ const (
 	RefreshWindow        = 7 * 24 * time.Hour
 	defaultHeartbeatSecs = 60
 	defaultBatchSize     = 100
+	defaultFlushSecs     = 30
 	defaultMaxCacheMB    = 512
 )
 
@@ -50,6 +51,7 @@ type RegisterResponse struct {
 	TokenExpiresAt        time.Time
 	HeartbeatIntervalSecs uint32
 	TelemetryBatchSize    uint32
+	TelemetryFlushSecs    uint32
 	MaxCacheSizeMB        uint32
 }
 
@@ -239,6 +241,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 			TokenExpiresAt:        expiresAt,
 			HeartbeatIntervalSecs: defaultHeartbeatSecs,
 			TelemetryBatchSize:    defaultBatchSize,
+			TelemetryFlushSecs:    defaultFlushSecs,
 			MaxCacheSizeMB:        defaultMaxCacheMB,
 		}, nil
 	}
@@ -294,6 +297,7 @@ func (s *Service) RegisterDevice(ctx context.Context, req *RegisterRequest) (*Re
 		TokenExpiresAt:        expiresAt,
 		HeartbeatIntervalSecs: defaultHeartbeatSecs,
 		TelemetryBatchSize:    defaultBatchSize,
+		TelemetryFlushSecs:    defaultFlushSecs,
 		MaxCacheSizeMB:        defaultMaxCacheMB,
 	}, nil
 }

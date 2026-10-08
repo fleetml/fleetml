@@ -52,7 +52,8 @@ internal class DeviceRegistrar(
             deviceId = response.deviceId,
             heartbeatIntervalSeconds = response.config.heartbeatIntervalSeconds.toInt(),
             telemetryBatchSize = response.config.telemetryBatchSize.toInt(),
-            maxCacheSizeMb = response.config.maxCacheSizeMb.toInt()
+            maxCacheSizeMb = response.config.maxCacheSizeMb.toInt(),
+            telemetryFlushIntervalSeconds = response.config.telemetryFlushIntervalSeconds.toInt(),
         )
     }
 
@@ -68,5 +69,6 @@ data class RegisterResult(
     val deviceId: String,
     val heartbeatIntervalSeconds: Int,
     val telemetryBatchSize: Int,
-    val maxCacheSizeMb: Int
+    val maxCacheSizeMb: Int,
+    val telemetryFlushIntervalSeconds: Int = 0,
 )

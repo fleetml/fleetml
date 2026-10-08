@@ -231,6 +231,7 @@ func TestRegister_Success(t *testing.T) {
 	assert.NotEmpty(t, resp.AuthToken)
 	assert.NotNil(t, resp.Config)
 	assert.Equal(t, uint32(60), resp.Config.HeartbeatIntervalSeconds)
+	assert.Equal(t, uint32(30), resp.Config.TelemetryFlushIntervalSeconds)
 }
 
 func TestRegister_DuplicateFingerprint(t *testing.T) {

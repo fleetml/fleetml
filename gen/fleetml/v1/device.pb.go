@@ -357,13 +357,15 @@ func (x *RefreshTokenResponse) GetTokenExpiresAt() int64 {
 	return 0
 }
 
+// Settings the SDK applies after registering.
 type DeviceConfig struct {
-	state                    protoimpl.MessageState `protogen:"open.v1"`
-	HeartbeatIntervalSeconds uint32                 `protobuf:"varint,1,opt,name=heartbeat_interval_seconds,json=heartbeatIntervalSeconds,proto3" json:"heartbeat_interval_seconds,omitempty"`
-	TelemetryBatchSize       uint32                 `protobuf:"varint,2,opt,name=telemetry_batch_size,json=telemetryBatchSize,proto3" json:"telemetry_batch_size,omitempty"`
-	MaxCacheSizeMb           uint32                 `protobuf:"varint,3,opt,name=max_cache_size_mb,json=maxCacheSizeMb,proto3" json:"max_cache_size_mb,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                         protoimpl.MessageState `protogen:"open.v1"`
+	HeartbeatIntervalSeconds      uint32                 `protobuf:"varint,1,opt,name=heartbeat_interval_seconds,json=heartbeatIntervalSeconds,proto3" json:"heartbeat_interval_seconds,omitempty"`
+	TelemetryBatchSize            uint32                 `protobuf:"varint,2,opt,name=telemetry_batch_size,json=telemetryBatchSize,proto3" json:"telemetry_batch_size,omitempty"`
+	MaxCacheSizeMb                uint32                 `protobuf:"varint,3,opt,name=max_cache_size_mb,json=maxCacheSizeMb,proto3" json:"max_cache_size_mb,omitempty"`
+	TelemetryFlushIntervalSeconds uint32                 `protobuf:"varint,4,opt,name=telemetry_flush_interval_seconds,json=telemetryFlushIntervalSeconds,proto3" json:"telemetry_flush_interval_seconds,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *DeviceConfig) Reset() {
@@ -413,6 +415,13 @@ func (x *DeviceConfig) GetTelemetryBatchSize() uint32 {
 func (x *DeviceConfig) GetMaxCacheSizeMb() uint32 {
 	if x != nil {
 		return x.MaxCacheSizeMb
+	}
+	return 0
+}
+
+func (x *DeviceConfig) GetTelemetryFlushIntervalSeconds() uint32 {
+	if x != nil {
+		return x.TelemetryFlushIntervalSeconds
 	}
 	return 0
 }
@@ -887,11 +896,12 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x14RefreshTokenResponse\x12\x1d\n" +
 	"\n" +
 	"auth_token\x18\x01 \x01(\tR\tauthToken\x12(\n" +
-	"\x10token_expires_at\x18\x02 \x01(\x03R\x0etokenExpiresAt\"\xa9\x01\n" +
+	"\x10token_expires_at\x18\x02 \x01(\x03R\x0etokenExpiresAt\"\xf2\x01\n" +
 	"\fDeviceConfig\x12<\n" +
 	"\x1aheartbeat_interval_seconds\x18\x01 \x01(\rR\x18heartbeatIntervalSeconds\x120\n" +
 	"\x14telemetry_batch_size\x18\x02 \x01(\rR\x12telemetryBatchSize\x12)\n" +
-	"\x11max_cache_size_mb\x18\x03 \x01(\rR\x0emaxCacheSizeMb\"\xad\x01\n" +
+	"\x11max_cache_size_mb\x18\x03 \x01(\rR\x0emaxCacheSizeMb\x12G\n" +
+	" telemetry_flush_interval_seconds\x18\x04 \x01(\rR\x1dtelemetryFlushIntervalSeconds\"\xad\x01\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12C\n" +
 	"\rloaded_models\x18\x02 \x03(\v2\x1e.fleetml.device.v1.ModelStatusR\floadedModels\x127\n" +

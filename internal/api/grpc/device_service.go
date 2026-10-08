@@ -69,9 +69,10 @@ func (s *DeviceServiceServer) Register(ctx context.Context, req *fleetmlv1.Regis
 		AuthToken:      resp.AuthToken,
 		TokenExpiresAt: resp.TokenExpiresAt.Unix(),
 		Config: &fleetmlv1.DeviceConfig{
-			HeartbeatIntervalSeconds: resp.HeartbeatIntervalSecs,
-			TelemetryBatchSize:       resp.TelemetryBatchSize,
-			MaxCacheSizeMb:           resp.MaxCacheSizeMB,
+			HeartbeatIntervalSeconds:      resp.HeartbeatIntervalSecs,
+			TelemetryBatchSize:            resp.TelemetryBatchSize,
+			TelemetryFlushIntervalSeconds: resp.TelemetryFlushSecs,
+			MaxCacheSizeMb:                resp.MaxCacheSizeMB,
 		},
 	}, nil
 }

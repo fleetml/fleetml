@@ -175,7 +175,8 @@ internal class FleetMLInstance(
     private suspend fun register() {
         val result = registrar.register()
         heartbeat.setInterval(result.heartbeatIntervalSeconds.toLong())
-        telemetryReporter.configure(result.telemetryBatchSize, 0)
+        // The server's DeviceConfig wins over the local defaults.
+        telemetryReporter.configure(result.telemetryBatchSize, result.telemetryFlushIntervalSeconds.toLong())
         callback?.onRegistered(result.deviceId)
         telemetryReporter.onReconnected()
     }

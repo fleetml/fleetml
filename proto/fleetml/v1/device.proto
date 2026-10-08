@@ -50,10 +50,12 @@ message RefreshTokenResponse {
   int64 token_expires_at = 2;
 }
 
+// Settings the SDK applies after registering.
 message DeviceConfig {
   uint32 heartbeat_interval_seconds = 1;
   uint32 telemetry_batch_size = 2;
   uint32 max_cache_size_mb = 3;
+  uint32 telemetry_flush_interval_seconds = 4;
 }
 
 message HeartbeatRequest {
