@@ -22,7 +22,8 @@ deployments of the same model are superseded. Consequences:
 - a device never receives two versions of the same model.
 
 Each assignment carries `model_id`, `version_id`, the version string, a
-presigned download URL (valid 1 hour) and the blob's sha256. Devices report
+presigned download URL (valid 1 hour), the blob's sha256 and its signature
+([artifact signing](#artifact-signing)). Devices report
 what they have loaded in the next heartbeat; the server answers with `LOAD`,
 `UPDATE` (same model, other version) or `UNLOAD`.
 
@@ -35,6 +36,42 @@ variant becomes `FAILED` and the API returns `422 INTEGRITY_ERROR`; upload the
 right bytes and finalize again. Only `READY` variants are ever assigned, and a
 deployment or experiment for a version without a READY variant is rejected with
 `422 NOT_DEPLOYABLE`.
+
+### Artifact signing
+
+Every project has an ed25519 signing key, created with its first published
+variant (or by `POST /projects/{id}/signing-key`). When a variant is finalized,
+after its sha256 is checked, the server signs
+
+```text
+fleetml-artifact-v1\n<model_id>\n<version>\n<sha256, lowercase hex>
+```
+
+with the project's key and stores the signature. Devices receive the
+project's public keys with `Register` and every heartbeat (`signing_keys`),
+and each assignment carries `signature` and `signing_key_id`. Before
+downloading or activating a model, the Android and iOS SDKs and the Linux
+agent verify the signature; if it does not verify, they keep the current
+version and report `SIGNATURE_INVALID`, which counts against a canary's health
+gate like `MODEL_LOAD_FAILED`. A model file, hash or version changed after
+publishing, in the object store or in the database, is therefore rejected on
+the device.
+
+The private keys are stored encrypted with a key derived from
+`SIGNING_MASTER_KEY` ([CONFIG.md](CONFIG.md#required)); variants published
+before signing existed are signed when the server starts.
+
+```bash
+api GET  /api/v1/projects/$P/signing-key                       # the keys devices accept, active first
+api POST /api/v1/projects/$P/signing-key/rotate '{"grace":"24h"}'
+```
+
+Rotating creates a new active key and signs every READY variant again with
+it, but only those whose current signature verifies with the old key. The old
+key stays in `signing_keys` with `not_after` set to the end of the grace
+period (`0s` to `720h`, default `24h`): until then devices still accept what it
+signed, such as a download that started before the rotation; after it they
+reject it, even offline.
 
 ## Strategies
 

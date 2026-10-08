@@ -15,6 +15,7 @@ import (
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 	"github.com/fleetml/fleetml/internal/device"
+	"github.com/fleetml/fleetml/internal/signing"
 )
 
 type contextKey string
@@ -28,12 +29,42 @@ const (
 type DeviceServiceServer struct {
 	fleetmlv1.UnimplementedDeviceServiceServer
 	service *device.Service
+	signing SigningSource
 	logger  *slog.Logger
+}
+
+// SigningSource provides the project keys and variant signatures devices
+// verify (implemented by *signing.Keyring).
+type SigningSource interface {
+	DeviceKeys(ctx context.Context, deviceID string) ([]signing.Key, error)
+	VariantSignatures(ctx context.Context, variantIDs []string) (map[string]signing.Signature, error)
 }
 
 // NewDeviceServiceServer creates a new DeviceServiceServer.
 func NewDeviceServiceServer(svc *device.Service, logger *slog.Logger) *DeviceServiceServer {
 	return &DeviceServiceServer{service: svc, logger: logger}
+}
+
+// SetSigning delivers signing keys and artifact signatures to devices.
+func (s *DeviceServiceServer) SetSigning(src SigningSource) { s.signing = src }
+
+func (s *DeviceServiceServer) signingKeys(ctx context.Context, deviceID string) ([]*fleetmlv1.SigningKey, error) {
+	if s.signing == nil {
+		return nil, nil
+	}
+	keys, err := s.signing.DeviceKeys(ctx, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*fleetmlv1.SigningKey, 0, len(keys))
+	for _, k := range keys {
+		pk := &fleetmlv1.SigningKey{KeyId: k.KeyID, PublicKey: k.PublicKey}
+		if k.NotAfter != nil {
+			pk.NotAfter = k.NotAfter.Unix()
+		}
+		out = append(out, pk)
+	}
+	return out, nil
 }
 
 // Register handles device registration.
@@ -64,11 +95,17 @@ func (s *DeviceServiceServer) Register(ctx context.Context, req *fleetmlv1.Regis
 		return nil, status.Error(codes.Internal, "registration failed")
 	}
 
+	keys, err := s.signingKeys(ctx, resp.DeviceID)
+	if err != nil {
+		s.logger.Error("loading signing keys failed", "device_id", resp.DeviceID, "error", err)
+		return nil, status.Error(codes.Internal, "registration failed")
+	}
 	return &fleetmlv1.RegisterResponse{
 		DeviceId:       resp.DeviceID,
 		AuthToken:      resp.AuthToken,
 		TokenExpiresAt: resp.TokenExpiresAt.Unix(),
 		Config:         deviceConfigProto(resp.Config),
+		SigningKeys:    keys,
 	}, nil
 }
 
@@ -150,6 +187,14 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 			Urgent:        a.Urgent,
 		})
 	}
+	keys, err := s.signingKeys(ctx, deviceID.String())
+	if err == nil && s.signing != nil {
+		err = s.attachSignatures(ctx, protoAssignments)
+	}
+	if err != nil {
+		s.logger.Error("loading signatures failed", "device_id", deviceID, "error", err)
+		return nil, status.Error(codes.Internal, "heartbeat failed")
+	}
 
 	protoExperiments := make([]*fleetmlv1.ExperimentAssignment, 0, len(resp.Experiments))
 	for _, e := range resp.Experiments {
@@ -166,7 +211,27 @@ func (s *DeviceServiceServer) Heartbeat(ctx context.Context, req *fleetmlv1.Hear
 		Experiments:          protoExperiments,
 		NextHeartbeatSeconds: resp.NextHeartbeatSeconds,
 		Config:               deviceConfigProto(resp.Config),
+		SigningKeys:          keys,
 	}, nil
+}
+
+func (s *DeviceServiceServer) attachSignatures(ctx context.Context, as []*fleetmlv1.ModelAssignment) error {
+	var ids []string
+	for _, a := range as {
+		if a.VariantId != "" && a.Action != fleetmlv1.ModelAssignment_UNLOAD {
+			ids = append(ids, a.VariantId)
+		}
+	}
+	sigs, err := s.signing.VariantSignatures(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, a := range as {
+		if sig, ok := sigs[a.VariantId]; ok && a.Action != fleetmlv1.ModelAssignment_UNLOAD {
+			a.Signature, a.SigningKeyId = sig.Signature, sig.KeyID
+		}
+	}
+	return nil
 }
 
 // RefreshToken exchanges a token close to expiry for a new one.

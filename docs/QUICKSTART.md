@@ -10,11 +10,11 @@ APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100.
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-export JWT_SECRET=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
+export JWT_SECRET=$(openssl rand -base64 32) SIGNING_MASTER_KEY=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
 curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (Settings → admin API key: $FLEETML_ADMIN_KEY)"
+echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`

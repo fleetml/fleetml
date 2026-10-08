@@ -30,6 +30,7 @@ import (
 	"github.com/fleetml/fleetml/internal/intelligence"
 	"github.com/fleetml/fleetml/internal/metrics"
 	"github.com/fleetml/fleetml/internal/registry"
+	"github.com/fleetml/fleetml/internal/signing"
 	"github.com/fleetml/fleetml/internal/storage"
 	"github.com/fleetml/fleetml/internal/telemetry"
 )
@@ -150,6 +151,16 @@ func run() error {
 	variantRepo := registry.NewVariantRepo(pool)
 	auditLogger := audit.NewLogger(pool)
 	registrySvc := registry.NewService(projectRepo, modelRepo, versionRepo, variantRepo, s3Client, auditLogger, logger)
+	keyring, err := signing.NewKeyring(pool, cfg.SigningMasterKey)
+	if err != nil {
+		return err
+	}
+	registrySvc.SetSigner(keyring)
+	if n, err := keyring.Backfill(ctx); err != nil {
+		return fmt.Errorf("signing published variants: %w", err)
+	} else if n > 0 {
+		slog.Info("signed variants published before artifact signing", "count", n)
+	}
 
 	// Device repositories + service
 	deviceRepo := device.NewDeviceRepo(pool)
@@ -224,6 +235,7 @@ func run() error {
 		return ok
 	}, 10*time.Second)
 	deviceGRPC := grpcapi.NewDeviceServiceServer(deviceSvc, logger)
+	deviceGRPC.SetSigning(keyring)
 	fleetmlv1.RegisterDeviceServiceServer(grpcServer.GRPCServer(), deviceGRPC)
 	telemetryGRPC := grpcapi.NewTelemetryServiceServer(telemetrySvc, logger)
 	fleetmlv1.RegisterTelemetryServiceServer(grpcServer.GRPCServer(), telemetryGRPC)
@@ -259,6 +271,7 @@ func run() error {
 
 	sessionSvc := auth.NewSessionService(auth.NewSessionRepo(pool), apiKeySvc, cfg.JWTSecret, cfg.SessionTTL)
 	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, sessionSvc, cfg.CORSOrigins, logger)
+	restServer.EnableSigning(rest.NewSigningHandler(keyring, logger))
 	restServer.EnableAlertSinks(rest.NewAlertSinkHandler(alertRepo, alerts, smtpCfg.Configured(), logger))
 
 	errCh := make(chan error, 2)

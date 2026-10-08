@@ -27,6 +27,7 @@ go build -o bin/fleetml-e2e-server ./cmd/server
 env DATABASE_URL="$PG_HOST_URL/$DB?sslmode=disable" MIGRATE_ON_START=true \
   S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
   NATS_URL="nats://localhost:${FLEETML_NATS_PORT:-14222}" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
+  SIGNING_MASTER_KEY="$(head -c 32 /dev/urandom | base64)" \
   REST_PORT="$REST_PORT" GRPC_PORT="$GRPC_PORT" FLEETML_ADMIN_KEY="$KEY" CORS_ORIGINS="" \
   DEPLOY_TICK_INTERVAL=1s EXPERIMENT_TICK_INTERVAL=2s LOG_LEVEL=warn LOG_FORMAT=text \
   bin/fleetml-e2e-server >"$LOG" 2>&1 &

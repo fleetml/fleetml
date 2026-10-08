@@ -128,7 +128,7 @@ func (x ModelAssignment_Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelAssignment_Action.Descriptor instead.
 func (ModelAssignment_Action) EnumDescriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{9, 0}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{10, 0}
 }
 
 type RegisterRequest struct {
@@ -263,8 +263,10 @@ type RegisterResponse struct {
 	Config    *DeviceConfig          `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	// Expiry of auth_token, Unix seconds.
 	TokenExpiresAt int64 `protobuf:"varint,4,opt,name=token_expires_at,json=tokenExpiresAt,proto3" json:"token_expires_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The project's artifact signing keys; replace the stored set with them.
+	SigningKeys   []*SigningKey `protobuf:"bytes,5,rep,name=signing_keys,json=signingKeys,proto3" json:"signing_keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RegisterResponse) Reset() {
@@ -325,6 +327,78 @@ func (x *RegisterResponse) GetTokenExpiresAt() int64 {
 	return 0
 }
 
+func (x *RegisterResponse) GetSigningKeys() []*SigningKey {
+	if x != nil {
+		return x.SigningKeys
+	}
+	return nil
+}
+
+// A public key that signs the project's model artifacts (ed25519).
+type SigningKey struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Matches ModelAssignment.signing_key_id.
+	KeyId string `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	// The 32-byte ed25519 public key.
+	PublicKey []byte `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	// For a key being rotated out: Unix seconds after which signatures made
+	// with it must be rejected, even offline. 0 for the current key.
+	NotAfter      int64 `protobuf:"varint,3,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SigningKey) Reset() {
+	*x = SigningKey{}
+	mi := &file_fleetml_v1_device_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SigningKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SigningKey) ProtoMessage() {}
+
+func (x *SigningKey) ProtoReflect() protoreflect.Message {
+	mi := &file_fleetml_v1_device_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SigningKey.ProtoReflect.Descriptor instead.
+func (*SigningKey) Descriptor() ([]byte, []int) {
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SigningKey) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+func (x *SigningKey) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+func (x *SigningKey) GetNotAfter() int64 {
+	if x != nil {
+		return x.NotAfter
+	}
+	return 0
+}
+
 // The current token is sent as "authorization: Bearer <token>" metadata.
 type RefreshTokenRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -334,7 +408,7 @@ type RefreshTokenRequest struct {
 
 func (x *RefreshTokenRequest) Reset() {
 	*x = RefreshTokenRequest{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[2]
+	mi := &file_fleetml_v1_device_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +420,7 @@ func (x *RefreshTokenRequest) String() string {
 func (*RefreshTokenRequest) ProtoMessage() {}
 
 func (x *RefreshTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[2]
+	mi := &file_fleetml_v1_device_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,7 +433,7 @@ func (x *RefreshTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTokenRequest.ProtoReflect.Descriptor instead.
 func (*RefreshTokenRequest) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{2}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{3}
 }
 
 type RefreshTokenResponse struct {
@@ -373,7 +447,7 @@ type RefreshTokenResponse struct {
 
 func (x *RefreshTokenResponse) Reset() {
 	*x = RefreshTokenResponse{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[3]
+	mi := &file_fleetml_v1_device_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -385,7 +459,7 @@ func (x *RefreshTokenResponse) String() string {
 func (*RefreshTokenResponse) ProtoMessage() {}
 
 func (x *RefreshTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[3]
+	mi := &file_fleetml_v1_device_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -398,7 +472,7 @@ func (x *RefreshTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshTokenResponse.ProtoReflect.Descriptor instead.
 func (*RefreshTokenResponse) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{3}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RefreshTokenResponse) GetAuthToken() string {
@@ -434,7 +508,7 @@ type DeviceConfig struct {
 
 func (x *DeviceConfig) Reset() {
 	*x = DeviceConfig{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[4]
+	mi := &file_fleetml_v1_device_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -446,7 +520,7 @@ func (x *DeviceConfig) String() string {
 func (*DeviceConfig) ProtoMessage() {}
 
 func (x *DeviceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[4]
+	mi := &file_fleetml_v1_device_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -459,7 +533,7 @@ func (x *DeviceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceConfig.ProtoReflect.Descriptor instead.
 func (*DeviceConfig) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{4}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeviceConfig) GetHeartbeatIntervalSeconds() uint32 {
@@ -515,7 +589,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[5]
+	mi := &file_fleetml_v1_device_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -527,7 +601,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[5]
+	mi := &file_fleetml_v1_device_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -540,7 +614,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{5}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HeartbeatRequest) GetDeviceId() string {
@@ -576,7 +650,7 @@ type ModelStatus struct {
 
 func (x *ModelStatus) Reset() {
 	*x = ModelStatus{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[6]
+	mi := &file_fleetml_v1_device_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -588,7 +662,7 @@ func (x *ModelStatus) String() string {
 func (*ModelStatus) ProtoMessage() {}
 
 func (x *ModelStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[6]
+	mi := &file_fleetml_v1_device_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -601,7 +675,7 @@ func (x *ModelStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelStatus.ProtoReflect.Descriptor instead.
 func (*ModelStatus) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{6}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ModelStatus) GetModelId() string {
@@ -644,7 +718,7 @@ type DeviceHealth struct {
 
 func (x *DeviceHealth) Reset() {
 	*x = DeviceHealth{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[7]
+	mi := &file_fleetml_v1_device_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -656,7 +730,7 @@ func (x *DeviceHealth) String() string {
 func (*DeviceHealth) ProtoMessage() {}
 
 func (x *DeviceHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[7]
+	mi := &file_fleetml_v1_device_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -669,7 +743,7 @@ func (x *DeviceHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceHealth.ProtoReflect.Descriptor instead.
 func (*DeviceHealth) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{7}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DeviceHealth) GetAvailableRamMb() uint32 {
@@ -706,14 +780,16 @@ type HeartbeatResponse struct {
 	Experiments          []*ExperimentAssignment `protobuf:"bytes,2,rep,name=experiments,proto3" json:"experiments,omitempty"`
 	NextHeartbeatSeconds uint32                  `protobuf:"varint,3,opt,name=next_heartbeat_seconds,json=nextHeartbeatSeconds,proto3" json:"next_heartbeat_seconds,omitempty"`
 	// The current device settings; apply them like the ones from Register.
-	Config        *DeviceConfig `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
+	Config *DeviceConfig `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
+	// The project's artifact signing keys; replace the stored set with them.
+	SigningKeys   []*SigningKey `protobuf:"bytes,5,rep,name=signing_keys,json=signingKeys,proto3" json:"signing_keys,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[8]
+	mi := &file_fleetml_v1_device_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +801,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[8]
+	mi := &file_fleetml_v1_device_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +814,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{8}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *HeartbeatResponse) GetAssignments() []*ModelAssignment {
@@ -769,6 +845,13 @@ func (x *HeartbeatResponse) GetConfig() *DeviceConfig {
 	return nil
 }
 
+func (x *HeartbeatResponse) GetSigningKeys() []*SigningKey {
+	if x != nil {
+		return x.SigningKeys
+	}
+	return nil
+}
+
 type ModelAssignment struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The model (stable across versions). Report it back in ModelStatus.model_id.
@@ -785,14 +868,20 @@ type ModelAssignment struct {
 	VersionId string `protobuf:"bytes,9,opt,name=version_id,json=versionId,proto3" json:"version_id,omitempty"`
 	// Download now on any connected network, ignoring the download policy
 	// (set by the deployment, and on rollbacks).
-	Urgent        bool `protobuf:"varint,10,opt,name=urgent,proto3" json:"urgent,omitempty"`
+	Urgent bool `protobuf:"varint,10,opt,name=urgent,proto3" json:"urgent,omitempty"`
+	// ed25519 signature by the project key signing_key_id over the UTF-8 bytes
+	// "fleetml-artifact-v1\n" + model_id + "\n" + version + "\n" + blob_sha256
+	// (lowercase hex). Verify it before activating the model; on failure report
+	// SIGNATURE_INVALID and keep the current version.
+	Signature     []byte `protobuf:"bytes,11,opt,name=signature,proto3" json:"signature,omitempty"`
+	SigningKeyId  string `protobuf:"bytes,12,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ModelAssignment) Reset() {
 	*x = ModelAssignment{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[9]
+	mi := &file_fleetml_v1_device_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -804,7 +893,7 @@ func (x *ModelAssignment) String() string {
 func (*ModelAssignment) ProtoMessage() {}
 
 func (x *ModelAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[9]
+	mi := &file_fleetml_v1_device_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -817,7 +906,7 @@ func (x *ModelAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelAssignment.ProtoReflect.Descriptor instead.
 func (*ModelAssignment) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{9}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ModelAssignment) GetModelId() string {
@@ -890,6 +979,20 @@ func (x *ModelAssignment) GetUrgent() bool {
 	return false
 }
 
+func (x *ModelAssignment) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *ModelAssignment) GetSigningKeyId() string {
+	if x != nil {
+		return x.SigningKeyId
+	}
+	return ""
+}
+
 // The device's arm in a running experiment. Tag telemetry for
 // model_version_id with experiment_arm_id = arm_id.
 type ExperimentAssignment struct {
@@ -904,7 +1007,7 @@ type ExperimentAssignment struct {
 
 func (x *ExperimentAssignment) Reset() {
 	*x = ExperimentAssignment{}
-	mi := &file_fleetml_v1_device_proto_msgTypes[10]
+	mi := &file_fleetml_v1_device_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -916,7 +1019,7 @@ func (x *ExperimentAssignment) String() string {
 func (*ExperimentAssignment) ProtoMessage() {}
 
 func (x *ExperimentAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_fleetml_v1_device_proto_msgTypes[10]
+	mi := &file_fleetml_v1_device_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -929,7 +1032,7 @@ func (x *ExperimentAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExperimentAssignment.ProtoReflect.Descriptor instead.
 func (*ExperimentAssignment) Descriptor() ([]byte, []int) {
-	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{10}
+	return file_fleetml_v1_device_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ExperimentAssignment) GetExperimentId() string {
@@ -982,13 +1085,20 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x0eenrollment_key\x18\v \x01(\tR\renrollmentKey\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb1\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf3\x01\n" +
 	"\x10RegisterResponse\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1d\n" +
 	"\n" +
 	"auth_token\x18\x02 \x01(\tR\tauthToken\x127\n" +
 	"\x06config\x18\x03 \x01(\v2\x1f.fleetml.device.v1.DeviceConfigR\x06config\x12(\n" +
-	"\x10token_expires_at\x18\x04 \x01(\x03R\x0etokenExpiresAt\"\x15\n" +
+	"\x10token_expires_at\x18\x04 \x01(\x03R\x0etokenExpiresAt\x12@\n" +
+	"\fsigning_keys\x18\x05 \x03(\v2\x1d.fleetml.device.v1.SigningKeyR\vsigningKeys\"_\n" +
+	"\n" +
+	"SigningKey\x12\x15\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x1b\n" +
+	"\tnot_after\x18\x03 \x01(\x03R\bnotAfter\"\x15\n" +
 	"\x13RefreshTokenRequest\"_\n" +
 	"\x14RefreshTokenResponse\x12\x1d\n" +
 	"\n" +
@@ -1015,12 +1125,13 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\x10available_ram_mb\x18\x01 \x01(\rR\x0eavailableRamMb\x12'\n" +
 	"\x0fbattery_percent\x18\x02 \x01(\x02R\x0ebatteryPercent\x12*\n" +
 	"\x11cpu_usage_percent\x18\x03 \x01(\x02R\x0fcpuUsagePercent\x126\n" +
-	"\x17available_storage_bytes\x18\x04 \x01(\x04R\x15availableStorageBytes\"\x93\x02\n" +
+	"\x17available_storage_bytes\x18\x04 \x01(\x04R\x15availableStorageBytes\"\xd5\x02\n" +
 	"\x11HeartbeatResponse\x12D\n" +
 	"\vassignments\x18\x01 \x03(\v2\".fleetml.device.v1.ModelAssignmentR\vassignments\x12I\n" +
 	"\vexperiments\x18\x02 \x03(\v2'.fleetml.device.v1.ExperimentAssignmentR\vexperiments\x124\n" +
 	"\x16next_heartbeat_seconds\x18\x03 \x01(\rR\x14nextHeartbeatSeconds\x127\n" +
-	"\x06config\x18\x04 \x01(\v2\x1f.fleetml.device.v1.DeviceConfigR\x06config\"\xae\x03\n" +
+	"\x06config\x18\x04 \x01(\v2\x1f.fleetml.device.v1.DeviceConfigR\x06config\x12@\n" +
+	"\fsigning_keys\x18\x05 \x03(\v2\x1d.fleetml.device.v1.SigningKeyR\vsigningKeys\"\xf2\x03\n" +
 	"\x0fModelAssignment\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12\x1d\n" +
 	"\n" +
@@ -1036,7 +1147,9 @@ const file_fleetml_v1_device_proto_rawDesc = "" +
 	"\n" +
 	"version_id\x18\t \x01(\tR\tversionId\x12\x16\n" +
 	"\x06urgent\x18\n" +
-	" \x01(\bR\x06urgent\"B\n" +
+	" \x01(\bR\x06urgent\x12\x1c\n" +
+	"\tsignature\x18\v \x01(\fR\tsignature\x12$\n" +
+	"\x0esigning_key_id\x18\f \x01(\tR\fsigningKeyId\"B\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04LOAD\x10\x01\x12\n" +
@@ -1072,44 +1185,47 @@ func file_fleetml_v1_device_proto_rawDescGZIP() []byte {
 }
 
 var file_fleetml_v1_device_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_fleetml_v1_device_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_fleetml_v1_device_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_fleetml_v1_device_proto_goTypes = []any{
 	(DownloadPolicy)(0),          // 0: fleetml.device.v1.DownloadPolicy
 	(ModelAssignment_Action)(0),  // 1: fleetml.device.v1.ModelAssignment.Action
 	(*RegisterRequest)(nil),      // 2: fleetml.device.v1.RegisterRequest
 	(*RegisterResponse)(nil),     // 3: fleetml.device.v1.RegisterResponse
-	(*RefreshTokenRequest)(nil),  // 4: fleetml.device.v1.RefreshTokenRequest
-	(*RefreshTokenResponse)(nil), // 5: fleetml.device.v1.RefreshTokenResponse
-	(*DeviceConfig)(nil),         // 6: fleetml.device.v1.DeviceConfig
-	(*HeartbeatRequest)(nil),     // 7: fleetml.device.v1.HeartbeatRequest
-	(*ModelStatus)(nil),          // 8: fleetml.device.v1.ModelStatus
-	(*DeviceHealth)(nil),         // 9: fleetml.device.v1.DeviceHealth
-	(*HeartbeatResponse)(nil),    // 10: fleetml.device.v1.HeartbeatResponse
-	(*ModelAssignment)(nil),      // 11: fleetml.device.v1.ModelAssignment
-	(*ExperimentAssignment)(nil), // 12: fleetml.device.v1.ExperimentAssignment
-	nil,                          // 13: fleetml.device.v1.RegisterRequest.LabelsEntry
+	(*SigningKey)(nil),           // 4: fleetml.device.v1.SigningKey
+	(*RefreshTokenRequest)(nil),  // 5: fleetml.device.v1.RefreshTokenRequest
+	(*RefreshTokenResponse)(nil), // 6: fleetml.device.v1.RefreshTokenResponse
+	(*DeviceConfig)(nil),         // 7: fleetml.device.v1.DeviceConfig
+	(*HeartbeatRequest)(nil),     // 8: fleetml.device.v1.HeartbeatRequest
+	(*ModelStatus)(nil),          // 9: fleetml.device.v1.ModelStatus
+	(*DeviceHealth)(nil),         // 10: fleetml.device.v1.DeviceHealth
+	(*HeartbeatResponse)(nil),    // 11: fleetml.device.v1.HeartbeatResponse
+	(*ModelAssignment)(nil),      // 12: fleetml.device.v1.ModelAssignment
+	(*ExperimentAssignment)(nil), // 13: fleetml.device.v1.ExperimentAssignment
+	nil,                          // 14: fleetml.device.v1.RegisterRequest.LabelsEntry
 }
 var file_fleetml_v1_device_proto_depIdxs = []int32{
-	13, // 0: fleetml.device.v1.RegisterRequest.labels:type_name -> fleetml.device.v1.RegisterRequest.LabelsEntry
-	6,  // 1: fleetml.device.v1.RegisterResponse.config:type_name -> fleetml.device.v1.DeviceConfig
-	0,  // 2: fleetml.device.v1.DeviceConfig.download_policy:type_name -> fleetml.device.v1.DownloadPolicy
-	8,  // 3: fleetml.device.v1.HeartbeatRequest.loaded_models:type_name -> fleetml.device.v1.ModelStatus
-	9,  // 4: fleetml.device.v1.HeartbeatRequest.health:type_name -> fleetml.device.v1.DeviceHealth
-	11, // 5: fleetml.device.v1.HeartbeatResponse.assignments:type_name -> fleetml.device.v1.ModelAssignment
-	12, // 6: fleetml.device.v1.HeartbeatResponse.experiments:type_name -> fleetml.device.v1.ExperimentAssignment
-	6,  // 7: fleetml.device.v1.HeartbeatResponse.config:type_name -> fleetml.device.v1.DeviceConfig
-	1,  // 8: fleetml.device.v1.ModelAssignment.action:type_name -> fleetml.device.v1.ModelAssignment.Action
-	2,  // 9: fleetml.device.v1.DeviceService.Register:input_type -> fleetml.device.v1.RegisterRequest
-	7,  // 10: fleetml.device.v1.DeviceService.Heartbeat:input_type -> fleetml.device.v1.HeartbeatRequest
-	4,  // 11: fleetml.device.v1.DeviceService.RefreshToken:input_type -> fleetml.device.v1.RefreshTokenRequest
-	3,  // 12: fleetml.device.v1.DeviceService.Register:output_type -> fleetml.device.v1.RegisterResponse
-	10, // 13: fleetml.device.v1.DeviceService.Heartbeat:output_type -> fleetml.device.v1.HeartbeatResponse
-	5,  // 14: fleetml.device.v1.DeviceService.RefreshToken:output_type -> fleetml.device.v1.RefreshTokenResponse
-	12, // [12:15] is the sub-list for method output_type
-	9,  // [9:12] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	14, // 0: fleetml.device.v1.RegisterRequest.labels:type_name -> fleetml.device.v1.RegisterRequest.LabelsEntry
+	7,  // 1: fleetml.device.v1.RegisterResponse.config:type_name -> fleetml.device.v1.DeviceConfig
+	4,  // 2: fleetml.device.v1.RegisterResponse.signing_keys:type_name -> fleetml.device.v1.SigningKey
+	0,  // 3: fleetml.device.v1.DeviceConfig.download_policy:type_name -> fleetml.device.v1.DownloadPolicy
+	9,  // 4: fleetml.device.v1.HeartbeatRequest.loaded_models:type_name -> fleetml.device.v1.ModelStatus
+	10, // 5: fleetml.device.v1.HeartbeatRequest.health:type_name -> fleetml.device.v1.DeviceHealth
+	12, // 6: fleetml.device.v1.HeartbeatResponse.assignments:type_name -> fleetml.device.v1.ModelAssignment
+	13, // 7: fleetml.device.v1.HeartbeatResponse.experiments:type_name -> fleetml.device.v1.ExperimentAssignment
+	7,  // 8: fleetml.device.v1.HeartbeatResponse.config:type_name -> fleetml.device.v1.DeviceConfig
+	4,  // 9: fleetml.device.v1.HeartbeatResponse.signing_keys:type_name -> fleetml.device.v1.SigningKey
+	1,  // 10: fleetml.device.v1.ModelAssignment.action:type_name -> fleetml.device.v1.ModelAssignment.Action
+	2,  // 11: fleetml.device.v1.DeviceService.Register:input_type -> fleetml.device.v1.RegisterRequest
+	8,  // 12: fleetml.device.v1.DeviceService.Heartbeat:input_type -> fleetml.device.v1.HeartbeatRequest
+	5,  // 13: fleetml.device.v1.DeviceService.RefreshToken:input_type -> fleetml.device.v1.RefreshTokenRequest
+	3,  // 14: fleetml.device.v1.DeviceService.Register:output_type -> fleetml.device.v1.RegisterResponse
+	11, // 15: fleetml.device.v1.DeviceService.Heartbeat:output_type -> fleetml.device.v1.HeartbeatResponse
+	6,  // 16: fleetml.device.v1.DeviceService.RefreshToken:output_type -> fleetml.device.v1.RefreshTokenResponse
+	14, // [14:17] is the sub-list for method output_type
+	11, // [11:14] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_fleetml_v1_device_proto_init() }
@@ -1123,7 +1239,7 @@ func file_fleetml_v1_device_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fleetml_v1_device_proto_rawDesc), len(file_fleetml_v1_device_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

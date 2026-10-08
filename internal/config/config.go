@@ -28,6 +28,9 @@ type Config struct {
 	RESTPort       int  `envconfig:"REST_PORT" default:"18080"`
 	// JWTSecret signs device tokens; at least MinJWTSecretLength characters.
 	JWTSecret string `envconfig:"JWT_SECRET" required:"true"`
+	// SigningMasterKey encrypts the projects' artifact signing keys; at least
+	// MinJWTSecretLength characters. Changing it makes the stored keys unusable.
+	SigningMasterKey string `envconfig:"SIGNING_MASTER_KEY" required:"true"`
 	// DeviceTokenTTL is the lifetime of device tokens (refreshable in their last 7 days).
 	DeviceTokenTTL time.Duration `envconfig:"DEVICE_TOKEN_TTL" default:"720h"`
 	LogLevel       string        `envconfig:"LOG_LEVEL" default:"info"`
@@ -101,6 +104,11 @@ func (c Config) validate() error {
 	}
 	if len(c.JWTSecret) < MinJWTSecretLength {
 		fail("JWT_SECRET must be at least %d characters, got %d (generate one with: openssl rand -base64 32)", MinJWTSecretLength, len(c.JWTSecret))
+	}
+	if len(c.SigningMasterKey) < MinJWTSecretLength {
+		fail("SIGNING_MASTER_KEY must be at least %d characters, got %d (generate one with: openssl rand -base64 32)", MinJWTSecretLength, len(c.SigningMasterKey))
+	} else if c.SigningMasterKey == c.JWTSecret {
+		fail("SIGNING_MASTER_KEY must differ from JWT_SECRET")
 	}
 	for name, v := range map[string]string{"S3_ENDPOINT": c.S3Endpoint, "S3_PUBLIC_ENDPOINT": c.S3PublicEndpoint} {
 		if strings.Contains(v, "://") || strings.Contains(v, "/") {

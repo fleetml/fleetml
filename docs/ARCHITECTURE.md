@@ -65,6 +65,7 @@ flowchart LR
 | `internal/drift` | PSI drift checks and history |
 | `internal/alert` | Rollback and drift alerts on NATS and to per-project sinks (webhook, Slack, email) with retries and a delivery log |
 | `internal/auth` | Admin API keys, dashboard sessions and enrollment keys |
+| `internal/signing`, `internal/artifact` | Per-project ed25519 artifact signing keys; what is signed and how a device verifies it |
 | `internal/health`, `internal/metrics` | Readiness checks and Prometheus metrics |
 | `internal/agent`, `cmd/fleetml-agent` | The Linux device agent (a client of the gRPC API, built separately) |
 
@@ -267,6 +268,15 @@ device agent) must too:
   while charging; `UNMETERED_ONLY`; `ANY_NETWORK`), unless the assignment is
   `urgent`, which needs only a connection. Resume interrupted downloads with an
   HTTP `Range` request and check the sha256 before using the file.
+- **Signatures.** Keep the `signing_keys` from `Register` and every heartbeat
+  (replace the stored set each time) and, before downloading an assignment,
+  verify its `signature` with the key `signing_key_id` over
+  `fleetml-artifact-v1\n<model_id>\n<version>\n<sha256 lowercase>`. Reject it
+  if the key is unknown, its `not_after` has passed, or the signature does not
+  verify; then keep the current version and report `SIGNATURE_INVALID`. Accept
+  unsigned assignments only while no keys are known (a server without
+  signing). `internal/artifact/testdata/vectors.json` has cases every client
+  must agree on.
 - **Activation.** Validate a downloaded model before switching to it; on
   failure keep the current version (last-known-good) and report
   `MODEL_LOAD_FAILED`. A replacement arrives as `UPDATE` (new) plus `UNLOAD`

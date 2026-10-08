@@ -73,6 +73,9 @@ services:
       NATS_URL: nats://nats:4222
       # Required, at least 32 characters: export JWT_SECRET=$(openssl rand -base64 32)
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to at least 32 random characters, e.g. export JWT_SECRET=$$(openssl rand -base64 32)}
+      # Required, at least 32 characters, different from JWT_SECRET; keep it safe:
+      # it encrypts the artifact signing keys. export SIGNING_MASTER_KEY=$(openssl rand -base64 32)
+      SIGNING_MASTER_KEY: ${SIGNING_MASTER_KEY:?set SIGNING_MASTER_KEY to at least 32 random characters, e.g. export SIGNING_MASTER_KEY=$$(openssl rand -base64 32)}
       GRPC_PORT: "19090"
       REST_PORT: "18080"
       LOG_LEVEL: info

@@ -62,7 +62,16 @@ type Service struct {
 	storage  StorageClient
 	audit    AuditLogger
 	logger   *slog.Logger
+	signer   VariantSigner
 }
+
+// VariantSigner signs a verified variant (implemented by *signing.Keyring).
+type VariantSigner interface {
+	SignVariant(ctx context.Context, variantID string) error
+}
+
+// SetSigner makes FinalizeVariant sign every variant before it becomes READY.
+func (s *Service) SetSigner(signer VariantSigner) { s.signer = signer }
 
 // NewService creates a new registry service.
 func NewService(
@@ -480,6 +489,12 @@ func (s *Service) FinalizeVariant(ctx context.Context, id uuid.UUID) (*RegistryV
 		return nil, s.failVariant(ctx, v, fmt.Sprintf("uploaded blob sha256 %s does not match declared %s", actual, v.BlobSHA256))
 	}
 
+	// Sign before READY: devices only ever see signed variants.
+	if s.signer != nil {
+		if err := s.signer.SignVariant(ctx, v.ID.String()); err != nil {
+			return nil, fmt.Errorf("signing variant: %w", err)
+		}
+	}
 	if err := s.variants.UpdateStatus(ctx, v.ID, VariantReady); err != nil {
 		return nil, fmt.Errorf("marking variant ready: %w", err)
 	}

@@ -22,7 +22,7 @@ func NewTelemetryAdapter(pool *pgxpool.Pool) *TelemetryAdapter {
 }
 
 // errorEvent matches events that count as failures for the health gate.
-const errorEvent = `(event_type IN ('ERROR', 'OOM', 'MODEL_LOAD_FAILED') OR (error_message IS NOT NULL AND error_message <> ''))`
+const errorEvent = `(event_type IN ('ERROR', 'OOM', 'MODEL_LOAD_FAILED', 'SIGNATURE_INVALID') OR (error_message IS NOT NULL AND error_message <> ''))`
 
 func (a *TelemetryAdapter) CohortStats(ctx context.Context, modelVersionID uuid.UUID, deviceIDs []uuid.UUID, since time.Time) (*DeploymentStats, error) {
 	stats := &DeploymentStats{}

@@ -106,6 +106,12 @@ env-file:
 		echo "Created .env from .env.example (REST :18080, gRPC :19090, infra on 15xxx host ports)"; \
 		echo "Your admin API key is FLEETML_ADMIN_KEY in .env (used on first start only)"; \
 	fi
+	@# .env files from before v0.3.0 have no signing master key yet.
+	@if ! grep -q '^SIGNING_MASTER_KEY=.' .env; then \
+		sed -i.bak '/^SIGNING_MASTER_KEY=$$/d' .env && rm -f .env.bak; \
+		printf 'SIGNING_MASTER_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64 | tr -d '\n')" >> .env; \
+		echo "Added a random SIGNING_MASTER_KEY to .env"; \
+	fi
 
 dev: env-file docker-up
 	@echo "Waiting for database migrations (compose 'migrate' service)..."

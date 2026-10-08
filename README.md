@@ -79,7 +79,7 @@ APIs use 18080 (REST) and 19090 (gRPC).
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-export JWT_SECRET=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
+export JWT_SECRET=$(openssl rand -base64 32) SIGNING_MASTER_KEY=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
 curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
@@ -136,6 +136,7 @@ the test scripts. The essentials:
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | *(required)* | Object store credentials; `S3_ENDPOINT` defaults to `localhost:19000` |
 | `S3_PUBLIC_ENDPOINT` | *(unset)* | Where devices and the CLI reach the object store, if not `S3_ENDPOINT` |
 | `JWT_SECRET` | *(required)* | Signs device tokens; at least 32 characters |
+| `SIGNING_MASTER_KEY` | *(required)* | Encrypts the projects' artifact signing keys; at least 32 characters, different from `JWT_SECRET`; keep it |
 | `FLEETML_ADMIN_KEY` | *(generated)* | First admin API key; if unset, one is generated and logged once |
 | `REST_PORT`, `GRPC_PORT` | `18080`, `19090` | REST API and device gRPC API |
 | `NATS_URL` | `nats://localhost:14222` | Telemetry pipeline and alerts |

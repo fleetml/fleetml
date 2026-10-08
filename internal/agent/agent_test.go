@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
+	"github.com/fleetml/fleetml/internal/artifact"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -200,4 +202,41 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	assert.Empty(t, a.ActiveModels())
 	_, err = os.Stat(current)
 	assert.True(t, os.IsNotExist(err))
+}
+
+// A model whose signature does not verify is not downloaded or activated,
+// and SIGNATURE_INVALID is reported.
+func TestInstallRejectsBadSignature(t *testing.T) {
+	body := []byte("signed model")
+	downloads := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { downloads++; _, _ = w.Write(body) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: dir}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	pub := priv.Public().(ed25519.PublicKey)
+	require.NoError(t, a.store.Update(func(s *State) {
+		s.SigningKeys = []artifact.Key{{KeyID: artifact.KeyID(pub), PublicKey: pub}}
+	}))
+	as := &fleetmlv1.ModelAssignment{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1", VariantId: "var-1",
+		DownloadUrl: srv.URL, BlobSha256: shaHex(body), Action: fleetmlv1.ModelAssignment_LOAD, SigningKeyId: artifact.KeyID(pub)}
+	as.Signature = ed25519.Sign(priv, artifact.Message("m1", "1.0.0", shaHex([]byte("another file"))))
+
+	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as})
+	assert.Zero(t, downloads, "nothing is downloaded")
+	assert.Empty(t, a.ActiveModels())
+	events := a.queue.Peek(10)
+	require.NotEmpty(t, events)
+	assert.Equal(t, fleetmlv1.TelemetryEvent_SIGNATURE_INVALID, events[len(events)-1].Type)
+
+	// Correctly signed, it installs (after the failure cooldown).
+	as.Signature = ed25519.Sign(priv, artifact.Message("m1", "1.0.0", shaHex(body)))
+	require.NoError(t, a.store.Update(func(s *State) { delete(s.Failed, "var-1") }))
+	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as})
+	require.Len(t, a.ActiveModels(), 1)
+	assert.Equal(t, 1, downloads)
 }

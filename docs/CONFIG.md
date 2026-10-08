@@ -7,7 +7,8 @@ missing or invalid variable.
 ## Server
 
 `.env.example` is a ready-to-use development set; `make dev` copies it to
-`.env` and fills in a random `JWT_SECRET` and `FLEETML_ADMIN_KEY`.
+`.env` and fills in a random `JWT_SECRET`, `SIGNING_MASTER_KEY` and
+`FLEETML_ADMIN_KEY` (and adds a `SIGNING_MASTER_KEY` to an older `.env`).
 
 ### Required
 
@@ -16,6 +17,7 @@ missing or invalid variable.
 | `DATABASE_URL` | Postgres 16 + TimescaleDB connection string, e.g. `postgres://fleetml:fleetml_dev@localhost:15432/fleetml?sslmode=disable` |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | Credentials for the S3-compatible object store that holds model files |
 | `JWT_SECRET` | HMAC secret that signs device tokens and derives the dashboard's CSRF tokens. At least 32 characters (`openssl rand -base64 32`). Changing it invalidates every device token; devices then re-register with their enrollment key |
+| `SIGNING_MASTER_KEY` | Encrypts each project's ed25519 artifact signing key (AES-256-GCM with a key derived by HKDF-SHA256). At least 32 characters and different from `JWT_SECRET`. Back it up with the database: if it changes or is lost, the stored signing keys cannot be decrypted and publishing fails; [rotate](ROLLOUTS.md#artifact-signing) after restoring it |
 
 ### Network and storage
 
@@ -105,7 +107,8 @@ NATS) publishes its services on these host ports:
 `deploy/docker-compose.prod.yml` (server, dashboard and their dependencies)
 publishes the dashboard on `:80`, the REST and gRPC APIs on `:18080` and
 `:19090`, and the object store on `FLEETML_S3_PUBLIC_PORT` (`19100`, so it can
-run next to the dev stack). It reads `JWT_SECRET` (required),
+run next to the dev stack). It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
+(required),
 `FLEETML_ADMIN_KEY` (optional) and `S3_PUBLIC_ENDPOINT` (default
 `localhost:19100`; set it to the object store's public `host:port` when
 devices are not on this machine) from the shell.

@@ -23,6 +23,8 @@ func minimalEnv(t *testing.T) {
 		"S3_ACCESS_KEY": "key",
 		"S3_SECRET_KEY": "secret",
 		"JWT_SECRET":    "test-secret-at-least-32-characters",
+		// Distinct from JWT_SECRET, as the validation requires.
+		"SIGNING_MASTER_KEY": "test-signing-master-key-32-characters",
 	})
 }
 
@@ -77,13 +79,14 @@ func TestLoad_Invalid(t *testing.T) {
 		"DEVICE_BACKGROUND_HEARTBEAT_INTERVAL": "5m",
 		"DEVICE_DOWNLOAD_POLICY":               "wifi",
 		"DASHBOARD_URL":                        "fleet.example.com",
+		"SIGNING_MASTER_KEY":                   "short",
 		"SMTP_HOST":                            "smtp.example.com",
 	})
 	_, err := Load()
 	require.Error(t, err)
 	for _, name := range []string{"JWT_SECRET must be at least 32", "S3_ENDPOINT must be host:port", "S3_PUBLIC_ENDPOINT must be host:port",
 		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL", "DEVICE_BACKGROUND_HEARTBEAT_INTERVAL", "DEVICE_DOWNLOAD_POLICY",
-		"DASHBOARD_URL", "SMTP_HOST and SMTP_FROM"} {
+		"DASHBOARD_URL", "SMTP_HOST and SMTP_FROM", "SIGNING_MASTER_KEY must be at least"} {
 		assert.ErrorContains(t, err, name)
 	}
 }

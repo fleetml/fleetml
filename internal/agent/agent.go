@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
+	"github.com/fleetml/fleetml/internal/artifact"
 )
 
 // AgentVersion is the agent's version, reported at registration.
@@ -175,6 +176,7 @@ func (a *Agent) register(ctx context.Context) error {
 	if err := a.store.Update(func(s *State) {
 		s.DeviceID, s.Token, s.Signature = resp.DeviceId, resp.AuthToken, sig
 		s.TokenExpires, s.TokenIssued = time.Unix(resp.TokenExpiresAt, 0), a.now()
+		s.SigningKeys = signingKeys(resp.SigningKeys)
 	}); err != nil {
 		return err
 	}
@@ -213,6 +215,8 @@ func (a *Agent) heartbeat(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Keys come before assignments: an assignment may be signed by a new key.
+	_ = a.store.Update(func(s *State) { s.SigningKeys = signingKeys(resp.SigningKeys) })
 	if resp.Config != nil {
 		a.applyConfig(resp.Config)
 	} else if resp.NextHeartbeatSeconds > 0 {
@@ -329,6 +333,16 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		return
 	}
 	if !failedAt.IsZero() && a.now().Sub(failedAt) < failedCooldown {
+		return
+	}
+	// The signature covers the sha256 the download is checked against, so a
+	// model that fails it is not even downloaded.
+	var keys []artifact.Key
+	a.store.Read(func(s *State) { keys = s.SigningKeys })
+	if err := artifact.Verify(keys, as.SigningKeyId, as.Signature, as.ModelId, as.Version, as.BlobSha256, a.now()); err != nil {
+		a.log.Warn("model signature rejected; keeping the current version", "model", as.ModelName, "version", as.Version, "error", err)
+		_ = a.store.Update(func(s *State) { s.Failed[as.VariantId] = a.now() })
+		a.report(as.VersionId, fleetmlv1.TelemetryEvent_SIGNATURE_INVALID, 0, 0, "", err.Error())
 		return
 	}
 	dir := filepath.Join(a.cfg.ModelsDir, safeName(as.ModelName), safeName(as.Version)+"-"+safeName(shortID(as.VariantId)))
@@ -530,4 +544,12 @@ func (a *Agent) flush(ctx context.Context) bool {
 			a.log.Warn("trimming the telemetry queue failed", "error", err)
 		}
 	}
+}
+
+func signingKeys(in []*fleetmlv1.SigningKey) []artifact.Key {
+	out := make([]artifact.Key, 0, len(in))
+	for _, k := range in {
+		out = append(out, artifact.Key{KeyID: k.KeyId, PublicKey: k.PublicKey, NotAfter: k.NotAfter})
+	}
+	return out
 }

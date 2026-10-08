@@ -39,6 +39,19 @@ message RegisterResponse {
   DeviceConfig config = 3;
   // Expiry of auth_token, Unix seconds.
   int64 token_expires_at = 4;
+  // The project's artifact signing keys; replace the stored set with them.
+  repeated SigningKey signing_keys = 5;
+}
+
+// A public key that signs the project's model artifacts (ed25519).
+message SigningKey {
+  // Matches ModelAssignment.signing_key_id.
+  string key_id = 1;
+  // The 32-byte ed25519 public key.
+  bytes public_key = 2;
+  // For a key being rotated out: Unix seconds after which signatures made
+  // with it must be rejected, even offline. 0 for the current key.
+  int64 not_after = 3;
 }
 
 // The current token is sent as "authorization: Bearer <token>" metadata.
@@ -103,6 +116,8 @@ message HeartbeatResponse {
   uint32 next_heartbeat_seconds = 3;
   // The current device settings; apply them like the ones from Register.
   DeviceConfig config = 4;
+  // The project's artifact signing keys; replace the stored set with them.
+  repeated SigningKey signing_keys = 5;
 }
 
 message ModelAssignment {
@@ -121,6 +136,12 @@ message ModelAssignment {
   // Download now on any connected network, ignoring the download policy
   // (set by the deployment, and on rollbacks).
   bool urgent = 10;
+  // ed25519 signature by the project key signing_key_id over the UTF-8 bytes
+  // "fleetml-artifact-v1\n" + model_id + "\n" + version + "\n" + blob_sha256
+  // (lowercase hex). Verify it before activating the model; on failure report
+  // SIGNATURE_INVALID and keep the current version.
+  bytes signature = 11;
+  string signing_key_id = 12;
 
   enum Action {
     ACTION_UNSPECIFIED = 0;

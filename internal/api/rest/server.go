@@ -120,6 +120,11 @@ func (s *Server) registerRoutes() {
 	}
 }
 
+// EnableSigning adds the signing key routes; call it before serving.
+func (s *Server) EnableSigning(h *SigningHandler) {
+	h.RegisterRoutes(s.api)
+}
+
 // EnableAlertSinks adds the alert sink routes; call it before serving.
 func (s *Server) EnableAlertSinks(h *AlertSinkHandler) {
 	h.RegisterRoutes(s.api)

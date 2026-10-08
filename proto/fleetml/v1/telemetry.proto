@@ -33,6 +33,8 @@ message TelemetryEvent {
     OOM = 4;
     PREDICTION_DRIFT = 5;
     ERROR = 6;
+    // A downloaded model's signature did not verify; it was not activated.
+    SIGNATURE_INVALID = 7;
   }
 }
 

@@ -31,6 +31,8 @@ const (
 	TelemetryEvent_OOM                    TelemetryEvent_EventType = 4
 	TelemetryEvent_PREDICTION_DRIFT       TelemetryEvent_EventType = 5
 	TelemetryEvent_ERROR                  TelemetryEvent_EventType = 6
+	// A downloaded model's signature did not verify; it was not activated.
+	TelemetryEvent_SIGNATURE_INVALID TelemetryEvent_EventType = 7
 )
 
 // Enum value maps for TelemetryEvent_EventType.
@@ -43,6 +45,7 @@ var (
 		4: "OOM",
 		5: "PREDICTION_DRIFT",
 		6: "ERROR",
+		7: "SIGNATURE_INVALID",
 	}
 	TelemetryEvent_EventType_value = map[string]int32{
 		"EVENT_TYPE_UNSPECIFIED": 0,
@@ -52,6 +55,7 @@ var (
 		"OOM":                    4,
 		"PREDICTION_DRIFT":       5,
 		"ERROR":                  6,
+		"SIGNATURE_INVALID":      7,
 	}
 )
 
@@ -309,7 +313,7 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x1afleetml/v1/telemetry.proto\x12\x14fleetml.telemetry.v1\"k\n" +
 	"\x0eTelemetryBatch\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12<\n" +
-	"\x06events\x18\x02 \x03(\v2$.fleetml.telemetry.v1.TelemetryEventR\x06events\"\xcb\x04\n" +
+	"\x06events\x18\x02 \x03(\v2$.fleetml.telemetry.v1.TelemetryEventR\x06events\"\xe2\x04\n" +
 	"\x0eTelemetryEvent\x12(\n" +
 	"\x10model_version_id\x18\x01 \x01(\tR\x0emodelVersionId\x12*\n" +
 	"\x11experiment_arm_id\x18\x02 \x01(\tR\x0fexperimentArmId\x12B\n" +
@@ -322,7 +326,7 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x0fbattery_percent\x18\b \x01(\x02R\x0ebatteryPercent\x12#\n" +
 	"\rerror_message\x18\t \x01(\tR\ferrorMessage\x12*\n" +
 	"\x11timestamp_unix_ms\x18\n" +
-	" \x01(\x03R\x0ftimestampUnixMs\"\x87\x01\n" +
+	" \x01(\x03R\x0ftimestampUnixMs\"\x9e\x01\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tINFERENCE\x10\x01\x12\x0e\n" +
@@ -331,7 +335,8 @@ const file_fleetml_v1_telemetry_proto_rawDesc = "" +
 	"\x11MODEL_LOAD_FAILED\x10\x03\x12\a\n" +
 	"\x03OOM\x10\x04\x12\x14\n" +
 	"\x10PREDICTION_DRIFT\x10\x05\x12\t\n" +
-	"\x05ERROR\x10\x06\"\\\n" +
+	"\x05ERROR\x10\x06\x12\x15\n" +
+	"\x11SIGNATURE_INVALID\x10\a\"\\\n" +
 	"\fTelemetryAck\x12%\n" +
 	"\x0eaccepted_count\x18\x01 \x01(\rR\racceptedCount\x12%\n" +
 	"\x0erejected_count\x18\x02 \x01(\rR\rrejectedCount2k\n" +

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/fleetml/fleetml/internal/artifact"
 )
 
 // Version is a model version on disk.
@@ -35,6 +37,8 @@ type State struct {
 	Signature    string                 `json:"signature,omitempty"` // labels and agent version at registration
 	Models       map[string]*ModelState `json:"models"`              // by model ID
 	Failed       map[string]time.Time   `json:"failed"`              // variant ID -> failed validation at
+	// SigningKeys are the project's artifact signing keys, as last sent by the server.
+	SigningKeys []artifact.Key `json:"signing_keys,omitempty"`
 }
 
 // Store loads and atomically saves the state file.
