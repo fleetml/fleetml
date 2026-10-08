@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/fleetml/fleetml/internal/metrics"
 )
 
 // Ticker periodically checks active deployments and progresses them.
@@ -53,6 +55,7 @@ func (t *Ticker) Stop() {
 }
 
 func (t *Ticker) tick(ctx context.Context) {
+	defer metrics.ObserveTick("deploy", time.Now())
 	deployments, err := t.repo.ListByStatus(ctx, []string{"ROLLING_OUT"})
 	if err != nil {
 		if t.logger != nil {

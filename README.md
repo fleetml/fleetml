@@ -64,7 +64,7 @@ ENROLL_KEY=$(curl -s -H "$AUTH" -H 'Content-Type: application/json' -d '{"name":
   localhost:18080/api/v1/projects/$PROJECT_ID/enrollment-keys | jq -r .data.key)
 
 # Register a device the way the SDK does (fingerprint = 64 hex chars)
-grpcurl -plaintext -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"enrollment_key\":\"$ENROLL_KEY\"}" \
+grpcurl -plaintext -import-path proto -proto fleetml/v1/device.proto -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"enrollment_key\":\"$ENROLL_KEY\"}" \
   localhost:19090 fleetml.device.v1.DeviceService/Register             # returns deviceId, authToken, tokenExpiresAt
 
 curl -s -H "$AUTH" localhost:18080/api/v1/devices | jq '.data[] | {id, os, project_id}'

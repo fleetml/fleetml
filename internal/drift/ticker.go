@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/fleetml/fleetml/internal/metrics"
+
 	"github.com/google/uuid"
 )
 
@@ -53,6 +55,7 @@ func (t *Ticker) Stop() {
 }
 
 func (t *Ticker) tick(ctx context.Context) {
+	defer metrics.ObserveTick("drift", time.Now())
 	ids, err := t.versions.ListActiveVersionIDs(ctx)
 	if err != nil {
 		if t.logger != nil {

@@ -6,25 +6,23 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/fleetml/fleetml/internal/auth"
 	"github.com/fleetml/fleetml/internal/deploy"
 	"github.com/fleetml/fleetml/internal/device"
 	"github.com/fleetml/fleetml/internal/drift"
 	"github.com/fleetml/fleetml/internal/experiment"
+	"github.com/fleetml/fleetml/internal/health"
 	"github.com/fleetml/fleetml/internal/intelligence"
+	"github.com/fleetml/fleetml/internal/metrics"
 	"github.com/fleetml/fleetml/internal/registry"
-	"github.com/fleetml/fleetml/internal/storage"
 	"github.com/fleetml/fleetml/internal/telemetry"
 )
 
 // Server is the REST API server.
 type Server struct {
 	router        *gin.Engine
-	pool          *pgxpool.Pool
-	s3            *storage.S3Client
-	natsOK        func() bool
+	readiness     *health.Checker
 	service       *registry.Service
 	deviceService *device.Service
 	deploySvc     *deploy.Service
@@ -40,7 +38,7 @@ type Server struct {
 }
 
 // NewServer creates a new REST server.
-func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, corsOrigins string, logger *slog.Logger) *Server {
+func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *device.Service, deploySvc *deploy.Service, orchestrator *intelligence.Orchestrator, telemetrySvc *telemetry.Service, experimentSvc *experiment.Service, driftDetector *drift.Detector, driftStore drift.ResultStore, apiKeys *auth.APIKeyService, enrollment *auth.EnrollmentService, corsOrigins string, logger *slog.Logger) *Server {
 	if apiKeys == nil {
 		panic("rest.NewServer: an API key service is required")
 	}
@@ -49,9 +47,7 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 
 	s := &Server{
 		router:        r,
-		pool:          pool,
-		s3:            s3,
-		natsOK:        natsOK,
+		readiness:     readiness,
 		service:       service,
 		deviceService: deviceSvc,
 		deploySvc:     deploySvc,
@@ -69,6 +65,7 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 	// CORS runs first so preflight requests (which carry no API key) are answered.
 	r.Use(CORS(s.corsOrigins))
 	r.Use(RequestID())
+	r.Use(metrics.GinMiddleware())
 	r.Use(ErrorRecovery(logger))
 	r.Use(RequestLogger(logger))
 
@@ -77,9 +74,13 @@ func NewServer(pool *pgxpool.Pool, s3 *storage.S3Client, natsOK func() bool, ser
 }
 
 func (s *Server) registerRoutes() {
-	s.router.GET("/healthz", s.healthCheck)
+	// Probes and metrics live outside /api/v1 and need no API key.
+	s.router.GET("/livez", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	s.router.GET("/readyz", s.ready)
+	s.router.GET("/healthz", s.ready) // the original health endpoint, same as /readyz
+	s.router.GET("/metrics", gin.WrapH(metrics.Handler()))
 
-	// Everything under /api/v1 requires an admin API key; /healthz stays open.
+	// Everything under /api/v1 requires an admin API key.
 	api := s.router.Group("/api/v1", RequireAPIKey(s.apiKeys, s.logger))
 
 	NewAPIKeyHandler(s.apiKeys, s.logger).RegisterRoutes(api)
@@ -115,39 +116,19 @@ func (s *Server) Handler() http.Handler {
 	return s.router
 }
 
-func (s *Server) healthCheck(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	dbStatus := "connected"
-	if err := s.pool.Ping(ctx); err != nil {
-		dbStatus = "disconnected"
-		slog.Error("health check: database ping failed", "error", err)
-	}
-
-	s3Status := "connected"
-	if err := s.s3.HealthCheck(ctx); err != nil {
-		s3Status = "disconnected"
-		slog.Error("health check: s3 check failed", "error", err)
-	}
-
-	natsStatus := "connected"
-	if !s.natsOK() {
-		natsStatus = "disconnected"
-	}
-
-	status := "ok"
+// ready answers 200 when Postgres, S3 and NATS are reachable and 503 otherwise.
+func (s *Server) ready(c *gin.Context) {
+	statuses, ok := s.readiness.Check(c.Request.Context())
+	body := gin.H{"status": "ok"}
 	code := http.StatusOK
-	if dbStatus != "connected" || s3Status != "connected" || natsStatus != "connected" {
-		status = "degraded"
+	if !ok {
+		body["status"] = "degraded"
 		code = http.StatusServiceUnavailable
 	}
-
-	c.JSON(code, gin.H{
-		"status": status,
-		"db":     dbStatus,
-		"s3":     s3Status,
-		"nats":   natsStatus,
-	})
+	for name, st := range statuses {
+		body[name] = st
+	}
+	c.JSON(code, body)
 }
 
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {

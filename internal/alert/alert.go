@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fleetml/fleetml/internal/metrics"
+
 	"github.com/google/uuid"
 )
 
@@ -117,7 +119,9 @@ func (n *Notifier) Send(a Alert) {
 		return
 	}
 	if n.nats != nil {
-		if err := n.nats.Publish(SubjectPrefix+a.Type, body); err != nil {
+		err := n.nats.Publish(SubjectPrefix+a.Type, body)
+		metrics.AlertsSent.WithLabelValues(a.Type, "nats", metrics.Result(err)).Inc()
+		if err != nil {
 			n.logger.Warn("alert: NATS publish failed", "type", a.Type, "id", a.ID, "error", err)
 		}
 	}
@@ -143,10 +147,12 @@ func (n *Notifier) deliver(a Alert, body []byte) {
 			time.Sleep(n.backoff[attempt-1])
 		}
 		if lastErr = n.post(a, body); lastErr == nil {
+			metrics.AlertsSent.WithLabelValues(a.Type, "webhook", "ok").Inc()
 			n.logger.Info("alert delivered", "type", a.Type, "id", a.ID, "attempt", attempt+1)
 			return
 		}
 	}
+	metrics.AlertsSent.WithLabelValues(a.Type, "webhook", "error").Inc()
 	n.logger.Error("alert: webhook delivery failed", "type", a.Type, "id", a.ID,
 		"attempts", len(n.backoff)+1, "error", lastErr)
 }

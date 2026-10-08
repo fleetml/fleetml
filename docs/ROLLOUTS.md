@@ -188,7 +188,7 @@ result in place; only a change of severity adds a row.
 ## Runbook
 
 These commands reproduce each behaviour against the dev stack. They need
-`curl`, `jq`, `grpcurl` and `openssl`.
+`curl`, `jq`, `grpcurl` and `openssl`, and run from the repository root.
 
 Start a webhook receiver that prints each alert (any endpoint that answers 2xx
 works) and the server with fast loops:
@@ -219,13 +219,15 @@ upload() {
   curl -s -o /dev/null -X PUT --data-binary @"$2" "$(echo "$out" | jq -r .data.upload_url)"
   api POST /api/v1/variants/$(echo "$out" | jq -r .data.variant.id)/finalize
 }
+# grpcurl with the FleetML protos (the server has no reflection unless GRPC_REFLECTION=true)
+g() { grpcurl -plaintext -import-path proto -proto fleetml/v1/device.proto -proto fleetml/v1/telemetry.proto "$@"; }
 # register enrollment_key labels_json -> "device_id token"
-register() { grpcurl -plaintext -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"ram_mb\":4096,\"enrollment_key\":\"$1\",\"labels\":$2}" \
+register() { g -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"ram_mb\":4096,\"enrollment_key\":\"$1\",\"labels\":$2}" \
   localhost:19090 fleetml.device.v1.DeviceService/Register | jq -r '"\(.deviceId) \(.authToken)"'; }
-heartbeat() { grpcurl -plaintext -H "authorization: Bearer $1" -d "{\"loaded_models\":${2:-[]}}" localhost:19090 fleetml.device.v1.DeviceService/Heartbeat; }
+heartbeat() { g -H "authorization: Bearer $1" -d "{\"loaded_models\":${2:-[]}}" localhost:19090 fleetml.device.v1.DeviceService/Heartbeat; }
 # report token version_id count type [arm_id]
 report() { local ev="{\"model_version_id\":\"$2\",\"type\":\"$4\",\"latency_ms\":20,\"experiment_arm_id\":\"${5:-}\"}"
-  grpcurl -plaintext -H "authorization: Bearer $1" -d "{\"events\":[$(for i in $(seq $3); do printf '%s,' "$ev"; done | sed 's/,$//')]}" \
+  g -H "authorization: Bearer $1" -d "{\"events\":[$(for i in $(seq $3); do printf '%s,' "$ev"; done | sed 's/,$//')]}" \
   localhost:19090 fleetml.telemetry.v1.TelemetryService/ReportBatch; }
 ```
 

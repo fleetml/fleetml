@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/fleetml/fleetml/internal/metrics"
+
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -88,6 +90,8 @@ func (s *TelemetryServiceServer) ReportBatch(ctx context.Context, req *fleetmlv1
 		return nil, status.Error(codes.Internal, "ingestion failed")
 	}
 
+	metrics.TelemetryAccepted.Add(float64(accepted))
+	metrics.TelemetryRejected.Add(float64(rejected))
 	return &fleetmlv1.TelemetryAck{
 		AcceptedCount: uint32(accepted),
 		RejectedCount: uint32(rejected),

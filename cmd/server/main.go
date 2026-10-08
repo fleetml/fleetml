@@ -26,7 +26,9 @@ import (
 	"github.com/fleetml/fleetml/internal/device"
 	"github.com/fleetml/fleetml/internal/drift"
 	"github.com/fleetml/fleetml/internal/experiment"
+	"github.com/fleetml/fleetml/internal/health"
 	"github.com/fleetml/fleetml/internal/intelligence"
+	"github.com/fleetml/fleetml/internal/metrics"
 	"github.com/fleetml/fleetml/internal/registry"
 	"github.com/fleetml/fleetml/internal/storage"
 	"github.com/fleetml/fleetml/internal/telemetry"
@@ -118,11 +120,17 @@ func run() error {
 	defer nc.Close()
 	slog.Info("nats connection established")
 
-	natsOK := func() bool {
-		return nc.IsConnected()
-	}
-
 	logger := slog.Default()
+
+	readiness := health.NewChecker(logger)
+	readiness.Add("db", pool.Ping)
+	readiness.Add("s3", s3Client.HealthCheck)
+	readiness.Add("nats", func(context.Context) error {
+		if !nc.IsConnected() {
+			return fmt.Errorf("nats connection is %s", nc.Status())
+		}
+		return nil
+	})
 
 	// Registry repositories + service
 	projectRepo := registry.NewProjectRepo(pool)
@@ -185,6 +193,8 @@ func run() error {
 	telemetryPub := telemetry.NewPublisher(nc, logger)
 	telemetrySvc := telemetry.NewService(telemetryRepo, telemetryPub, logger)
 	telemetryConsumer := telemetry.NewConsumer(nc, telemetryRepo, logger)
+	metrics.RegisterTelemetryDropped(telemetryConsumer.Dropped)
+	metrics.RegisterDeployments(pool, logger)
 	consumerDone := make(chan struct{})
 	go func() {
 		defer close(consumerDone)
@@ -194,9 +204,13 @@ func run() error {
 	}()
 
 	// gRPC server with auth interceptor
-	grpcServer := grpcapi.NewServer(
-		grpclib.UnaryInterceptor(grpcapi.AuthInterceptor(deviceSvc)),
+	grpcServer := grpcapi.NewServer(cfg.GRPCReflection,
+		grpclib.ChainUnaryInterceptor(metrics.UnaryServerInterceptor(), grpcapi.AuthInterceptor(deviceSvc)),
 	)
+	go grpcServer.WatchReadiness(ctx, func(ctx context.Context) bool {
+		_, ok := readiness.Check(ctx)
+		return ok
+	}, 10*time.Second)
 	deviceGRPC := grpcapi.NewDeviceServiceServer(deviceSvc, logger)
 	fleetmlv1.RegisterDeviceServiceServer(grpcServer.GRPCServer(), deviceGRPC)
 	telemetryGRPC := grpcapi.NewTelemetryServiceServer(telemetrySvc, logger)
@@ -231,7 +245,7 @@ func run() error {
 			"admin_api_key", generated)
 	}
 
-	restServer := rest.NewServer(pool, s3Client, natsOK, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, cfg.CORSOrigins, logger)
+	restServer := rest.NewServer(readiness, registrySvc, deviceSvc, deploySvc, orchestrator, telemetrySvc, experimentSvc, driftDetector, driftAdapter, apiKeySvc, enrollmentSvc, cfg.CORSOrigins, logger)
 
 	errCh := make(chan error, 2)
 

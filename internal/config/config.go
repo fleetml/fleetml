@@ -20,8 +20,10 @@ type Config struct {
 	NatsURL          string `envconfig:"NATS_URL" default:"nats://localhost:14222"`
 	RedisURL         string `envconfig:"REDIS_URL" default:"redis://localhost:16379"`
 	GRPCPort         int    `envconfig:"GRPC_PORT" default:"19090"`
-	RESTPort         int    `envconfig:"REST_PORT" default:"18080"`
-	JWTSecret        string `envconfig:"JWT_SECRET" required:"true"`
+	// GRPCReflection registers gRPC server reflection (for grpcurl); off by default.
+	GRPCReflection bool   `envconfig:"GRPC_REFLECTION" default:"false"`
+	RESTPort       int    `envconfig:"REST_PORT" default:"18080"`
+	JWTSecret      string `envconfig:"JWT_SECRET" required:"true"`
 	// DeviceTokenTTL is the lifetime of device tokens (refreshable in their last 7 days).
 	DeviceTokenTTL time.Duration `envconfig:"DEVICE_TOKEN_TTL" default:"720h"`
 	LogLevel       string        `envconfig:"LOG_LEVEL" default:"info"`

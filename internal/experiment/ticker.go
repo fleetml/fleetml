@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/fleetml/fleetml/internal/metrics"
 )
 
 // Ticker periodically evaluates running experiments.
@@ -45,6 +47,7 @@ func (t *Ticker) Stop() {
 }
 
 func (t *Ticker) tick(ctx context.Context) {
+	defer metrics.ObserveTick("experiment", time.Now())
 	exps, err := t.service.ListRunning(ctx)
 	if err != nil {
 		if t.logger != nil {
