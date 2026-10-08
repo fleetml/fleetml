@@ -85,14 +85,17 @@ active and last-known-good versions are kept.
 
 For each assignment the agent:
 
-1. downloads to `state_dir/downloads/<variant>.part`, resuming with an HTTP
+1. checks the assignment's signature with the project's signing keys and, if
+   it does not verify, reports `SIGNATURE_INVALID` and downloads nothing
+   ([artifact signing](ROLLOUTS.md#artifact-signing));
+2. downloads to `state_dir/downloads/<variant>.part`, resuming with an HTTP
    `Range` request after an interruption, and checks the sha256;
-2. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,
+3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,
    `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` in its environment;
-3. if it passes, switches the `current` symlink, keeps the previous version as
+4. if it passes, switches the `current` symlink, keeps the previous version as
    last-known-good, reports `MODEL_LOAD`, and runs `post_activate` (with
    `FLEETML_MODEL_PATH` set to the `current` link);
-4. if it fails, leaves `current` alone, reports `MODEL_LOAD_FAILED` with the
+5. if it fails, leaves `current` alone, reports `MODEL_LOAD_FAILED` with the
    command's output (so a canary's health gate can roll the release back), and
    does not retry that variant for an hour.
 
@@ -144,4 +147,7 @@ hook, local endpoint). The runtime check ran two `linux/amd64` agents in
 Debian containers next to the dev stack: a 50% canary reached exactly one of
 them, a failing validator on that one kept the last-known-good version and
 reported `MODEL_LOAD_FAILED`, and completing the rollout moved both `current`
-links and ran the hook.
+links and ran the hook. `./scripts/signing-e2e.sh agent` checks signatures:
+a model whose stored signature was overwritten is rejected, and one signed
+with the previous key is accepted during the rotation's grace period and
+rejected after it.

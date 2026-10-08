@@ -92,11 +92,15 @@ After that the SDK:
 
 For each assignment in a heartbeat the SDK:
 
-1. **Downloads** the model from the presigned URL, streaming to a `.part` file.
+1. **Checks the signature** of the assignment with the project's signing
+   keys (sent with registration and every heartbeat): an artifact whose
+   signature does not verify is not downloaded, the current model stays, and
+   `SIGNATURE_INVALID` is reported ([artifact signing](ROLLOUTS.md#artifact-signing)).
+2. **Downloads** the model from the presigned URL, streaming to a `.part` file.
    An interrupted download resumes with an HTTP Range request.
-2. **Verifies** the sha256 before moving the file into place.
-3. **Validates** it with a `ModelValidator`.
-4. **Activates** it only if validation passed: the model becomes active, the
+3. **Verifies** the sha256 before moving the file into place.
+4. **Validates** it with a `ModelValidator`.
+5. **Activates** it only if validation passed: the model becomes active, the
    previously active version becomes last-known-good, the device reports the
    new version as loaded and `onModelReady(model)` is called.
 
@@ -254,8 +258,13 @@ step 1 and an emulator running:
 FLEETML_API_KEY=$FLEETML_API_KEY ./scripts/android-e2e.sh
 ```
 
-It needs a device or emulator and a running stack, so it is not part of the
-hosted CI; the unit tests (`./gradlew :fleetml-sdk:testDebugUnitTest`) are.
+`./scripts/signing-e2e.sh android` runs `SignatureLiveTest` twice against
+the same stack: a model whose stored signature was overwritten is rejected,
+and one signed with the previous key is accepted during the rotation's grace
+period and rejected after it.
+
+They need a device or emulator and a running stack, so they are not part of
+the hosted CI; the unit tests (`./gradlew :fleetml-sdk:testDebugUnitTest`) are.
 The test process has no activity, so the SDK counts as being in the
 background and the test drives it with `FleetML.syncNow()`.
 

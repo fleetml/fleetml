@@ -84,12 +84,16 @@ project. After registering, the SDK:
 
 For each assignment in a heartbeat the SDK:
 
-1. **Downloads** the model from the presigned URL, writing each chunk to a
+1. **Checks the signature** of the assignment with the project's signing
+   keys (sent with registration and every heartbeat): an artifact whose
+   signature does not verify is not downloaded, the current model stays, and
+   `SIGNATURE_INVALID` is reported ([artifact signing](ROLLOUTS.md#artifact-signing)).
+2. **Downloads** the model from the presigned URL, writing each chunk to a
    `.part` file as it arrives. An interrupted download resumes with an HTTP
    Range request.
-2. **Verifies** the sha256 before moving the file into place.
-3. **Validates** it with a `ModelValidator`.
-4. **Activates** it only if validation passed: the model becomes active, the
+3. **Verifies** the sha256 before moving the file into place.
+4. **Validates** it with a `ModelValidator`.
+5. **Activates** it only if validation passed: the model becomes active, the
    previously active version becomes last-known-good, the device reports the
    new version as loaded and `fleetML(modelReady:)` is called.
 
@@ -192,10 +196,11 @@ device's arm ID automatically.
 ## Tests
 
 ```bash
-make ios-test                     # swift test: 43 XCTests on macOS
+make ios-test                     # swift test: 47 XCTests on macOS
 cd ios/FleetMLSDK && xcodebuild test -scheme FleetMLSDK \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator
 FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh            # live test against make dev
+FLEETML_API_KEY=<admin key> ./scripts/signing-e2e.sh ios     # signatures: tampered, and the rotation grace
 ```
 
 `scripts/ios-e2e.sh` creates a non-urgent deployment and runs
@@ -207,7 +212,8 @@ The suite covers the telemetry queue and reporter, the model store, the
 downloader (including an interrupted transfer resumed with Range), cache
 eviction, the model manager (activation, last-known-good, UPDATE + UNLOAD,
 restart), the token refresh policy, the heartbeat loop and the Core ML
-validator on the real Iris model, and the battery and data policy. `make proto-swift` regenerates the gRPC
+validator on the real Iris model, the battery and data policy, and signature
+checks against the shared vectors in `internal/artifact/testdata`. `make proto-swift` regenerates the gRPC
 client code from `proto/`.
 
 ## Simulator runbook

@@ -44,4 +44,30 @@ final class LiveServerTests: XCTestCase {
         _ = await inst.syncNow()
         XCTAssertEqual(inst.models.activeModels.first?.versionID, version, "an urgent model downloads on an expensive network")
     }
+
+    /// One phase of scripts/signing-e2e.sh: the models in FLEETML_LIVE_EXPECT_ACTIVE must become
+    /// active and those in FLEETML_LIVE_EXPECT_REJECTED must not (their signature does not verify).
+    func testSignaturesAreVerifiedBeforeActivation() async throws {
+        let host = try env("FLEETML_LIVE_HOST"), key = try env("FLEETML_LIVE_ENROLLMENT_KEY"), label = try env("FLEETML_LIVE_SIG_LABEL")
+        let expectActive = Set(try env("FLEETML_LIVE_EXPECT_ACTIVE").split(separator: ",").map(String.init))
+        let expectRejected = Set(try env("FLEETML_LIVE_EXPECT_REJECTED").split(separator: ",").map(String.init))
+        let delegate = RecordingDelegate()
+        let inst = try Instance(config: FleetMLConfig(serverHost: host, enrollmentKey: key, labels: ["e2e-run": label], autoStart: false),
+                                delegate: delegate, validator: ModelValidators.default(), directory: tempDir(), tokens: MemoryTokenStore(),
+                                conditions: { DeviceConditions(connected: true, expensive: false, charging: true) },
+                                fingerprint: (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined())
+        defer { inst.stop() }
+        func active() -> Set<String> { Set(inst.models.activeModels.map(\.modelName)) }
+        for _ in 0..<10 where !active().isSuperset(of: expectActive) {
+            _ = await inst.syncNow()
+        }
+        XCTAssertTrue(active().isSuperset(of: expectActive), "active \(active()) contains \(expectActive)")
+        XCTAssertTrue(active().isDisjoint(with: expectRejected), "none of \(expectRejected) is active: \(active())")
+        for name in expectRejected {
+            XCTAssertTrue(delegate.failed.contains { $0.name == name && $0.reason.hasPrefix("signature:") }, "\(name) rejected: \(delegate.failed)")
+        }
+        let flushed = await inst.telemetry.flushNow()
+        XCTAssertTrue(flushed)
+        print("FleetMLSignatureTest active=\(active().sorted()) rejected=\(delegate.failed.map(\.name))")
+    }
 }

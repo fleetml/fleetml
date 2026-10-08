@@ -7,6 +7,24 @@ change APIs).
 
 ## [0.3.0] - Unreleased
 
+### Added
+
+- Artifact signing: every project gets an ed25519 key (private keys
+  encrypted with the new required `SIGNING_MASTER_KEY`), each variant is signed
+  when it is finalized, and Register and heartbeat responses carry the keys
+  and each assignment its signature. The Linux agent and the Android and iOS
+  SDKs verify it before downloading; a failure is reported as the new
+  `SIGNATURE_INVALID` event, which counts against the health gate.
+  `POST /projects/{id}/signing-key` and `.../rotate` (with a grace period).
+  `scripts/signing-e2e.sh` checks a client against the dev stack.
+
+### Changed
+
+- `SIGNING_MASTER_KEY` is required; `make env-file` adds one to an existing
+  `.env`.
+- The quickstart's dashboard hint mentions the login (it still pointed to
+  Settings).
+
 ## [0.2.0] - 2026-10-08
 
 ### Added

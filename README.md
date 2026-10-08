@@ -67,7 +67,7 @@ server and twenty simulated devices that use the same protocol as the SDKs
 | **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
 | **Security.** Admin API keys, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation` |
 | **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1` | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
-| **Artifact signing** verified on the device | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
+| **Artifact signing.** Per-project ed25519 keys sign each model when it is published; the Android and iOS SDKs and the Linux agent verify the signature before downloading, and keys rotate with a grace period | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
 | **Feature-level drift** from device-side input histograms | PLANNED | [Roadmap](docs/ROADMAP.md#next) |
 
 The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
