@@ -21,7 +21,7 @@ func NewAdapter(pool *pgxpool.Pool) *Adapter {
 
 func (a *Adapter) GetLatencyValues(ctx context.Context, modelVersionID uuid.UUID, from, to time.Time, limit int) ([]float64, error) {
 	rows, err := a.pool.Query(ctx,
-		`SELECT latency_ms FROM telemetry_events WHERE model_version_id=$1 AND recorded_at>=$2 AND recorded_at<=$3 AND latency_ms>0 ORDER BY recorded_at DESC LIMIT $4`,
+		`SELECT latency_ms FROM telemetry_events WHERE model_version_id=$1 AND event_type='INFERENCE' AND recorded_at>=$2 AND recorded_at<=$3 AND latency_ms>0 ORDER BY recorded_at DESC LIMIT $4`,
 		modelVersionID, from, to, limit)
 	if err != nil {
 		return nil, fmt.Errorf("drift.GetLatencyValues: %w", err)
@@ -40,7 +40,7 @@ func (a *Adapter) GetLatencyValues(ctx context.Context, modelVersionID uuid.UUID
 
 func (a *Adapter) GetConfidenceValues(ctx context.Context, modelVersionID uuid.UUID, from, to time.Time, limit int) ([]float64, error) {
 	rows, err := a.pool.Query(ctx,
-		`SELECT confidence_score FROM telemetry_events WHERE model_version_id=$1 AND recorded_at>=$2 AND recorded_at<=$3 AND confidence_score>0 ORDER BY recorded_at DESC LIMIT $4`,
+		`SELECT confidence_score FROM telemetry_events WHERE model_version_id=$1 AND event_type='INFERENCE' AND recorded_at>=$2 AND recorded_at<=$3 AND confidence_score>0 ORDER BY recorded_at DESC LIMIT $4`,
 		modelVersionID, from, to, limit)
 	if err != nil {
 		return nil, fmt.Errorf("drift.GetConfidenceValues: %w", err)

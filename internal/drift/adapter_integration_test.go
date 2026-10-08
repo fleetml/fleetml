@@ -31,9 +31,13 @@ func TestAdapter_Integration(t *testing.T) {
 		SELECT $1, $2, 'INFERENCE', 40 + g % 10, 0.8, NOW() - (g || ' minutes')::interval FROM generate_series(1, 60) g`, dev, fx.VersionID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO telemetry_events (device_id, model_version_id, event_type, latency_ms, confidence_score, recorded_at)
+		VALUES ($1, $2, 'MODEL_LOAD', 900, 0.5, NOW())`, dev, fx.VersionID); err != nil {
+		t.Fatal(err)
+	}
 	lat, err := a.GetLatencyValues(ctx, fx.VersionID, time.Now().Add(-2*time.Hour), time.Now(), 1000)
 	require.NoError(t, err)
-	assert.Len(t, lat, 60)
+	assert.Len(t, lat, 60, "model load times are not inference latency")
 	conf, err := a.GetConfidenceValues(ctx, fx.VersionID, time.Now().Add(-2*time.Hour), time.Now(), 10)
 	require.NoError(t, err)
 	assert.Len(t, conf, 10, "limit applies")

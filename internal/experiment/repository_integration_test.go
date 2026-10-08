@@ -63,15 +63,18 @@ func TestRepository_Integration(t *testing.T) {
 	ctrlArm, treatArm := ArmID(exp.ID, "control"), ArmID(exp.ID, "treatment")
 	if _, err := pool.Exec(ctx, `INSERT INTO telemetry_events (device_id, model_version_id, experiment_arm_id, event_type, latency_ms, confidence_score, recorded_at) VALUES
 		($1, $3, $5, 'INFERENCE', 10, 0.8, NOW()), ($1, $3, NULL, 'INFERENCE', 20, 0.9, NOW()), ($1, $3, $5, 'OOM', NULL, NULL, NOW()),
-		($2, $4, $6, 'INFERENCE', 30, 0.7, NOW()), ($1, $4, $6, 'INFERENCE', 40, 0.6, NOW())`,
+		($2, $4, $6, 'INFERENCE', 30, 0.7, NOW()), ($1, $4, $6, 'INFERENCE', 40, 0.6, NOW()),
+		($1, $3, $5, 'MODEL_LOAD', 900, 0, NOW()), ($1, $3, $5, 'MODEL_LOAD_FAILED', 0, 0, NOW())`,
 		ctrlDev, treatDev, fx.VersionID, treatment, ctrlArm, treatArm); err != nil {
 		t.Fatal(err)
 	}
 	since := time.Now().Add(-time.Hour)
 	c, err := repo.GetCohortStats(ctx, exp.ID, fx.VersionID, since, "control")
 	require.NoError(t, err)
-	assert.Equal(t, int64(3), c.SampleSize, "two tagged events plus one untagged from a control device")
+	assert.Equal(t, int64(3), c.SampleSize, "two tagged events plus one untagged from a control device; model load events are not inferences")
 	assert.Equal(t, int64(1), c.ErrorCount, "OOM counts as an error")
+	assert.InDelta(t, 15, c.AvgLatency, 1e-9, "the 900 ms model load is not inference latency")
+	assert.InDelta(t, 0.85, c.AvgConfidence, 1e-6)
 	assert.Greater(t, c.StdDevConfidence, 0.0)
 	tr, err := repo.GetCohortStats(ctx, exp.ID, treatment, since, "treatment")
 	require.NoError(t, err)

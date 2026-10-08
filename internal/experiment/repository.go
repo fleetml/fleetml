@@ -237,17 +237,20 @@ func (r *Repository) ListCohortAssignments(ctx context.Context, experimentID uui
 }
 
 func (r *Repository) GetCohortStats(ctx context.Context, experimentID, versionID uuid.UUID, since time.Time, cohort string) (*CohortStats, error) {
+	// Only inference outcomes count: model load and load-failure events carry
+	// load times, not inference latency, and no confidence.
 	query := `SELECT
 		COUNT(*) AS sample_size,
-		COALESCE(AVG(te.latency_ms), 0),
-		COALESCE(STDDEV(te.latency_ms), 0),
-		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY te.latency_ms), 0),
-		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY te.latency_ms), 0),
-		COUNT(*) FILTER (WHERE te.event_type IN ('ERROR', 'OOM', 'MODEL_LOAD_FAILED') OR (te.error_message IS NOT NULL AND te.error_message <> '')),
-		COALESCE(AVG(te.confidence_score), 0),
-		COALESCE(STDDEV(te.confidence_score), 0)
+		COALESCE(AVG(te.latency_ms) FILTER (WHERE te.latency_ms > 0), 0),
+		COALESCE(STDDEV(te.latency_ms) FILTER (WHERE te.latency_ms > 0), 0),
+		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY te.latency_ms) FILTER (WHERE te.latency_ms > 0), 0),
+		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY te.latency_ms) FILTER (WHERE te.latency_ms > 0), 0),
+		COUNT(*) FILTER (WHERE te.event_type IN ('ERROR', 'OOM') OR (te.error_message IS NOT NULL AND te.error_message <> '')),
+		COALESCE(AVG(te.confidence_score) FILTER (WHERE te.confidence_score > 0), 0),
+		COALESCE(STDDEV(te.confidence_score) FILTER (WHERE te.confidence_score > 0), 0)
 		FROM telemetry_events te
 		WHERE te.model_version_id = $2 AND te.recorded_at >= $3
+		  AND te.event_type IN ('INFERENCE', 'ERROR', 'OOM')
 		  AND (te.experiment_arm_id = $5
 		       OR (te.experiment_arm_id IS NULL AND EXISTS (
 		           SELECT 1 FROM cohort_assignments ca
