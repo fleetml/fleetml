@@ -95,14 +95,3 @@ jobs:
         with:
           name: android-test-reports
           path: android/fleetml-sdk/build/reports/tests/
-
-  ios:
-    name: iOS SDK
-    runs-on: macos-15
-    defaults:
-      run:
-        working-directory: ios/FleetMLSDK
-    steps:
-      - uses: actions/checkout@v4
-      - name: Unit tests
-        run: swift test
