@@ -91,6 +91,12 @@ change APIs).
   supersedes the previous one, so the device could keep the superseded token
   and be refused on its next start. Registrations now run one at a time, and
   a caller that waited does not register again.
+- `make dev`, `make test-integration`, `make e2e`, `make cover`,
+  `scripts/demo.sh`, `scripts/demo-agent.sh` and the E2E workflow waited for
+  migrations with `docker compose wait migrate`, which fails with "no
+  containers" when the migrations have already finished. They now use
+  `scripts/wait-migrate.sh`, which waits for the container and returns its
+  exit code.
 - iOS SDK: `flushNow()` called while another flush was running (for example
   the one a reconnect starts) returned at once without sending; it now waits
   for that flush and sends what is left, as on Android.

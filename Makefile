@@ -52,20 +52,20 @@ TEST_DATABASE_URL?=postgres://fleetml:fleetml_dev@localhost:$(or $(FLEETML_PG_PO
 TEST_NATS_URL?=nats://localhost:$(or $(FLEETML_NATS_PORT),14222)
 
 test-integration: docker-up
-	docker compose -f deploy/docker-compose.yml wait migrate
+	./scripts/wait-migrate.sh
 	FLEETML_TEST_DATABASE_URL="$(TEST_DATABASE_URL)" FLEETML_TEST_NATS_URL="$(TEST_NATS_URL)" \
 		go test -tags integration -race -count=1 ./...
 
 # Unit + integration coverage, written to coverage.out.
 cover: docker-up
-	docker compose -f deploy/docker-compose.yml wait migrate
+	./scripts/wait-migrate.sh
 	FLEETML_TEST_DATABASE_URL="$(TEST_DATABASE_URL)" FLEETML_TEST_NATS_URL="$(TEST_NATS_URL)" \
 		go test -tags integration -count=1 -coverprofile=coverage.out ./internal/...
 	go tool cover -func=coverage.out | tail -1
 
 # End-to-end rollout, A/B and integrity scenarios against a fresh server (see scripts/e2e.sh).
 e2e: docker-up
-	docker compose -f deploy/docker-compose.yml wait migrate
+	./scripts/wait-migrate.sh
 	./scripts/e2e.sh -v
 
 lint:
@@ -115,7 +115,7 @@ env-file:
 
 dev: env-file docker-up
 	@echo "Waiting for database migrations (compose 'migrate' service)..."
-	docker compose -f deploy/docker-compose.yml wait migrate
+	./scripts/wait-migrate.sh
 	env $$(grep -v '^\#' .env | xargs) go run ./cmd/server
 
 clean:

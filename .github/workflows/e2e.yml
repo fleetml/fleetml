@@ -22,7 +22,7 @@ jobs:
       - name: Start the dev stack
         run: |
           make docker-up
-          docker compose -f deploy/docker-compose.yml wait migrate
+          ./scripts/wait-migrate.sh
       - name: E2E suite
         run: ./scripts/e2e.sh -v
       - name: Stop the dev stack

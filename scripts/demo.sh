@@ -47,7 +47,7 @@ trap cleanup EXIT
 
 say "Starting the dev stack and a demo server"
 docker compose -f deploy/docker-compose.yml up -d >/dev/null 2>&1
-docker compose -f deploy/docker-compose.yml wait migrate >/dev/null
+./scripts/wait-migrate.sh
 psql_admin "CREATE DATABASE $DB"
 # Its own NATS: telemetry goes through a JetStream work queue, so a second
 # server must not share the dev stack's stream with `make dev`.
