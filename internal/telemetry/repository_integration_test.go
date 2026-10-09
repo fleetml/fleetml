@@ -103,6 +103,18 @@ func TestRepository_Integration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = svc.GetTimeSeries(ctx, fx.VersionID, time.Time{}, time.Time{}, "5m")
 	require.NoError(t, err)
+
+	// A deleted device's events stay in the queries and the summaries.
+	_, err = pool.Exec(ctx, `DELETE FROM devices WHERE id = $1`, dev)
+	require.NoError(t, err)
+	got, total, err = repo.QueryEvents(ctx, EventFilter{ModelVersionID: &fx.VersionID, From: now.Add(-3 * time.Hour), To: now.Add(time.Minute)})
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	assert.Equal(t, uuid.Nil, got[0].DeviceID)
+	byClass, err = repo.GetSummaryByDeviceClass(ctx, fx.VersionID, now.Add(-3*time.Hour), now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Len(t, byClass, 1)
+	assert.Equal(t, int64(5), byClass[0].TotalEvents)
 }
 
 // The JetStream pipeline end to end: publish -> consumer -> hypertable, with

@@ -285,7 +285,7 @@ func (r *Repository) GetSummaryByDeviceClass(ctx context.Context, modelVersionID
 		COALESCE(AVG(te.confidence_score), 0) AS avg_conf,
 		COALESCE(AVG(te.memory_usage_mb), 0) AS avg_mem
 		FROM telemetry_events te
-		JOIN devices d ON d.id = te.device_id
+		LEFT JOIN devices d ON d.id = te.device_id
 		LEFT JOIN device_classes dc ON dc.id = d.device_class_id
 		WHERE te.model_version_id = $1 AND te.recorded_at >= $2 AND te.recorded_at <= $3
 		GROUP BY dc.name

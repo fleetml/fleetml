@@ -78,8 +78,9 @@ change APIs).
 ### Fixed
 
 - `DELETE /devices/{id}` failed with a 500 for any device that had reported
-  telemetry. Deleting a device now deletes its telemetry too (migration
-  000018), as it already deleted its experiment assignments.
+  telemetry. Deleting a device now keeps its telemetry, with its model
+  version and experiment arm, and drops only the link to the device (migration
+  000018); experiment results, drift and telemetry summaries do not change.
 - Android and iOS SDKs: the start-up registration and a `syncNow()` right
   after `init()` could both register; each Register issues a token that
   supersedes the previous one, so the device could keep the superseded token
