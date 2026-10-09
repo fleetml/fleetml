@@ -173,6 +173,10 @@ docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 open http://localhost:13000            # Grafana, dashboard "FleetML"
 ```
 
+Run it in the same shell as the stack, since compose needs the same secrets.
+It runs the one-shot `migrate` service again and restarts the server once; the
+data stays.
+
 With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;
 Prometheus is then on `:19091` and scrapes the server on `:18080`.
