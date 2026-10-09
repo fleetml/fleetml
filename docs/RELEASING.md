@@ -5,12 +5,15 @@ from `main`.
 
 ## Release plan up to the public launch
 
-The repository stays private through v0.1.0 and v0.2.0. Those two versions
-are tagged in the private repository, on the boundary commits recorded when
-each version was closed, with steps 1 to 4 below. The visibility change
-(steps 5 and 6) and the public launch (step 7) happen once, after v0.3.0 and
-the launch material are done: branch protection is set right before the
-repository is made public. From then on every release follows all the steps.
+The repository stays private until v0.3.0. The three versions are tagged in
+the private repository, on the boundary commits recorded when each version
+was closed, with steps 1 to 4 below; the first CI run on GitHub's runners
+happens with that push, while the repository is still private. The visibility
+change (step 5), branch protection (step 6) and the announcement (step 7)
+happen once, after v0.3.0, and only when `main` is green. GitHub does not
+offer branch protection or rulesets on a private repository of a free
+organisation, so `main` is protected right after it becomes public, before
+anything is announced. From then on every release follows all the steps.
 
 ## 1. Check the release candidate
 
@@ -78,28 +81,31 @@ followed by:
 Mark pre-1.0 releases as the latest release (not a pre-release) once they are
 the recommended version.
 
-## 5. Protect `main`
+## 5. Make the repository public
 
-Once, right before the repository becomes public (after v0.3.0), in **Settings → Branches → Add
-branch protection rule** (or a ruleset) for `main`:
-
-- require a pull request before merging;
-- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`, `Docs site`); not
-  `iOS SDK`, which runs only when `ios/` changes and would otherwise block other
-  pull requests;
-- block force pushes and deletion of the branch.
-
-From then on every change to `main` goes through a pull request.
-
-## 6. Make the repository public
-
-Once, after v0.3.0 and the launch material are ready. In **Settings → General → Danger Zone → Change repository visibility**, make
-it public. Then, in **Settings → Code security**, enable private
-vulnerability reporting (so the security policy's reports can also arrive
-there) and Dependabot alerts.
+Once, after v0.3.0, and only when the CI workflow is green for `main`. In
+**Settings → General → Danger Zone → Change repository visibility**, make it
+public. Then, in **Settings → Code security**, enable private vulnerability
+reporting (so the security policy's reports can also arrive there) and
+Dependabot alerts.
 
 Check the public view: the README renders with its links, the Actions tab shows
 the release commit green, and the release is listed.
+
+## 6. Protect `main`
+
+Immediately after step 5, before any announcement (branch protection and
+rulesets are not available while the repository is private on the free
+organisation plan). In **Settings → Branches → Add branch protection rule**
+(or a ruleset) for `main`:
+
+- require a pull request before merging;
+- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`, `Docs site`,
+  `Helm chart`); not `iOS SDK`, which runs only when `ios/` changes and would
+  otherwise block other pull requests;
+- block force pushes and deletion of the branch.
+
+From then on every change to `main` goes through a pull request.
 
 ## 7. Announce
 
