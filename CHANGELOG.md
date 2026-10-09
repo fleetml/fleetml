@@ -76,6 +76,9 @@ change APIs).
   it took minutes.
 - Both compose files and CI pin `timescale/timescaledb:2.30.2-pg16`, the
   tag the Helm chart uses, instead of `latest-pg16`.
+- The iOS SDK's tests, live test and signing check also pass on the iOS 16.4
+  simulator (before, only iOS 26.5 had been tested); the deployment target
+  stays iOS 15.
 
 ### Fixed
 
