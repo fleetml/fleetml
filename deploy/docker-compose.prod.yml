@@ -2,7 +2,7 @@ name: fleetml-prod
 
 services:
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.30.2-pg16
     environment:
       POSTGRES_DB: fleetml
       POSTGRES_USER: fleetml

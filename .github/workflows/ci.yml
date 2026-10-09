@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg16
+        image: timescale/timescaledb:2.30.2-pg16
         env:
           POSTGRES_USER: fleetml
           POSTGRES_PASSWORD: fleetml_dev

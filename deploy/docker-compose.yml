@@ -2,7 +2,7 @@ name: fleetml
 
 services:
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.30.2-pg16
     ports:
       - "${FLEETML_PG_PORT:-15432}:5432"
     environment:

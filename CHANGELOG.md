@@ -74,6 +74,8 @@ change APIs).
   only an admin's.
 - The 20 MB delta timing test no longer runs under the race detector, where
   it took minutes.
+- Both compose files and CI pin `timescale/timescaledb:2.30.2-pg16`, the
+  tag the Helm chart uses, instead of `latest-pg16`.
 
 ### Fixed
 
