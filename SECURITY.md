@@ -10,6 +10,9 @@ Email **security@fleetml.dev** (or, if that bounces, **fleetml.maintainers@gmail
 - the FleetML version or commit you tested,
 - steps to reproduce (a proof of concept if you have one).
 
+Or open a private report on GitHub: Security tab, Report a vulnerability
+(private vulnerability reporting). Either route reaches the same maintainers.
+
 We aim to acknowledge reports within 7 days and to agree a disclosure date with you once a fix is ready. If you do not hear back, please send a reminder to the other address.
 
 ## Supported versions
