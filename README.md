@@ -93,8 +93,9 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
 ## Quickstart
 
-Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
-APIs use 18080 (REST) and 19090 (gRPC).
+**Requirements:** Docker with Compose v2 and `openssl`; about 4 GB of free
+memory for the six containers and the two image builds; ports 80 (dashboard),
+18080 (REST) and 19090 (gRPC) free.
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
@@ -109,6 +110,14 @@ Measured on an Apple-silicon laptop, cold: **1 min 39 s** from `git clone` to
 the dashboard's login answering, with no FleetML images or build cache present
 (most of it is pulling the base images and building the server and dashboard
 images).
+
+If port 80 is taken, move the dashboard with an override file (Compose 2.24 or
+later for `!override`) and open it on that port, here http://localhost:8080:
+
+```bash
+printf 'services:\n  dashboard:\n    ports: !override ["8080:80"]\n' > dashboard-port.yml
+docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
+```
 
 Next:
 
