@@ -66,30 +66,30 @@ stack):
 
 ## Features
 
+The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
+
 | Feature | Status | See it |
 |---|---|---|
-| **Model registry with integrity checks.** Files go straight to the S3-compatible store with presigned URLs; the server checks each upload's sha256 and size before the variant can be deployed | DONE | [Tour §1](docs/QUICKSTART.md#1-publish-a-model), e2e `TestE2E_ArtifactIntegrity` |
-| **Variant selection.** Several builds per version (runtime, quantization); each device gets one it can run, by OS runtime, RAM and capability score | DONE | [Tour §2](docs/QUICKSTART.md#2-a-fleet-and-a-rollout), [ROLLOUTS.md](docs/ROLLOUTS.md) |
-| **Canary rollouts with a health gate.** Staged percentages on a consistent-hash ring; the gate compares the exposed cohort's error rate (and optionally p95 latency against the previous version) with thresholds and rolls back or pauses | DONE | [Tour §3](docs/QUICKSTART.md#3-a-canary-that-rolls-itself-back), e2e `TestE2E_HealthGateIsCohortScoped` |
-| **Rolling rollouts.** Batches by device count or percentage at an interval, with the same gate | DONE | e2e `TestE2E_RollingBatches` |
-| **Rollback, cancel, one version per model.** Manual rollback (also after completion) returns devices to the previous version; the newest deployment that reaches a device wins | DONE | e2e `TestE2E_RollbackFromComplete` |
-| **A/B experiments.** Sticky cohorts, each arm's model delivered and verified, telemetry attributed per arm, a fixed-horizon Welch t-test and a maximum duration | DONE | [Tour §4](docs/QUICKSTART.md#4-an-ab-experiment), e2e `TestE2E_ABExperiment` |
-| **Drift detection.** PSI on inference latency, confidence and input features (histograms binned on the device), last 24 hours against the 7 days before, with history and PSI over time; a change into CRITICAL raises one alert | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
-| **Alerts.** Rollback and drift alerts on NATS and to per-project sinks: HMAC-signed webhooks, Slack (Block Kit) and email, with a test button, five attempts and a delivery log with dead letters | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
-| **Android SDK.** Kotlin, minSdk 26: resumable verified downloads, validation before activation, last-known-good, offline start, persistent telemetry | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
-| **iOS SDK.** Swift package, iOS 15 and later (tested on the iOS 16.4 and 26.5 simulators): the same lifecycle with Core ML validation and Keychain credentials | DONE | [IOS_SDK.md](docs/IOS_SDK.md), `swift test`, simulator `LiveServerTests` |
-| **Linux device agent.** A static binary (amd64, arm64) and systemd service for Jetson, Raspberry Pi and x86 edge boxes: the same rollout, validation and last-known-good rules, models behind a `current` symlink, a command validator, a post-activate hook, and a local HTTP endpoint for inference telemetry | DONE | [LINUX_AGENT.md](docs/LINUX_AGENT.md), `go test ./internal/agent` |
-| **Battery and data.** Heartbeats and telemetry on a timer only in the foreground; in the background one check per hour (WorkManager, BGAppRefreshTask); telemetry batched in a persistent queue; models download on an unmetered network or while charging unless the deployment is urgent; all tunable from the server | DONE | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data), e2e `TestE2E_UrgentAndDeviceConfig`, `LiveServerTests` |
-| **Dashboard.** Models, versions and variants; create and control deployments and experiments; drift history; alert sinks; login with server-side sessions (the API key is not kept in the browser); works on phones | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
-| **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices | DONE | [Tour](docs/QUICKSTART.md#tour) |
-| **Security.** API keys that act as users with per-project roles, per-project enrollment keys, revocable device tokens, devices confined to their project | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation`, `TestE2E_RolesAndAudit` |
-| **Operations.** `/livez`, `/readyz`, Prometheus `/metrics`, `grpc.health.v1`; a Grafana dashboard (compose profile `observability`); telemetry delivered at least once through NATS JetStream and stored once per event ID | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
-| **Roles and audit log.** Users with a viewer, operator or admin role per project and global admins, enforced by a permission matrix that covers every route; every change and every refused request in an audit log, filterable and exportable as CSV, with a dashboard page | DONE | [ARCHITECTURE.md](docs/ARCHITECTURE.md#users-roles-and-the-audit-log) |
-| **Helm chart.** Server, dashboard and optional bundled Postgres, NATS and SeaweedFS; linted and rendered in CI, and the end-to-end suite runs against it in kind | DONE | [deploy/helm/fleetml](deploy/helm/fleetml) |
-| **Delta updates.** A new version is diffed against the previous one when it is published; devices that have the previous version download only the delta (a 20 MB model with a retrained head: 440 KB) and check the result's sha256 | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#delta-updates) |
-| **Artifact signing.** Per-project ed25519 keys sign each model when it is published; the Android and iOS SDKs and the Linux agent verify the signature before downloading, and keys rotate with a grace period | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
-
-The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
+| **Model registry with integrity checks.** Files go straight to S3-compatible storage, and the server checks each upload's sha256 and size before deployment. | DONE | [Tour §1](docs/QUICKSTART.md#1-publish-a-model), e2e `TestE2E_ArtifactIntegrity` |
+| **Variant selection.** Each device gets a build it can run, chosen by OS runtime, RAM and capability score. | DONE | [Tour §2](docs/QUICKSTART.md#2-a-fleet-and-a-rollout), [ROLLOUTS.md](docs/ROLLOUTS.md) |
+| **Canary rollouts with a health gate.** The gate watches the canary cohort's error rate, and optionally p95 latency, and rolls back or pauses. | DONE | [Tour §3](docs/QUICKSTART.md#3-a-canary-that-rolls-itself-back), e2e `TestE2E_HealthGateIsCohortScoped` |
+| **Rolling rollouts.** Batches by device count or percentage at an interval, with the same gate. | DONE | e2e `TestE2E_RollingBatches` |
+| **Rollback, cancel, one version per model.** Manual rollback, also after completion, returns devices to the previous version; the newest deployment wins. | DONE | e2e `TestE2E_RollbackFromComplete` |
+| **A/B experiments.** Sticky cohorts, telemetry per arm, a fixed-horizon Welch t-test and a maximum duration. | DONE | [Tour §4](docs/QUICKSTART.md#4-an-ab-experiment), e2e `TestE2E_ABExperiment` |
+| **Drift detection.** PSI on latency, confidence and input features, last 24 hours against the 7 days before; CRITICAL raises an alert. | DONE | [Tour §5](docs/QUICKSTART.md#5-drift) |
+| **Alerts.** Rollback and drift alerts on NATS and to signed webhooks, Slack and email, with retries and a delivery log. | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
+| **Android SDK.** Kotlin, minSdk 26, with resumable verified downloads, validation, last-known-good, offline start and persistent telemetry. | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
+| **iOS SDK.** Swift package, iOS 15 and later, tested on the iOS 16.4 and 26.5 simulators; Core ML validation, Keychain credentials. | DONE | [IOS_SDK.md](docs/IOS_SDK.md), `swift test`, simulator `LiveServerTests` |
+| **Linux device agent.** A static binary (amd64, arm64) and systemd service with the same rollout, validation and last-known-good rules. | DONE | [LINUX_AGENT.md](docs/LINUX_AGENT.md), `go test ./internal/agent` |
+| **Battery and data.** Hourly background checks, batched telemetry, and downloads on unmetered networks or while charging unless urgent, all set from the server. | DONE | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data), e2e `TestE2E_UrgentAndDeviceConfig`, `LiveServerTests` |
+| **Dashboard.** Models, deployments, experiments, drift and alert sinks, with server-side login sessions; works on phones. | DONE | [Tour §6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
+| **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices. | DONE | [Tour](docs/QUICKSTART.md#tour) |
+| **Security.** API keys with per-project roles, per-project enrollment keys, revocable device tokens, and devices confined to their project. | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation`, `TestE2E_RolesAndAudit` |
+| **Operations.** Health probes, Prometheus metrics and a Grafana dashboard; telemetry is delivered at least once and stored once per event ID. | DONE | [Tour §7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
+| **Roles and audit log.** Viewer, operator and admin roles per project, and an audit log of every change and refused request. | DONE | [ARCHITECTURE.md](docs/ARCHITECTURE.md#users-roles-and-the-audit-log) |
+| **Helm chart.** Server, dashboard and optional bundled Postgres, NATS and SeaweedFS; the end-to-end suite runs against it in kind. | DONE | [deploy/helm/fleetml](deploy/helm/fleetml) |
+| **Delta updates.** Devices with the previous version download only a delta: 440 KB for a 20 MB model with a retrained head. | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#delta-updates) |
+| **Artifact signing.** Per-project ed25519 signatures, checked on the device before download; keys rotate with a grace period. | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
 
 ## Quickstart
 
