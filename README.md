@@ -1,15 +1,24 @@
 # FleetML
 
-Safe OTA rollouts, A/B experiments and drift detection for ML models running
-on devices, self-hosted, runtime-agnostic.
+Ship ML models to phones and edge devices in stages, watch how each version
+behaves, and roll back automatically when one is worse.
 
-FleetML decides which device runs which version of your model, ships the file,
-and watches what happens. Devices download a version only when a deployment or
-experiment targets them, verify its sha256, check that it loads before using
-it, and keep the previous version if it does not. A canary whose cohort starts
-failing rolls itself back. Your app runs the model with TensorFlow Lite,
-Core ML, ONNX Runtime or anything else; FleetML moves files and telemetry, not
-inferences.
+## Why
+
+Getting a model file onto phones and edge devices is the easy part. Taking a
+bad version back from the devices that already have it, before every device
+has it, is not, so teams that run models on devices end up building staged
+rollouts, rollback and drift monitoring themselves.
+
+The hosted options are going away: Firebase ML, including its custom model
+hosting, is deprecated and shuts down on June 15, 2027
+([Firebase docs](https://firebase.google.com/docs/ml/manage-hosted-models)),
+and SageMaker Edge Manager was discontinued in 2024
+([AWS docs](https://docs.aws.amazon.com/sagemaker/latest/dg/edge-eol.html)).
+
+FleetML is self-hosted and Apache-2.0, and works with any model file. Devices
+verify each download and keep the previous version if the new one does not
+load. Your app runs the model with its own runtime.
 
 **What FleetML is not.** It is not an inference runtime: it never loads your
 model to answer requests; your app or inference process does. It is
