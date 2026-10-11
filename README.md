@@ -22,12 +22,13 @@ FleetML is self-hosted and Apache-2.0, and works with any model file. Devices
 verify each download and keep the previous version if the new one does not
 load. Your app runs the model with its own runtime.
 
-**What FleetML is not.** It is not an inference runtime: it never loads your
-model to answer requests; your app or inference process does. It is
-not a model trainer or converter: it starts from a file you already have. And
-it is not a hosted service: you run the server, its Postgres, NATS and object
-store yourself, with Docker Compose or the Helm chart, and your models and
-telemetry stay there.
+**What FleetML is not.** It is not an inference runtime: your app or inference
+process keeps running the model with the runtime you already use, so nothing
+about inference changes. It is not a model trainer or converter: it starts
+from a file you already have, in any format. And it is not a hosted service:
+you run the server, its Postgres, NATS and object store yourself, with Docker
+Compose or the Helm chart, so your models and telemetry never leave your
+infrastructure.
 
 ## The 60-second story
 
