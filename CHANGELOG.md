@@ -7,6 +7,15 @@ change APIs).
 
 ## [0.4.0] - Unreleased
 
+### Changed
+
+- The README opens with what FleetML does and why it exists, describes each
+  feature in one sentence, lists the quickstart's requirements, shows how to
+  move the dashboard off port 80 with a compose override file, and has a CI
+  badge.
+- `SECURITY.md` adds GitHub's private vulnerability reporting as a second way
+  to report a vulnerability.
+
 ## [0.3.0] - 2026-10-08
 
 ### Added
@@ -248,7 +257,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
-[0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...v0.4.0
+[0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/fleetml/fleetml/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fleetml/fleetml/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fleetml/fleetml/releases/tag/v0.1.0
