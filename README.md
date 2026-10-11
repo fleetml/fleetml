@@ -3,6 +3,8 @@
 Ship ML models to phones and edge devices in stages, watch how each version
 behaves, and roll back automatically when one is worse.
 
+[![CI](https://github.com/fleetml/fleetml/actions/workflows/ci.yml/badge.svg)](https://github.com/fleetml/fleetml/actions/workflows/ci.yml)
+
 ## Why
 
 Getting a model file onto phones and edge devices is the easy part. Taking a
