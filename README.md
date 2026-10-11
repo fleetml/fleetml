@@ -95,7 +95,7 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
 ## Quickstart
 
-**Requirements:** Docker with Compose v2 and `openssl`; about 4 GB of free
+**Requirements:** Docker with Compose v2 and `openssl`; about 2 GB of free
 memory for the six containers and the two image builds; ports 80 (dashboard),
 18080 (REST) and 19090 (gRPC) free.
 
