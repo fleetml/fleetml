@@ -127,9 +127,11 @@ api GET /api/v1/experiments/$EXP/results | jq '.data | {control_ms: .control.avg
 api POST /api/v1/experiments/$EXP/conclude "{\"winner_version_id\":\"$V21\"}" | jq -r .data.status
 ```
 
-The experiment is `RUNNING` once started and `CONCLUDED` at the end. Each
-device keeps its arm for the experiment's life, and its telemetry carries the
-arm ID, so results are per arm even when a device's arm model changes.
+The experiment is `RUNNING` once started and `CONCLUDED` at the end. A
+`p_value` of `0` means the p-value is below the precision of a double; read it
+as p < 0.0001, which is how the demo and the dashboard show it. Each device
+keeps its arm for the experiment's life, and its telemetry carries the arm ID,
+so results are per arm even when a device's arm model changes.
 
 ### 5. Drift
 
