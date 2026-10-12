@@ -167,7 +167,9 @@ explains the choice for one device.
   `UNMETERED_ONLY` and `ANY_NETWORK` are the alternatives. A waiting
   assignment is retried on the next heartbeat. Assignments of an
   [urgent deployment](ROLLOUTS.md#urgent-deployments-and-the-download-policy),
-  and every rollback, download on any connected network.
+  and every rollback, skip the battery and metered rules, but they still need
+  a connection: with no network at all, every download waits, urgent ones
+  included.
 - **Telemetry** is always batched; no event is sent on its own.
 - The server sets all of these for every device with the `DEVICE_*`
   variables ([CONFIG.md](CONFIG.md#devices)); `FleetMLConfig` only provides
@@ -259,6 +261,10 @@ host machine (the emulator reaches the host's gRPC port at `10.0.2.2`).
    (`adb shell cmd connectivity airplane-mode enable`), force-stop and reopen
    the app. The cached model is active immediately and inference works; events
    are queued and sent after `adb shell cmd connectivity airplane-mode disable`.
+   On a phone connected over USB, airplane mode does not cut the ports
+   forwarded with `adb reverse`: remove them with `adb reverse --remove-all`
+   instead, force-stop and reopen the app, and set the reverses again
+   afterwards ([Physical device](#physical-device)).
 
 ### Physical device
 
@@ -312,23 +318,42 @@ the hosted CI; the unit tests (`./gradlew :fleetml-sdk:testDebugUnitTest`) are.
 The test process has no activity, so the SDK counts as being in the
 background and the test drives it with `FleetML.syncNow()`.
 
-### Battery and data on the emulator
+### Battery and data on the emulator or a phone
 
-With the sample app connected and showing its model:
+With the sample app connected and showing its model, send it to the
+background (its heartbeats stop), find its WorkManager job (a line like
+`JOB #u0aNNN/<id>`) and run the job once, which is one background check with
+one heartbeat:
 
 ```bash
-adb shell input keyevent KEYCODE_HOME                     # background: heartbeats stop
-adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"   # JOB #u0aNNN/<id>
-adb shell cmd jobscheduler run -f com.fleetml.sample <id> # one background check: one heartbeat
-adb shell svc wifi disable                                # mobile data only (metered)
-adb shell dumpsys battery unplug && adb shell dumpsys battery set status 3   # on battery
+adb shell input keyevent KEYCODE_HOME
+adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"
+adb shell cmd jobscheduler run -f com.fleetml.sample <id>
 ```
+
+Then put the device on battery and on a metered network:
+
+```bash
+adb shell dumpsys battery unplug && adb shell dumpsys battery set status 3
+```
+
+- On the emulator, `adb shell svc wifi disable` leaves only mobile data,
+  which is metered.
+- On a phone, keep Wi-Fi on and mark it metered with
+  `adb shell cmd netpolicy set metered-network '"<SSID>"' true`, where
+  `<SSID>` is the network's name (the double quotes keep a name with spaces
+  in one piece on the phone's shell). Turning Wi-Fi off does not work on a
+  phone without a SIM: it is left with no network at all, and then every
+  download waits, urgent ones included.
 
 Deploy a new version without `urgent`, run the job again (the job ID changes
 after each run): logcat shows `Download of iris 2.0.0 waits for the download
 policy`. Deploy it with `"urgent": true` and run the job: the model is
-activated. Restore with `adb shell svc wifi enable` and
-`adb shell dumpsys battery reset`.
+activated. Restore with `adb shell dumpsys battery reset`, plus
+`adb shell svc wifi enable` on the emulator or, on a phone,
+`adb shell cmd netpolicy set metered-network '"<SSID>"' undefined`, which
+returns the network to the system's own setting (`false` would mark it
+unmetered instead).
 
 ## Sample app
 
