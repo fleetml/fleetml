@@ -237,9 +237,15 @@ host machine (the emulator reaches the host's gRPC port at `10.0.2.2`).
    ```
 
 4. Build and install the sample app with the key prefilled (or type it on the
-   config screen), open it and tap **Save and connect**:
+   config screen), open it and tap **Save and connect**. A fresh clone has no
+   `android/local.properties`, so Gradle on the command line finds the Android
+   SDK through `ANDROID_HOME`, and Gradle 8.7 needs JDK 17 (it fails on a newer
+   default JDK). Android Studio writes `local.properties` when it opens the
+   project, which makes the first export unnecessary there:
 
    ```bash
+   export ANDROID_HOME=$HOME/Library/Android/sdk
+   export JAVA_HOME=/opt/homebrew/opt/openjdk@17
    cd android
    ./gradlew :sample-app:installDebug -PfleetmlEnrollmentKey=$EK
    ```
@@ -264,6 +270,10 @@ step 1 and an emulator running:
 ```bash
 FLEETML_API_KEY=$FLEETML_API_KEY ./scripts/android-e2e.sh
 ```
+
+The scripts need `ANDROID_HOME` (or `local.properties`) as in step 4. They
+already run Gradle with JDK 17 whatever `JAVA_HOME` says: from `JAVA_HOME_17`
+if it is set, otherwise from `/opt/homebrew/opt/openjdk@17`.
 
 `./scripts/signing-e2e.sh android` runs `SignatureLiveTest` twice against
 the same stack: a model whose stored signature was overwritten is rejected,
