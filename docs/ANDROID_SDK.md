@@ -260,6 +260,33 @@ host machine (the emulator reaches the host's gRPC port at `10.0.2.2`).
    the app. The cached model is active immediately and inference works; events
    are queued and sent after `adb shell cmd connectivity airplane-mode disable`.
 
+### Physical device
+
+The runbook works the same on a phone connected over USB:
+
+1. Turn on USB debugging in the phone's developer options, connect it and
+   accept the authorisation prompt; `adb devices` then lists it as `device`.
+2. Forward the REST, gRPC and object store ports, so the phone reaches the
+   host machine as `localhost`:
+
+   ```bash
+   adb reverse tcp:18080 tcp:18080
+   adb reverse tcp:19090 tcp:19090
+   adb reverse tcp:19000 tcp:19000
+   ```
+
+3. On the sample app's config screen, replace `10.0.2.2` with `localhost`.
+
+Everything else is the same as on the emulator, including the debug network
+security config, which already allows cleartext to `localhost`. The
+instrumented tests below run on a phone the same way once the reverses are
+set. They connect to `10.0.2.2` unless told otherwise, so pass the host
+through Gradle's environment:
+
+```bash
+env 'ORG_GRADLE_PROJECT_android.testInstrumentationRunnerArguments.host=localhost' FLEETML_API_KEY=$FLEETML_API_KEY ./scripts/android-e2e.sh
+```
+
 ### Instrumented test
 
 `LiveServerTest` (in `fleetml-sdk/src/androidTest`) runs register → download →
