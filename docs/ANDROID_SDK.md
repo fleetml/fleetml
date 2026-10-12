@@ -167,7 +167,9 @@ explains the choice for one device.
   `UNMETERED_ONLY` and `ANY_NETWORK` are the alternatives. A waiting
   assignment is retried on the next heartbeat. Assignments of an
   [urgent deployment](ROLLOUTS.md#urgent-deployments-and-the-download-policy),
-  and every rollback, download on any connected network.
+  and every rollback, skip the battery and metered rules, but they still need
+  a connection: with no network at all, every download waits, urgent ones
+  included.
 - **Telemetry** is always batched; no event is sent on its own.
 - The server sets all of these for every device with the `DEVICE_*`
   variables ([CONFIG.md](CONFIG.md#devices)); `FleetMLConfig` only provides
@@ -237,9 +239,15 @@ host machine (the emulator reaches the host's gRPC port at `10.0.2.2`).
    ```
 
 4. Build and install the sample app with the key prefilled (or type it on the
-   config screen), open it and tap **Save and connect**:
+   config screen), open it and tap **Save and connect**. A fresh clone has no
+   `android/local.properties`, so Gradle on the command line finds the Android
+   SDK through `ANDROID_HOME`, and Gradle 8.7 needs JDK 17 (it fails on a newer
+   default JDK). Android Studio writes `local.properties` when it opens the
+   project, which makes the first export unnecessary there:
 
    ```bash
+   export ANDROID_HOME=$HOME/Library/Android/sdk
+   export JAVA_HOME=/opt/homebrew/opt/openjdk@17
    cd android
    ./gradlew :sample-app:installDebug -PfleetmlEnrollmentKey=$EK
    ```
@@ -253,6 +261,37 @@ host machine (the emulator reaches the host's gRPC port at `10.0.2.2`).
    (`adb shell cmd connectivity airplane-mode enable`), force-stop and reopen
    the app. The cached model is active immediately and inference works; events
    are queued and sent after `adb shell cmd connectivity airplane-mode disable`.
+   On a phone connected over USB, airplane mode does not cut the ports
+   forwarded with `adb reverse`: remove them with `adb reverse --remove-all`
+   instead, force-stop and reopen the app, and set the reverses again
+   afterwards ([Physical device](#physical-device)).
+
+### Physical device
+
+The runbook works the same on a phone connected over USB:
+
+1. Turn on USB debugging in the phone's developer options, connect it and
+   accept the authorisation prompt; `adb devices` then lists it as `device`.
+2. Forward the REST, gRPC and object store ports, so the phone reaches the
+   host machine as `localhost`:
+
+   ```bash
+   adb reverse tcp:18080 tcp:18080
+   adb reverse tcp:19090 tcp:19090
+   adb reverse tcp:19000 tcp:19000
+   ```
+
+3. On the sample app's config screen, replace `10.0.2.2` with `localhost`.
+
+Everything else is the same as on the emulator, including the debug network
+security config, which already allows cleartext to `localhost`. The
+instrumented tests below run on a phone the same way once the reverses are
+set. They connect to `10.0.2.2` unless told otherwise, so pass the host
+through Gradle's environment:
+
+```bash
+env 'ORG_GRADLE_PROJECT_android.testInstrumentationRunnerArguments.host=localhost' FLEETML_API_KEY=$FLEETML_API_KEY ./scripts/android-e2e.sh
+```
 
 ### Instrumented test
 
@@ -265,6 +304,10 @@ step 1 and an emulator running:
 FLEETML_API_KEY=$FLEETML_API_KEY ./scripts/android-e2e.sh
 ```
 
+The scripts need `ANDROID_HOME` (or `local.properties`) as in step 4. They
+already run Gradle with JDK 17 whatever `JAVA_HOME` says: from `JAVA_HOME_17`
+if it is set, otherwise from `/opt/homebrew/opt/openjdk@17`.
+
 `./scripts/signing-e2e.sh android` runs `SignatureLiveTest` twice against
 the same stack: a model whose stored signature was overwritten is rejected,
 and one signed with the previous key is accepted during the rotation's grace
@@ -275,23 +318,42 @@ the hosted CI; the unit tests (`./gradlew :fleetml-sdk:testDebugUnitTest`) are.
 The test process has no activity, so the SDK counts as being in the
 background and the test drives it with `FleetML.syncNow()`.
 
-### Battery and data on the emulator
+### Battery and data on the emulator or a phone
 
-With the sample app connected and showing its model:
+With the sample app connected and showing its model, send it to the
+background (its heartbeats stop), find its WorkManager job (a line like
+`JOB #u0aNNN/<id>`) and run the job once, which is one background check with
+one heartbeat:
 
 ```bash
-adb shell input keyevent KEYCODE_HOME                     # background: heartbeats stop
-adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"   # JOB #u0aNNN/<id>
-adb shell cmd jobscheduler run -f com.fleetml.sample <id> # one background check: one heartbeat
-adb shell svc wifi disable                                # mobile data only (metered)
-adb shell dumpsys battery unplug && adb shell dumpsys battery set status 3   # on battery
+adb shell input keyevent KEYCODE_HOME
+adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"
+adb shell cmd jobscheduler run -f com.fleetml.sample <id>
 ```
+
+Then put the device on battery and on a metered network:
+
+```bash
+adb shell dumpsys battery unplug && adb shell dumpsys battery set status 3
+```
+
+- On the emulator, `adb shell svc wifi disable` leaves only mobile data,
+  which is metered.
+- On a phone, keep Wi-Fi on and mark it metered with
+  `adb shell cmd netpolicy set metered-network '"<SSID>"' true`, where
+  `<SSID>` is the network's name (the double quotes keep a name with spaces
+  in one piece on the phone's shell). Turning Wi-Fi off does not work on a
+  phone without a SIM: it is left with no network at all, and then every
+  download waits, urgent ones included.
 
 Deploy a new version without `urgent`, run the job again (the job ID changes
 after each run): logcat shows `Download of iris 2.0.0 waits for the download
 policy`. Deploy it with `"urgent": true` and run the job: the model is
-activated. Restore with `adb shell svc wifi enable` and
-`adb shell dumpsys battery reset`.
+activated. Restore with `adb shell dumpsys battery reset`, plus
+`adb shell svc wifi enable` on the emulator or, on a phone,
+`adb shell cmd netpolicy set metered-network '"<SSID>"' undefined`, which
+returns the network to the system's own setting (`false` would mark it
+unmetered instead).
 
 ## Sample app
 

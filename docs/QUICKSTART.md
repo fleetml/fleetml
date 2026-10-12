@@ -26,7 +26,9 @@ with `/api/v1/api-keys`).
 
 The tour needs Go 1.24 and `jq`, and runs from the repository root in the same
 shell (it uses `FLEETML_ADMIN_KEY`). It builds the CLI, then drives the server
-with it and with the REST API.
+with it and with the REST API. The blocks are written to paste into bash or zsh
+as they are: what a command prints is given in the text, not in `#` comments,
+which zsh at the prompt passes to the command as arguments.
 
 ```bash
 go build -o bin/fleetml ./cmd/fleetml
@@ -58,8 +60,9 @@ reaches a device:
 OUT=$(api POST /api/v1/versions/$V2/variants "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$(printf '0%.0s' $(seq 64))\"}")
 curl -s -o /dev/null -X PUT --data-binary @models/iris/iris_v1.tflite "$(echo "$OUT" | jq -r .data.upload_url)"
 curl -s -X POST -H "Authorization: Bearer $FLEETML_API_KEY" localhost:18080/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
-# {"code":"INTEGRITY_ERROR","message":"..."}
 ```
+
+The finalize call answers `{"code":"INTEGRITY_ERROR","message":"..."}`.
 
 ### 2. A fleet and a rollout
 
@@ -75,10 +78,13 @@ EK=$(api POST /api/v1/projects/$P/enrollment-keys '{"name":"tour"}' | jq -r .dat
   --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 D1=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V1\",\"target_selector\":{\"app\":\"tour\"}}" | jq -r .data.id)
-api POST /api/v1/deployments/$D1/start | jq -r .data.status            # COMPLETE: all at once
-sleep 5; tail -1 /tmp/fleetml-sim.log                                   # simulator: iris 1.0.0 on 20
+api POST /api/v1/deployments/$D1/start | jq -r .data.status
+sleep 5; tail -1 /tmp/fleetml-sim.log
 ./bin/fleetml device list | head -5
 ```
+
+The deployment goes to all devices at once, so it starts as `COMPLETE`, and
+the simulator's last line reads `iris 1.0.0 on 20`.
 
 ### 3. A canary that rolls itself back
 
@@ -90,12 +96,16 @@ runs every 30 seconds:
 D2=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V2\",\"strategy\":\"CANARY\",\"target_selector\":{\"app\":\"tour\"},
   \"canary_stages\":[{\"percentage\":25,\"min_duration\":\"10m\"},{\"percentage\":100,\"min_duration\":\"0s\"}],
   \"health_gate\":{\"max_error_rate\":0.05,\"min_events\":30,\"on_failure\":\"ROLLBACK\"}}" | jq -r .data.id)
-api POST /api/v1/deployments/$D2/start | jq -r .data.status            # ROLLING_OUT
-sleep 5; tail -1 /tmp/fleetml-sim.log                                   # the cohort runs 2.0.0
+api POST /api/v1/deployments/$D2/start | jq -r .data.status
+sleep 5; tail -1 /tmp/fleetml-sim.log
 until [ "$(api GET /api/v1/deployments/$D2 | jq -r .data.status)" = ROLLED_BACK ]; do sleep 5; done
-api GET /api/v1/deployments/$D2 | jq -r .data.rollback_reason          # error rate ... exceeds threshold 5.00% ...
-sleep 5; tail -1 /tmp/fleetml-sim.log                                   # simulator: iris 1.0.0 on 20
+api GET /api/v1/deployments/$D2 | jq -r .data.rollback_reason
+sleep 5; tail -1 /tmp/fleetml-sim.log
 ```
+
+The deployment starts as `ROLLING_OUT` and the simulator shows the cohort on
+2.0.0. Once the gate trips, the rollback reason reads `error rate ... exceeds
+threshold 5.00% ...` and the simulator is back to `iris 1.0.0 on 20`.
 
 The rollback also creates a deployment that returns the cohort to 1.0.0, and
 sends a rollback alert (NATS subject `fleetml.alerts.rollback`, the
@@ -111,14 +121,17 @@ inferences:
 
 ```bash
 EXP=$(api POST /api/v1/experiments "{\"project_id\":\"$P\",\"name\":\"iris 2.1.0 latency\",\"control_version_id\":\"$V1\",\"treatment_version_id\":\"$V21\",\"target_selector\":{\"app\":\"tour\"},\"min_sample_size\":300}" | jq -r .data.id)
-api POST /api/v1/experiments/$EXP/start | jq -r .data.status          # RUNNING
+api POST /api/v1/experiments/$EXP/start | jq -r .data.status
 until [ "$(api GET /api/v1/experiments/$EXP/results | jq -r .data.final)" = true ]; do sleep 3; done
 api GET /api/v1/experiments/$EXP/results | jq '.data | {control_ms: .control.avg_latency_ms, treatment_ms: .treatment.avg_latency_ms, p_value, recommendation}'
-api POST /api/v1/experiments/$EXP/conclude "{\"winner_version_id\":\"$V21\"}" | jq -r .data.status   # CONCLUDED
+api POST /api/v1/experiments/$EXP/conclude "{\"winner_version_id\":\"$V21\"}" | jq -r .data.status
 ```
 
-Each device keeps its arm for the experiment's life, and its telemetry carries
-the arm ID, so results are per arm even when a device's arm model changes.
+The experiment is `RUNNING` once started and `CONCLUDED` at the end. A
+`p_value` of `0` means the p-value is below the precision of a double; read it
+as p < 0.0001, which is how the demo and the dashboard show it. Each device
+keeps its arm for the experiment's life, and its telemetry carries the arm ID,
+so results are per arm even when a device's arm model changes.
 
 ### 5. Drift
 
@@ -137,12 +150,12 @@ kill $SIM; sleep 1
 ./bin/fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 sleep 20
-./bin/fleetml drift check $V1                                           # latency CRITICAL
+./bin/fleetml drift check $V1
 api GET /api/v1/drift/$V1/history | jq -r '.data[] | "\(.checked_at) \(.metric) \(.severity)"'
 ```
 
-The drift loop runs every 5 minutes (`DRIFT_TICK_INTERVAL`); a change into
-CRITICAL sends a drift alert.
+The second check reports latency as CRITICAL. The drift loop runs every 5
+minutes (`DRIFT_TICK_INTERVAL`); a change into CRITICAL sends a drift alert.
 
 ### 6. Dashboard
 
@@ -158,20 +171,23 @@ be created, rolled back, cancelled and concluded there too.
 ### 7. Operations
 
 ```bash
-curl -s localhost:18080/livez; echo                                     # {"status":"ok"}
+curl -s localhost:18080/livez; echo
 curl -s localhost:18080/readyz; echo
 curl -s localhost:18080/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-The gRPC port also serves the standard `grpc.health.v1` health service.
+`/livez` answers `{"status":"ok"}`. The gRPC port also serves the standard
+`grpc.health.v1` health service.
 
 Prometheus and Grafana with the FleetML dashboard (telemetry lag,
 redeliveries, request rates, deployments, alerts) run as a compose profile:
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
-open http://localhost:13000            # Grafana, dashboard "FleetML"
+open http://localhost:13000
 ```
+
+Grafana opens on port 13000 with the "FleetML" dashboard.
 
 Run it in the same shell as the stack, since compose needs the same secrets.
 It runs the one-shot `migrate` service again and restarts the server once; the

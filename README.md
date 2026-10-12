@@ -114,11 +114,12 @@ the dashboard's login answering, with no FleetML images or build cache present
 (most of it is pulling the base images and building the server and dashboard
 images).
 
-If port 80 is taken, move the dashboard with an override file (Compose 2.24 or
-later for `!override`) and open it on that port, here http://localhost:8080:
+If port 80 is taken, move the dashboard to any free port with an override file
+(Compose 2.24 or later for `!override`) and open it on that port, here
+http://localhost:8081:
 
 ```bash
-printf 'services:\n  dashboard:\n    ports: !override ["8080:80"]\n' > dashboard-port.yml
+printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
 docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
 ```
 
