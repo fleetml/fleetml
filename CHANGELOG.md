@@ -15,6 +15,9 @@ change APIs).
   badge.
 - `SECURITY.md` adds GitHub's private vulnerability reporting as a second way
   to report a vulnerability.
+- Docs: first-run fixes from a stranger test on macOS and a physical Android
+  phone (zsh comments, port override, ANDROID_HOME and JDK 17, physical device
+  runbook, offline and metered testing, p-value note).
 
 ## [0.3.0] - 2026-10-08
 
