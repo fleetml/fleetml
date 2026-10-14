@@ -217,7 +217,10 @@ activates. Without the script's environment the live test is skipped.
 The package's deployment target is iOS 15. For v0.3.0 the suite, the live
 test and the signing check passed on the iOS 16.4 simulator (an iPhone 14) and
 on the iOS 26.5 simulator; no iOS 15 runtime was tested. Older runtimes are
-installed with `xcodebuild -downloadPlatform iOS -buildVersion 16.4`.
+installed with `xcodebuild -downloadPlatform iOS -buildVersion 16.4`. The SDK
+was also verified on a physical iPhone 16 Pro Max running iOS 26.6.1
+(lifecycle, update, offline, download policy, signing, background refresh),
+with the sample app as in [Physical device](#physical-device).
 
 The suite covers the telemetry queue and reporter, the model store, the
 downloader (including an interrupted transfer resumed with Range), cache
