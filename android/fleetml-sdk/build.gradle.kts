@@ -126,7 +126,9 @@ dependencies {
     implementation("io.grpc:grpc-protobuf-lite:1.62.2")
     implementation("io.grpc:grpc-stub:1.62.2")
     implementation("io.grpc:grpc-kotlin-stub:1.4.1")
-    implementation("com.google.protobuf:protobuf-kotlin-lite:3.25.3")
+    // api: protobuf-lite messages appear in the public API (RegisterResult.config,
+    // TelemetryReporter.reportModelStatus), so consumers compile against them.
+    api("com.google.protobuf:protobuf-kotlin-lite:3.25.3")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
