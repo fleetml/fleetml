@@ -1,0 +1,53 @@
+name: Android publish
+
+# Publishes the Android SDK (dev.fleetml:fleetml-sdk) to Maven Central through
+# the Central Portal, signed, and releases it. Run by hand after a release is
+# tagged (docs/RELEASING.md); the version must match android/gradle.properties.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SDK version to publish (must equal sdkVersion in android/gradle.properties)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check the version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          expected=$(sed -n 's/^sdkVersion=//p' gradle.properties)
+          if [ "$INPUT_VERSION" != "$expected" ]; then
+            echo "::error::version input '$INPUT_VERSION' does not match sdkVersion '$expected' in android/gradle.properties"
+            exit 1
+          fi
+      - name: Publish
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_KEY_PASSWORD }}
+        # The build signs only when a key is given; Central rejects unsigned artifacts.
+        run: |
+          if [ -z "$ORG_GRADLE_PROJECT_signingInMemoryKey" ]; then
+            echo "::error::the MAVEN_SIGNING_KEY secret is not set"
+            exit 1
+          fi
+          ./gradlew :fleetml-sdk:publishToMavenCentral

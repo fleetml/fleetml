@@ -11,8 +11,26 @@ Runtime or anything else.
 
 ## Install
 
-The SDK is not published to a Maven repository yet. Include the module from
-this repository in your Gradle build:
+The SDK is on Maven Central as `dev.fleetml:fleetml-sdk`. Add it to the app
+with TensorFlow Lite next to it:
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    implementation("dev.fleetml:fleetml-sdk:0.3.0")
+    implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
+}
+```
+
+The app's repositories must include `mavenCentral()`, as a new Android Studio
+project's `settings.gradle.kts` does. The SDK needs minSdk 26. TensorFlow Lite
+is not a dependency of the SDK: the app brings the runtime it uses, and the
+default validator uses it when it is there ([Validators](#validators)).
+
+### From a clone
+
+To work against changes that are not released yet, include the module from a
+clone of this repository instead:
 
 ```kotlin
 // settings.gradle.kts
@@ -26,8 +44,8 @@ dependencies {
 }
 ```
 
-Building needs JDK 17 (`JAVA_HOME=/opt/homebrew/opt/openjdk@17` on macOS with
-Homebrew).
+Building the SDK from source needs JDK 17
+(`JAVA_HOME=/opt/homebrew/opt/openjdk@17` on macOS with Homebrew).
 
 ## Configure and start
 

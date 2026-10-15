@@ -138,6 +138,19 @@ Next:
 To stop: `docker compose -f deploy/docker-compose.prod.yml down` (add `-v` to
 delete the data).
 
+### Install the SDKs
+
+Android, from Maven Central (with `mavenCentral()` in the app's repositories):
+
+```kotlin
+implementation("dev.fleetml:fleetml-sdk:0.3.0")
+```
+
+iOS: add `ios/FleetMLSDK` from a clone in Xcode (**File → Add Package
+Dependencies → Add Local…**). Adding it by the repository URL does not work
+yet, because Swift Package Manager needs `Package.swift` at the repository
+root ([details](docs/IOS_SDK.md#install)).
+
 ## How it works
 
 ```
