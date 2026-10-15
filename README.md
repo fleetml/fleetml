@@ -146,10 +146,13 @@ Android, from Maven Central (with `mavenCentral()` in the app's repositories):
 implementation("dev.fleetml:fleetml-sdk:0.3.0")
 ```
 
-iOS: add `ios/FleetMLSDK` from a clone in Xcode (**File → Add Package
-Dependencies → Add Local…**). Adding it by the repository URL does not work
-yet, because Swift Package Manager needs `Package.swift` at the repository
-root ([details](docs/IOS_SDK.md#install)).
+iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
+(Dependency Rule **Branch** `main` until v0.4.0 is tagged;
+[details](docs/IOS_SDK.md#install)):
+
+```text
+https://github.com/fleetml/fleetml
+```
 
 ## How it works
 

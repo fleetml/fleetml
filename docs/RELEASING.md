@@ -105,6 +105,10 @@ The workflow reads five repository secrets:
 The public key must be on a keyserver that Maven Central checks, such as
 keyserver.ubuntu.com. The first version published to Maven Central was 0.3.0.
 
+Nothing has to be published for iOS: the Swift package's manifest is at the
+repository root, so Swift Package Manager picks up each `vX.Y.Z` tag as a
+version as soon as it is pushed.
+
 ## 6. Make the repository public
 
 Once, after v0.3.0, and only when the CI workflow is green for `main`. In

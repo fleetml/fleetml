@@ -14,6 +14,12 @@ change APIs).
   publish workflow; the version comes from `sdkVersion` in
   `android/gradle.properties`, and protobuf-lite is now an `api` dependency
   because its types appear in the SDK's public API.
+- The iOS SDK installs by the repository URL: `Package.swift` is now at the
+  repository root (the code stays in `ios/FleetMLSDK`), so Xcode's Add Package
+  Dependencies with `https://github.com/fleetml/fleetml` and
+  `.package(url: "https://github.com/fleetml/fleetml", from: "0.4.0")` resolve
+  it. Breaking for apps that added the package by the local path
+  `ios/FleetMLSDK`: the local path is now the repository root.
 
 ### Changed
 
