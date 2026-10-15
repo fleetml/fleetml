@@ -18,6 +18,10 @@ change APIs).
 - Docs: first-run fixes from a stranger test on macOS and a physical Android
   phone (zsh comments, port override, ANDROID_HOME and JDK 17, physical device
   runbook, offline and metered testing, p-value note).
+- Docs: a physical device runbook for the iOS SDK (Developer Mode, the Mac's
+  LAN address and `S3_PUBLIC_ENDPOINT`, personal team signing,
+  `ENABLE_PREVIEWS=NO` for command-line builds), and both SDKs are stated as
+  verified on a physical phone (an iPhone on iOS 26.6.1, an Android 15 phone).
 
 ## [0.3.0] - 2026-10-08
 

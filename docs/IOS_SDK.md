@@ -217,7 +217,10 @@ activates. Without the script's environment the live test is skipped.
 The package's deployment target is iOS 15. For v0.3.0 the suite, the live
 test and the signing check passed on the iOS 16.4 simulator (an iPhone 14) and
 on the iOS 26.5 simulator; no iOS 15 runtime was tested. Older runtimes are
-installed with `xcodebuild -downloadPlatform iOS -buildVersion 16.4`.
+installed with `xcodebuild -downloadPlatform iOS -buildVersion 16.4`. The SDK
+was also verified on a physical iPhone 16 Pro Max running iOS 26.6.1
+(lifecycle, update, offline, download policy, signing, background refresh),
+with the sample app as in [Physical device](#physical-device).
 
 The suite covers the telemetry queue and reporter, the model store, the
 downloader (including an interrupted transfer resumed with Range), cache
@@ -277,6 +280,57 @@ host machine (the simulator shares the host's `localhost`, so no
    `xcrun simctl terminate booted com.fleetml.sample` and launch the app again.
    The cached model is active immediately and inference works; events are
    queued and sent once the server is back.
+
+### Physical device
+
+The runbook works on an iPhone too, over Wi-Fi:
+
+1. On the phone, turn on Developer Mode (Settings, Privacy & Security,
+   Developer Mode) and restart it when asked.
+2. Put the phone and the Mac on the same Wi-Fi network. The phone reaches the
+   server at the Mac's LAN address (`ipconfig getifaddr en0`), so start the
+   server with the object store on that address too, which makes the
+   presigned download URLs reachable from the phone (a value in `.env` takes
+   precedence):
+
+   ```bash
+   S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19000 make dev
+   ```
+
+3. In Xcode, add a free Apple ID (Settings, Accounts), open
+   `ios/SampleApp/FleetMLSample.xcodeproj`, and on the FleetMLSample target's
+   Signing & Capabilities tab turn on **Automatically manage signing** with
+   the personal team.
+4. Build from the command line, then install and launch the app with the
+   Mac's address and the enrollment key as launch arguments. `<team>` is the
+   personal team's ID, which Xcode puts in the target's `DEVELOPMENT_TEAM`
+   setting, and `<device>` is the phone's name or identifier from
+   `xcrun devicectl list devices`:
+
+   ```bash
+   cd ios/SampleApp && xcodegen generate
+   xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> ENABLE_PREVIEWS=NO build
+   xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/FleetMLSample.app
+   xcrun devicectl device process launch --device <device> --console com.fleetml.sample -- -fleetmlHost <Mac LAN IP> -fleetmlEnrollmentKey "$EK"
+   ```
+
+   Command-line builds for a device fail at codesign with
+   `errSecInternalComponent` on `__preview.dylib` unless `ENABLE_PREVIEWS=NO`
+   is passed. The first launch of a personally signed app stops at a trust
+   prompt: trust the developer in Settings, General, VPN & Device Management,
+   then launch again.
+
+The sample app's App Transport Security settings already allow plain HTTP to
+local network addresses, so no HTTPS is needed for the Mac's server.
+
+The live tests (`scripts/ios-e2e.sh` and `scripts/signing-e2e.sh ios`) stay
+simulator-only, because Swift package tests cannot run on a physical device
+(`xcodebuild` reports "Tool-hosted testing is unavailable on device
+destinations") unless an app target hosts them. The download policy can be
+exercised on a phone by hand instead: on battery and with Low Data Mode on for
+the Wi-Fi network, a non-urgent deployment waits and an urgent one downloads.
+The background refresh, which the simulator cannot run, is tested on a phone
+with the debugger command in [Battery and data](#battery-and-data).
 
 ## Sample app
 
