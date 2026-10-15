@@ -31,7 +31,7 @@ D=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"
 api POST "/api/v1/deployments/$D/start" >/dev/null
 echo "fixtures: project $P, version $V, deployment $D, label ios-live=$LABEL"
 
-cd ios/FleetMLSDK
+# The package manifest is at the repository root (the current directory).
 TEST_RUNNER_FLEETML_LIVE_HOST=localhost TEST_RUNNER_FLEETML_LIVE_ENROLLMENT_KEY="$EK" TEST_RUNNER_FLEETML_LIVE_LABEL="$LABEL" \
 TEST_RUNNER_FLEETML_LIVE_API="$API" TEST_RUNNER_FLEETML_LIVE_ADMIN_KEY="$FLEETML_API_KEY" \
 TEST_RUNNER_FLEETML_LIVE_PROJECT="$P" TEST_RUNNER_FLEETML_LIVE_VERSION="$V" \
