@@ -38,7 +38,8 @@ func TestQuickstartCalls(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", bin, ".")
+	// No VCS stamping: the test needs no git (and no safe.directory) to build.
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, ".")
 	buildOut, err := build.CombinedOutput()
 	require.NoError(t, err, string(buildOut))
 
