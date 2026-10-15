@@ -1,0 +1,58 @@
+name: Release
+
+# Builds the release binaries (scripts/release-binaries.sh: the CLI for Linux,
+# macOS and Windows, the Linux agent, SHA256SUMS) for a tag and attaches them
+# to the tag's GitHub release. It runs when a vX.Y.Z tag is pushed, and by hand
+# with an existing tag to back-fill a release (docs/RELEASING.md). The release
+# notes are written by hand: if the release does not exist yet, the workflow
+# creates it as a draft with placeholder notes, and it never edits an existing
+# release's notes.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach the binaries to, e.g. v0.4.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    name: Release binaries
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the tag
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a vX.Y.Z tag"
+            exit 1
+          fi
+      # This workflow's own revision for the build script, and the tag's source
+      # to build (the same commit when a tag push started the run).
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          path: src
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+      - name: Build
+        run: SRC=src ./scripts/release-binaries.sh "$TAG"
+      - name: Attach to the release
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --verify-tag --title "FleetML $TAG" \
+              --notes "Draft created by the Release workflow for the binaries. Replace these notes with the CHANGELOG.md section before publishing."
+          fi
+          gh release upload "$TAG" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name'

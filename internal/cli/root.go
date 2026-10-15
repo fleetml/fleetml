@@ -2,6 +2,8 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/fleetml/fleetml/internal/version"
 )
 
 var (
@@ -61,7 +63,7 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print FleetML CLI version",
 		Run: func(_ *cobra.Command, _ []string) {
-			PrintSuccess("fleetml v0.4.0")
+			PrintSuccess("fleetml " + versionString())
 		},
 	}
 }
@@ -117,6 +119,14 @@ func newConfigCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+// versionString is "v0.5.0" for a release build and "dev" otherwise.
+func versionString() string {
+	if v := version.String(); v != "dev" {
+		return "v" + v
+	}
+	return "dev"
 }
 
 // ErrUnknownConfigKey returns an error for unknown config keys.
