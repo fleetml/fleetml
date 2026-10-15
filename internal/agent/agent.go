@@ -30,10 +30,12 @@ import (
 	"github.com/fleetml/fleetml/internal/artifact"
 	"github.com/fleetml/fleetml/internal/delta"
 	"github.com/fleetml/fleetml/internal/features"
+	"github.com/fleetml/fleetml/internal/version"
 )
 
-// AgentVersion is the agent's version, reported at registration.
-const AgentVersion = "0.4.0"
+// AgentVersion is the agent's version, reported at registration: the
+// release version set at build time (internal/version), or "dev".
+var AgentVersion = version.String()
 
 // modelFile is the name of the model inside each version directory.
 const modelFile = "model.bin"

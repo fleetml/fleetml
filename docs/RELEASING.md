@@ -19,9 +19,10 @@ anything is announced. From then on every release follows all the steps.
 
 Every release, in this order; the numbered sections below have the details.
 
-- [ ] `CHANGELOG.md` section dated; versions bumped where they changed (CLI,
-      agent, dashboard, `sdkVersion` in `android/gradle.properties`,
-      `FleetML.sdkVersion` in the iOS package).
+- [ ] `CHANGELOG.md` section dated; versions bumped where they changed
+      (dashboard, `sdkVersion` in `android/gradle.properties`,
+      `FleetML.sdkVersion` in the iOS package); the CLI and the agent take
+      theirs from the tag.
 - [ ] CI green on `main` at the release commit (Go, CLI on Windows,
       Dashboard, Android SDK, Docs site, Helm chart, iOS).
 - [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
@@ -63,13 +64,15 @@ Also:
 
 In `CHANGELOG.md`, replace `Unreleased` in the release's heading with today's
 date (`## [0.1.0] - YYYY-MM-DD`), and make sure the section describes every
-user-visible change since the previous release. The CLI (`fleetml version`
-in `internal/cli/root.go`), the Linux agent (`AgentVersion` in
-`internal/agent/agent.go`) and the dashboard (`dashboard/package.json`) carry
-the release's version. Bump the SDK versions only if the SDKs changed
-(`sdkVersion` in `android/gradle.properties`, which is both
-`BuildConfig.SDK_VERSION` and the Maven Central version, and
-`FleetML.sdkVersion` in the iOS package). Commit:
+user-visible change since the previous release. The dashboard
+(`dashboard/package.json`) carries the release's version. The CLI and the
+Linux agent have no version in the source: the release binaries get it from
+the tag (`internal/version`, set with `-ldflags -X` by
+`scripts/release-binaries.sh`), and a build from source reports `dev`, or the
+tag's version when built from a clean checkout of the tag. Bump the SDK
+versions only if the SDKs changed (`sdkVersion` in
+`android/gradle.properties`, which is both `BuildConfig.SDK_VERSION` and the
+Maven Central version, and `FleetML.sdkVersion` in the iOS package). Commit:
 
 ```bash
 git commit -am "chore: release v0.1.0"
