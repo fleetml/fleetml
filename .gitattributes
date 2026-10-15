@@ -1,0 +1,13 @@
+# Scripts and the Makefile run in bash (on Windows inside WSL 2), which fails
+# on CRLF line endings: keep them LF whatever core.autocrlf is set to.
+*.sh      text eol=lf
+*.py      text eol=lf
+Makefile  text eol=lf
+gradlew   text eol=lf
+
+# Models and images are binary: git never converts their line endings.
+*.tflite  binary
+*.onnx    binary
+*.mlmodel binary
+*.bin     binary
+*.png     binary
