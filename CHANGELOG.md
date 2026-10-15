@@ -5,7 +5,7 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2026-10-15
 
 ### Added
 
@@ -38,9 +38,9 @@ change APIs).
   verified on a physical phone (an iPhone on iOS 26.6.1, an Android 15 phone).
 - Docs: the Android install section leads with the Maven Central dependency
   and keeps including the module from a clone for unreleased changes; the iOS
-  install section keeps the local package and says why adding it by the
-  repository URL does not work yet; the README shows both, and `RELEASING.md`
-  has a step that publishes the Android SDK.
+  install section leads with the repository URL and keeps the local clone as a
+  second option; the README shows both, and `RELEASING.md` has a release
+  checklist and a step that publishes the Android SDK.
 
 ## [0.3.0] - 2026-10-08
 
@@ -283,7 +283,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
-[0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/fleetml/fleetml/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fleetml/fleetml/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fleetml/fleetml/releases/tag/v0.1.0
