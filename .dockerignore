@@ -1,0 +1,8 @@
+# The server image (Dockerfile) builds from the repository root and needs
+# only the Go sources; keep the iOS package and its build output out of the
+# build context.
+Package.swift
+Package.resolved
+ios/
+.build/
+.swiftpm/
