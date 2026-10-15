@@ -111,7 +111,7 @@ run_client() {
       "$ADB" logcat -d -s FleetMLSignatureTest:I | tail -1 | sed 's/^/  /'
       ;;
     ios)
-      (cd ios/FleetMLSDK && TEST_RUNNER_FLEETML_LIVE_HOST=localhost TEST_RUNNER_FLEETML_LIVE_ENROLLMENT_KEY="$EK" \
+      (TEST_RUNNER_FLEETML_LIVE_HOST=localhost TEST_RUNNER_FLEETML_LIVE_ENROLLMENT_KEY="$EK" \
         TEST_RUNNER_FLEETML_LIVE_SIG_LABEL="$LABEL" TEST_RUNNER_FLEETML_LIVE_EXPECT_ACTIVE="$1" TEST_RUNNER_FLEETML_LIVE_EXPECT_REJECTED="$2" \
         xcodebuild test -scheme FleetMLSDK -destination "$DEST" -only-testing:FleetMLSDKTests/LiveServerTests/testSignaturesAreVerifiedBeforeActivation) \
         > "$WORK/xcodebuild.log" 2>&1 || { grep -E "error:|failed" "$WORK/xcodebuild.log" | head -5; return 1; }

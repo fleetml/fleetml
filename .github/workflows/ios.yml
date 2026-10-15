@@ -1,13 +1,14 @@
 name: iOS
 
 # macOS runners cost more, so the iOS SDK tests run on pushes to main, on
-# demand, and on pull requests that change ios/ (the generated protocol code
-# lives there too, so protocol changes are covered).
+# demand, and on pull requests that change ios/ or the package manifest at the
+# repository root (the generated protocol code lives in ios/ too, so protocol
+# changes are covered).
 on:
   push:
     branches: [main]
   pull_request:
-    paths: ["ios/**"]
+    paths: ["ios/**", "Package.swift", "Package.resolved"]
   workflow_dispatch:
 
 permissions:
@@ -21,9 +22,6 @@ jobs:
   ios:
     name: iOS SDK
     runs-on: macos-15
-    defaults:
-      run:
-        working-directory: ios/FleetMLSDK
     steps:
       - uses: actions/checkout@v4
       - name: Unit tests
