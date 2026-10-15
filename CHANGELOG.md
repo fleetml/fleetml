@@ -9,6 +9,14 @@ change APIs).
 
 ### Added
 
+- A Python client, `pip install fleetml` (Python 3.9 or later, `httpx` only):
+  projects, models, versions, `push`, enrollment keys, deployments (with
+  `wait_for_deployment`), devices, telemetry, experiments and drift, with the
+  same words as the CLI and a `FleetMLError` for every refused request; typed
+  (`py.typed`). CI runs its lint, type and unit checks on Linux, macOS and
+  Windows and a live test of the tour's sections 1 to 3; the hand-run Python
+  publish workflow publishes it to PyPI with Trusted Publishing. See
+  `docs/PYTHON_CLIENT.md`.
 - Release binaries: every `vX.Y.Z` tag gets the CLI for Linux, macOS and
   Windows (amd64 and arm64; `.tar.gz`, and `.zip` with `fleetml.exe` for
   Windows) and the Linux agent with its installer, plus `SHA256SUMS`, attached
