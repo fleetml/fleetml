@@ -21,7 +21,9 @@ LABEL="run-$RANDOM$RANDOM"
 
 api() { curl -sf -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' ${3:+-d "$3"} "$API$2"; }
 
-SHA=$(shasum -a 256 "$MODEL" | cut -d' ' -f1)
+# sha256sum (coreutils) on Linux and in WSL, shasum on macOS.
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+SHA=$(sha256 "$MODEL")
 P=$(api POST /api/v1/projects "{\"name\":\"android-e2e-$LABEL\"}" | jq -r .data.id)
 M=$(api POST "/api/v1/projects/$P/models" '{"name":"iris","framework":"TFLITE","task_type":"CLASSIFICATION"}' | jq -r .data.id)
 # A 2.5 KB model fits any device: lift the selector's FP32 defaults.
