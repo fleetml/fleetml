@@ -9,7 +9,7 @@ The repository stays private until v0.3.0. The three versions are tagged in
 the private repository, on the boundary commits recorded when each version
 was closed, with steps 1 to 4 below; the first CI run on GitHub's runners
 happens with that push, while the repository is still private. The visibility
-change (step 5), branch protection (step 6) and the announcement (step 7)
+change (step 6), branch protection (step 7) and the announcement (step 8)
 happen once, after v0.3.0, and only when `main` is green. GitHub does not
 offer branch protection or rulesets on a private repository of a free
 organisation, so `main` is protected right after it becomes public, before
@@ -49,7 +49,8 @@ user-visible change since the previous release. The CLI (`fleetml version`
 in `internal/cli/root.go`), the Linux agent (`AgentVersion` in
 `internal/agent/agent.go`) and the dashboard (`dashboard/package.json`) carry
 the release's version. Bump the SDK versions only if the SDKs changed
-(`SDK_VERSION` in `android/fleetml-sdk/build.gradle.kts`,
+(`sdkVersion` in `android/gradle.properties`, which is both
+`BuildConfig.SDK_VERSION` and the Maven Central version, and
 `FleetML.sdkVersion` in the iOS package). Commit:
 
 ```bash
@@ -81,7 +82,30 @@ followed by:
 Mark pre-1.0 releases as the latest release (not a pre-release) once they are
 the recommended version.
 
-## 5. Make the repository public
+## 5. Publish the Android SDK
+
+When the Android SDK's version changed, run the **Android publish** workflow
+from the Actions tab (**Run workflow** on `main`) with that version. The
+workflow checks that it equals `sdkVersion` in `android/gradle.properties`,
+then builds `dev.fleetml:fleetml-sdk`, signs it and publishes it to Maven
+Central through the Central Portal, which releases it without a manual step.
+A version on Maven Central can never be replaced, so an unchanged SDK is not
+published again.
+
+The workflow reads five repository secrets:
+
+- `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD`: the user token
+  generated on [central.sonatype.com](https://central.sonatype.com) for the
+  account that owns the `dev.fleetml` namespace;
+- `MAVEN_SIGNING_KEY`: the ASCII-armoured private OpenPGP key;
+- `MAVEN_SIGNING_KEY_ID`: its short key ID (the last 8 hex characters of the
+  fingerprint), the form Gradle's signing plugin accepts;
+- `MAVEN_SIGNING_KEY_PASSWORD`: the key's passphrase.
+
+The public key must be on a keyserver that Maven Central checks, such as
+keyserver.ubuntu.com. The first version published to Maven Central was 0.3.0.
+
+## 6. Make the repository public
 
 Once, after v0.3.0, and only when the CI workflow is green for `main`. In
 **Settings → General → Danger Zone → Change repository visibility**, make it
@@ -92,9 +116,9 @@ Dependabot alerts.
 Check the public view: the README renders with its links, the Actions tab shows
 the release commit green, and the release is listed.
 
-## 6. Protect `main`
+## 7. Protect `main`
 
-Immediately after step 5, before any announcement (branch protection and
+Immediately after step 6, before any announcement (branch protection and
 rulesets are not available while the repository is private on the free
 organisation plan). In **Settings → Branches → Add branch protection rule**
 (or a ruleset) for `main`:
@@ -107,7 +131,7 @@ organisation plan). In **Settings → Branches → Add branch protection rule**
 
 From then on every change to `main` goes through a pull request.
 
-## 7. Announce
+## 8. Announce
 
 Post the announcement with the 60-second story (the README's recording of
 `scripts/demo-agent.sh`) and a link to the release. Answer issues and
