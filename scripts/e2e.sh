@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Runs the end-to-end suite (test/e2e) against a fresh server and a throwaway
-# database on the dev stack (`make docker-up`). The server listens on spare
-# ports (REST 18180, gRPC 19190) with 1s background loops, so it can run
-# next to `make dev`. Extra arguments are passed to `go test`.
+# Runs the end-to-end suite (test/e2e) and the CLI smoke test (cmd/fleetml)
+# against a fresh server and a throwaway database on the dev stack
+# (`make docker-up`). The server listens on spare ports (REST 18180, gRPC
+# 19190) with 1s background loops, so it can run next to `make dev`. Extra
+# arguments are passed to `go test`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -47,3 +48,8 @@ done
 
 FLEETML_E2E_API="http://localhost:$REST_PORT" FLEETML_E2E_GRPC="localhost:$GRPC_PORT" FLEETML_E2E_ADMIN_KEY="$KEY" \
   go test -tags e2e -count=1 "$@" ./test/e2e/... || { echo "--- server log ($LOG) ---"; tail -50 "$LOG"; exit 1; }
+
+# The CLI smoke test that CI runs against a fake of the REST API on Windows,
+# here against the real server, so the fake and the API cannot drift apart.
+FLEETML_SMOKE_SERVER="http://localhost:$REST_PORT" FLEETML_SMOKE_API_KEY="$KEY" \
+  go test -count=1 -run TestQuickstartCalls "$@" ./cmd/fleetml/ || { echo "--- server log ($LOG) ---"; tail -50 "$LOG"; exit 1; }
