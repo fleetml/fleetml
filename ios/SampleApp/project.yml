@@ -6,7 +6,7 @@ options:
     iOS: "15.0"
 packages:
   FleetMLSDK:
-    path: ../FleetMLSDK
+    path: ../.. # the repository root holds the package manifest
 targets:
   FleetMLSample:
     type: application

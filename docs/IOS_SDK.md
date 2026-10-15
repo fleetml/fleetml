@@ -1,12 +1,13 @@
 # iOS SDK
 
-The FleetML iOS SDK (`ios/FleetMLSDK`, a Swift package for iOS 15 and later)
-puts an iPhone or iPad app under FleetML's control: it registers with an
-enrollment key, receives model assignments over gRPC, downloads and verifies
-them, validates each model with Core ML before using it, keeps the
-last-known-good version, works offline, and reports telemetry. It does not run
-your models: your app does, with Core ML or anything else. It mirrors the
-[Android SDK](ANDROID_SDK.md) feature for feature.
+The FleetML iOS SDK (a Swift package for iOS 15 and later, with its manifest at
+the repository root and its code in `ios/FleetMLSDK`) puts an iPhone or iPad
+app under FleetML's control: it registers with an enrollment key, receives
+model assignments over gRPC, downloads and verifies them, validates each model
+with Core ML before using it, keeps the last-known-good version, works offline,
+and reports telemetry. It does not run your models: your app does, with Core ML
+or anything else. It mirrors the [Android SDK](ANDROID_SDK.md) feature for
+feature.
 
 ![Sample app](screenshots/ios-sample.png)
 
@@ -211,9 +212,9 @@ only the counts are sent.
 ## Tests
 
 ```bash
-make ios-test                     # swift test: the unit tests on macOS
-cd ios/FleetMLSDK && xcodebuild test -scheme FleetMLSDK \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator
+make ios-test                     # swift test at the repository root: the unit tests on macOS
+xcodebuild test -scheme FleetMLSDK \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator, from the root
 FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh            # live test against make dev
 FLEETML_API_KEY=<admin key> ./scripts/signing-e2e.sh ios     # signatures: tampered, and the rotation grace
 ```
