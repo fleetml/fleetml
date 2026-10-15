@@ -12,15 +12,24 @@ your models: your app does, with Core ML or anything else. It mirrors the
 
 ## Install
 
-The package is not published to a registry yet. Add it from this repository
-in Xcode (**File → Add Package Dependencies → Add Local…**, pick
-`ios/FleetMLSDK`) or in a `Package.swift`:
+Add the package from a clone of this repository, in Xcode
+(**File → Add Package Dependencies → Add Local…**, pick `ios/FleetMLSDK`) or
+in a `Package.swift`:
 
 ```swift
 .package(path: "path/to/fleetml/ios/FleetMLSDK"),
 // target dependency:
 .product(name: "FleetMLSDK", package: "FleetMLSDK"),
 ```
+
+Adding it by the repository URL (`https://github.com/fleetml/fleetml` in
+**File → Add Package Dependencies**, or `.package(url:from: "0.3.0")`) does
+not work yet. Swift Package Manager reads `Package.swift` only at the root of a
+repository, and this package lives in `ios/FleetMLSDK`: resolving the URL
+finds the `v0.3.0` tag and then stops with "the package manifest at
+'/Package.swift' cannot be accessed". The release tags are named `vX.Y.Z`,
+which Swift Package Manager accepts as versions, so the URL form works once a
+manifest is at the root.
 
 It depends on grpc-swift 1.27 (the release line that supports iOS 15) and
 swift-protobuf. macOS 12 is supported too, for tests and tools.
