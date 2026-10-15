@@ -52,7 +52,9 @@ tmp/
 # Coverage
 coverage.out
 
-# iOS / Swift Package Manager
+# iOS / Swift Package Manager (the package manifest is at the root)
+/.build/
+/.swiftpm/
 ios/**/.build/
 ios/**/.swiftpm/
 ios/**/*.xcodeproj/
