@@ -44,7 +44,7 @@ Issues = "https://github.com/fleetml/fleetml/issues"
 path = "src/fleetml/__init__.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/fleetml", "tests", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
+include = ["/src/fleetml", "/tests", "/README.md", "/LICENSE", "/NOTICE", "/pyproject.toml"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fleetml"]
