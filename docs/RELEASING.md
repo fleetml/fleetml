@@ -20,11 +20,11 @@ anything is announced. From then on every release follows all the steps.
 Every release, in this order; the numbered sections below have the details.
 
 - [ ] `CHANGELOG.md` section dated; versions bumped where they changed
-      (dashboard, `sdkVersion` in `android/gradle.properties`,
-      `FleetML.sdkVersion` in the iOS package); the CLI and the agent take
-      theirs from the tag.
-- [ ] CI green on `main` at the release commit (Go, CLI on Windows,
-      Dashboard, Android SDK, Docs site, Helm chart, iOS).
+      (dashboard, `__version__` of the Python client, `sdkVersion` in
+      `android/gradle.properties`, `FleetML.sdkVersion` in the iOS package);
+      the CLI and the agent take theirs from the tag.
+- [ ] CI green on `main` at the release commit (Go, CLI on Windows, Python
+      client, Dashboard, Android SDK, Docs site, Helm chart, iOS).
 - [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
 - [ ] GitHub release from the tag, with the changelog section as its body.
 - [ ] Binaries: the **Release** workflow attached the eight archives and
@@ -32,6 +32,8 @@ Every release, in this order; the numbered sections below have the details.
 - [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
       `sdkVersion` changed, then check that
       `https://repo1.maven.org/maven2/dev/fleetml/fleetml-sdk/X.Y.Z/` answers.
+- [ ] Python: run the **Python publish** workflow with `X.Y.Z`, then check
+      that `https://pypi.org/project/fleetml/X.Y.Z/` answers.
 - [ ] iOS: nothing to publish; Swift Package Manager reads the tag.
 - [ ] Announce only after the release, the Android artifact and the docs site
       are live.
@@ -68,7 +70,9 @@ Also:
 In `CHANGELOG.md`, replace `Unreleased` in the release's heading with today's
 date (`## [0.1.0] - YYYY-MM-DD`), and make sure the section describes every
 user-visible change since the previous release. The dashboard
-(`dashboard/package.json`) carries the release's version. The CLI and the
+(`dashboard/package.json`) and the Python client (`__version__` in
+`python/src/fleetml/__init__.py`, the only place its version is written;
+`pyproject.toml` reads it) carry the release's version. The CLI and the
 Linux agent have no version in the source: the release binaries get it from
 the tag (`internal/version`, set with `-ldflags -X` by
 `scripts/release-binaries.sh`), and a build from source reports `dev`, or the
@@ -132,7 +136,9 @@ with the tag (`v0.1.0`). It builds that tag's source and replaces the assets
 released before the workflow existed: run it once by hand with `v0.4.0` to
 back-fill its binaries (they report 0.4.0, the version in that tag's source).
 
-## 5. Publish the Android SDK
+## 5. Publish the Android SDK and the Python client
+
+### Android SDK
 
 When the Android SDK's version changed, run the **Android publish** workflow
 from the Actions tab (**Run workflow** on `main`) with that version. The
@@ -154,6 +160,26 @@ The workflow reads five repository secrets:
 
 The public key must be on a keyserver that Maven Central checks, such as
 keyserver.ubuntu.com. The first version published to Maven Central was 0.3.0.
+
+### Python client
+
+Every release publishes the Python client with the release's version: run the
+**Python publish** workflow from the Actions tab (**Run workflow** on `main`)
+with that version. The workflow checks that it equals `__version__` in
+`python/src/fleetml/__init__.py`, builds the sdist and the wheel, runs
+`twine check`, and publishes them to [PyPI](https://pypi.org/project/fleetml/)
+as `fleetml`. A version on PyPI can never be replaced.
+
+It uses PyPI's Trusted Publishing: no token is stored in the repository.
+PyPI trusts the workflow through a publisher entry on the `fleetml` project
+(owner `fleetml`, repository `fleetml`, workflow `python-publish.yml`,
+environment `pypi`), and the workflow runs in the repository's `pypi`
+environment. Before the first publication, that entry is created as a
+pending publisher (PyPI account, **Publishing → Add a new pending
+publisher**), which also reserves the name. The first version published to
+PyPI was: (to be filled in after the first publication).
+
+### iOS
 
 Nothing has to be published for iOS: the Swift package's manifest is at the
 repository root, so Swift Package Manager picks up each `vX.Y.Z` tag as a

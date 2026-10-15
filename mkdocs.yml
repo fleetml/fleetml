@@ -58,6 +58,7 @@ nav:
   - Android SDK: ANDROID_SDK.md
   - iOS SDK: IOS_SDK.md
   - Linux agent: LINUX_AGENT.md
+  - Python client: PYTHON_CLIENT.md
   - Config: CONFIG.md
   - Architecture: ARCHITECTURE.md
   - Releasing: RELEASING.md
