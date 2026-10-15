@@ -1,8 +1,14 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("com.google.protobuf")
+    id("com.vanniktech.maven.publish")
 }
+
+// One version for BuildConfig.SDK_VERSION and the published artifact (android/gradle.properties).
+val sdkVersion = providers.gradleProperty("sdkVersion").get()
 
 android {
     namespace = "com.fleetml.sdk"
@@ -15,7 +21,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
 
-        buildConfigField("String", "SDK_VERSION", "\"0.3.0\"")
+        buildConfigField("String", "SDK_VERSION", "\"$sdkVersion\"")
     }
 
     buildTypes {
@@ -73,6 +79,43 @@ protobuf {
                 create("grpc") { option("lite") }
                 create("grpckt") { option("lite") }
             }
+        }
+    }
+}
+
+// Maven Central (dev.fleetml:fleetml-sdk), published by .github/workflows/android-publish.yml.
+// Credentials and the signing key come from the Gradle properties mavenCentralUsername,
+// mavenCentralPassword, signingInMemoryKey, signingInMemoryKeyId and signingInMemoryKeyPassword;
+// without a key nothing is signed, so publishToMavenLocal works on any machine.
+mavenPublishing {
+    configure(AndroidSingleVariantLibrary(variant = "release", sourcesJar = true, publishJavadocJar = true))
+    publishToMavenCentral(automaticRelease = true)
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) signAllPublications()
+
+    coordinates("dev.fleetml", "fleetml-sdk", sdkVersion)
+
+    pom {
+        name.set("FleetML Android SDK")
+        description.set("Ship ML models to phones and edge devices in stages, watch how each version behaves, and roll back automatically when one is worse.")
+        url.set("https://github.com/fleetml/fleetml")
+        licenses {
+            license {
+                name.set("Apache-2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                distribution.set("repo")
+            }
+        }
+        developers {
+            developer {
+                id.set("fleetml-maintainers")
+                name.set("FleetML Maintainers")
+                email.set("fleetml.maintainers@gmail.com")
+            }
+        }
+        scm {
+            url.set("https://github.com/fleetml/fleetml")
+            connection.set("scm:git:https://github.com/fleetml/fleetml.git")
+            developerConnection.set("scm:git:ssh://git@github.com/fleetml/fleetml.git")
         }
     }
 }
