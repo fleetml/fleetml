@@ -1,35 +1,45 @@
 # iOS SDK
 
-The FleetML iOS SDK (`ios/FleetMLSDK`, a Swift package for iOS 15 and later)
-puts an iPhone or iPad app under FleetML's control: it registers with an
-enrollment key, receives model assignments over gRPC, downloads and verifies
-them, validates each model with Core ML before using it, keeps the
-last-known-good version, works offline, and reports telemetry. It does not run
-your models: your app does, with Core ML or anything else. It mirrors the
-[Android SDK](ANDROID_SDK.md) feature for feature.
+The FleetML iOS SDK (a Swift package for iOS 15 and later, with its manifest at
+the repository root and its code in `ios/FleetMLSDK`) puts an iPhone or iPad
+app under FleetML's control: it registers with an enrollment key, receives
+model assignments over gRPC, downloads and verifies them, validates each model
+with Core ML before using it, keeps the last-known-good version, works offline,
+and reports telemetry. It does not run your models: your app does, with Core ML
+or anything else. It mirrors the [Android SDK](ANDROID_SDK.md) feature for
+feature.
 
 ![Sample app](screenshots/ios-sample.png)
 
 ## Install
 
-Add the package from a clone of this repository, in Xcode
-(**File → Add Package Dependencies → Add Local…**, pick `ios/FleetMLSDK`) or
-in a `Package.swift`:
+In Xcode, choose **File → Add Package Dependencies**, paste
+`https://github.com/fleetml/fleetml` and add the **FleetMLSDK** library to the
+app target. Until v0.4.0 is tagged, set the Dependency Rule to **Branch**
+`main`; from then on, **Up to Next Major Version** from 0.4.0.
+
+In a `Package.swift`:
 
 ```swift
-.package(path: "path/to/fleetml/ios/FleetMLSDK"),
+.package(url: "https://github.com/fleetml/fleetml", from: "0.4.0"),
 // target dependency:
-.product(name: "FleetMLSDK", package: "FleetMLSDK"),
+.product(name: "FleetMLSDK", package: "fleetml"),
 ```
 
-Adding it by the repository URL (`https://github.com/fleetml/fleetml` in
-**File → Add Package Dependencies**, or `.package(url:from: "0.3.0")`) does
-not work yet. Swift Package Manager reads `Package.swift` only at the root of a
-repository, and this package lives in `ios/FleetMLSDK`: resolving the URL
-finds the `v0.3.0` tag and then stops with "the package manifest at
-'/Package.swift' cannot be accessed". The release tags are named `vX.Y.Z`,
-which Swift Package Manager accepts as versions, so the URL form works once a
-manifest is at the root.
+The v0.3.0 and earlier tags have no manifest at the repository root, so until
+the v0.4.0 tag exists use `branch: "main"` instead of `from: "0.4.0"`.
+
+### From a clone
+
+To work against local changes, add the package from a clone instead: in Xcode
+**File → Add Package Dependencies → Add Local…** and pick the clone's root
+folder, or in a `Package.swift`:
+
+```swift
+.package(path: "path/to/fleetml"),
+// target dependency (the package is named after the clone's folder):
+.product(name: "FleetMLSDK", package: "fleetml"),
+```
 
 It depends on grpc-swift 1.27 (the release line that supports iOS 15) and
 swift-protobuf. macOS 12 is supported too, for tests and tools.
@@ -211,9 +221,9 @@ only the counts are sent.
 ## Tests
 
 ```bash
-make ios-test                     # swift test: the unit tests on macOS
-cd ios/FleetMLSDK && xcodebuild test -scheme FleetMLSDK \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator
+make ios-test                     # swift test at the repository root: the unit tests on macOS
+xcodebuild test -scheme FleetMLSDK \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator, from the root
 FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh            # live test against make dev
 FLEETML_API_KEY=<admin key> ./scripts/signing-e2e.sh ios     # signatures: tampered, and the rotation grace
 ```

@@ -15,6 +15,24 @@ offer branch protection or rulesets on a private repository of a free
 organisation, so `main` is protected right after it becomes public, before
 anything is announced. From then on every release follows all the steps.
 
+## Release checklist
+
+Every release, in this order; the numbered sections below have the details.
+
+- [ ] `CHANGELOG.md` section dated; versions bumped where they changed (CLI,
+      agent, dashboard, `sdkVersion` in `android/gradle.properties`,
+      `FleetML.sdkVersion` in the iOS package).
+- [ ] CI green on `main` at the release commit (Go, Dashboard, Android SDK,
+      Docs site, Helm chart, iOS).
+- [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
+- [ ] GitHub release from the tag, with the changelog section as its body.
+- [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
+      `sdkVersion` changed, then check that
+      `https://repo1.maven.org/maven2/dev/fleetml/fleetml-sdk/X.Y.Z/` answers.
+- [ ] iOS: nothing to publish; Swift Package Manager reads the tag.
+- [ ] Announce only after the release, the Android artifact and the docs site
+      are live.
+
 ## 1. Check the release candidate
 
 On an up-to-date `main` with a clean working tree:
@@ -104,6 +122,10 @@ The workflow reads five repository secrets:
 
 The public key must be on a keyserver that Maven Central checks, such as
 keyserver.ubuntu.com. The first version published to Maven Central was 0.3.0.
+
+Nothing has to be published for iOS: the Swift package's manifest is at the
+repository root, so Swift Package Manager picks up each `vX.Y.Z` tag as a
+version as soon as it is pushed.
 
 ## 6. Make the repository public
 

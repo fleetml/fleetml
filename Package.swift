@@ -1,4 +1,6 @@
 // swift-tools-version:5.9
+// The iOS SDK. The manifest is at the repository root so the package can be
+// added by the repository URL; the sources stay in ios/FleetMLSDK.
 import PackageDescription
 
 let package = Package(
@@ -18,8 +20,13 @@ let package = Package(
             dependencies: [
                 .product(name: "GRPC", package: "grpc-swift"),
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-            ]
+            ],
+            path: "ios/FleetMLSDK/Sources/FleetMLSDK"
         ),
-        .testTarget(name: "FleetMLSDKTests", dependencies: ["FleetMLSDK"]),
+        .testTarget(
+            name: "FleetMLSDKTests",
+            dependencies: ["FleetMLSDK"],
+            path: "ios/FleetMLSDK/Tests/FleetMLSDKTests"
+        ),
     ]
 )

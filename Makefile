@@ -78,7 +78,7 @@ proto-swift:
 	./scripts/proto-gen-swift.sh
 
 ios-test:
-	cd ios/FleetMLSDK && swift test
+	swift test
 
 migrate-up:
 	migrate -database "$(DATABASE_URL)" -path $(MIGRATIONS_PATH) up
