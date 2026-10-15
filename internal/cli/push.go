@@ -108,12 +108,18 @@ func newPushCmd() *cobra.Command {
 			}
 			defer func() { _ = f.Close() }()
 
-			pw := &ProgressWriter{Total: fileSize}
-			reader := io.TeeReader(f, pw)
+			// The progress bar redraws one line with \r: only on a terminal.
+			var reader io.Reader = f
+			progress := isTerminal(os.Stderr)
+			if progress {
+				reader = io.TeeReader(f, &ProgressWriter{Total: fileSize})
+			}
 			if err := client.PutRaw(uploadURL, reader, fileSize); err != nil {
 				return fmt.Errorf("upload failed: %w", err)
 			}
-			fmt.Fprintln(os.Stderr) // newline after progress bar
+			if progress {
+				fmt.Fprintln(os.Stderr) // newline after progress bar
+			}
 
 			// Step 5: Finalize
 			var finalResp map[string]interface{}
