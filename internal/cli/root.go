@@ -61,7 +61,7 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print FleetML CLI version",
 		Run: func(_ *cobra.Command, _ []string) {
-			PrintSuccess("fleetml v0.3.0")
+			PrintSuccess("fleetml v0.4.0")
 		},
 	}
 }

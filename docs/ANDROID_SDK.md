@@ -17,7 +17,7 @@ with TensorFlow Lite next to it:
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.3.0")
+    implementation("dev.fleetml:fleetml-sdk:0.4.0")
     implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
 }
 ```

@@ -143,7 +143,7 @@ delete the data).
 Android, from Maven Central (with `mavenCentral()` in the app's repositories):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.3.0")
+implementation("dev.fleetml:fleetml-sdk:0.4.0")
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
