@@ -5,6 +5,46 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- Release binaries: every `vX.Y.Z` tag gets the CLI for Linux, macOS and
+  Windows (amd64 and arm64; `.tar.gz`, and `.zip` with `fleetml.exe` for
+  Windows) and the Linux agent with its installer, plus `SHA256SUMS`, attached
+  to its GitHub release by the new Release workflow, which can also back-fill
+  an existing tag. `make release-binaries VERSION=X.Y.Z` builds the same files
+  into `dist/`.
+- A "CLI on Windows" CI job builds `fleetml.exe`, runs it, and runs the CLI's
+  unit tests and a smoke test of the quickstart's CLI calls (project create,
+  push, deploy create and start, device list) against a fake of the REST API;
+  `scripts/e2e.sh` runs the same smoke test against a real server.
+
+### Changed
+
+- `fleetml version` and `fleetml-agent -version` report the version set at
+  build time from the release tag (`-ldflags -X`), and `dev` for a build from
+  source outside a clean checkout of a tag; the release commit no longer bumps
+  them by hand.
+- `fleetml push` draws its progress bar only when stderr is a terminal.
+
+### Fixed
+
+- `scripts/demo.sh` prints the Docker Compose output when the dev stack fails
+  to start, instead of exiting without a message; `scripts/android-e2e.sh`
+  and `scripts/signing-e2e.sh` use `sha256sum` where `shasum` is missing.
+- Shell scripts and the Makefile keep LF line endings in Windows checkouts
+  (`.gitattributes`).
+
+### Docs
+
+- Windows: the README's requirements and the quickstart's new "On Windows"
+  section run FleetML in a WSL 2 shell with Docker Desktop's WSL 2 backend, and
+  reach the dashboard and the API from Windows at `localhost`.
+- "Get the CLI" in the README and the quickstart: the release assets, the
+  checksum check and the commands for macOS and Linux (curl) and Windows
+  (PowerShell); the Linux agent installs from its release archive.
+
 ## [0.4.0] - 2026-10-15
 
 ### Added
@@ -283,6 +323,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.5.0]: https://github.com/fleetml/fleetml/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/fleetml/fleetml/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fleetml/fleetml/compare/v0.1.0...v0.2.0

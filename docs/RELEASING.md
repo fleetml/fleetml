@@ -27,6 +27,8 @@ Every release, in this order; the numbered sections below have the details.
       Dashboard, Android SDK, Docs site, Helm chart, iOS).
 - [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
 - [ ] GitHub release from the tag, with the changelog section as its body.
+- [ ] Binaries: the **Release** workflow attached the eight archives and
+      `SHA256SUMS` to that release.
 - [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
       `sdkVersion` changed, then check that
       `https://repo1.maven.org/maven2/dev/fleetml/fleetml-sdk/X.Y.Z/` answers.
@@ -46,6 +48,7 @@ make e2e                             # end-to-end suite against a fresh server
 (cd android && ./gradlew :fleetml-sdk:testDebugUnitTest)
 make ios-test
 make docs-site                       # docs site builds (strict) and its links resolve
+make release-binaries VERSION=0.1.0  # the release binaries build into dist/
 ./scripts/demo.sh                    # the 60-second story, from a fresh dev stack
 ```
 
@@ -90,18 +93,44 @@ git push origin main v0.1.0
 Tags are never moved or deleted once pushed; a broken release is fixed with the
 next patch version.
 
+Pushing the tag starts the **Release** workflow
+(`.github/workflows/release.yml`). It builds the binaries from the tag with
+`scripts/release-binaries.sh`, the same files `make release-binaries` writes
+to `dist/`:
+
+- the CLI: `fleetml-linux-amd64.tar.gz`, `fleetml-linux-arm64.tar.gz`,
+  `fleetml-darwin-amd64.tar.gz`, `fleetml-darwin-arm64.tar.gz`,
+  `fleetml-windows-amd64.zip` and `fleetml-windows-arm64.zip`;
+- the Linux agent, with its installer: `fleetml-agent-linux-amd64.tar.gz` and
+  `fleetml-agent-linux-arm64.tar.gz`;
+- `SHA256SUMS` for all eight.
+
+It attaches them to the tag's GitHub release, creating the release as a draft
+if there is none yet, and it never changes a release's notes. The binaries get
+their version from the tag.
+
 ## 4. Release notes
 
-On GitHub, **Releases → Draft a new release**, choose the tag, title it
-`FleetML v0.1.0`, and paste the version's `CHANGELOG.md` section as the notes,
-followed by:
+On GitHub, open **Releases**: the Release workflow has usually created a draft
+for the tag by now; edit it (or **Draft a new release** and choose the tag if
+there is none), title it `FleetML v0.1.0`, and paste the version's
+`CHANGELOG.md` section as the notes, followed by:
 
 ```markdown
 **Try it:** see the [quickstart](https://github.com/fleetml/fleetml#quickstart) or run `./scripts/demo.sh`.
 ```
 
 Mark pre-1.0 releases as the latest release (not a pre-release) once they are
-the recommended version.
+the recommended version. Before publishing, check that the release lists the
+eight archives and `SHA256SUMS`: the install instructions download them from
+the latest release.
+
+If the Release workflow failed, or to attach binaries to a release made before
+it existed, run it by hand: **Actions → Release → Run workflow** on `main`,
+with the tag (`v0.1.0`). It builds that tag's source and replaces the assets
+(`gh release upload --clobber`); the notes stay as they are. v0.4.0 was
+released before the workflow existed: run it once by hand with `v0.4.0` to
+back-fill its binaries (they report 0.4.0, the version in that tag's source).
 
 ## 5. Publish the Android SDK
 

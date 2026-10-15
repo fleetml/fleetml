@@ -96,9 +96,11 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
 ## Quickstart
 
-**Requirements:** Docker with Compose v2 and `openssl`; about 2 GB of free
-memory for the six containers and the two image builds; ports 80 (dashboard),
-18080 (REST) and 19090 (gRPC) free.
+**Requirements:** macOS, Linux or Windows, with Docker with Compose v2 and
+`openssl`; about 2 GB of free memory for the six containers and the two image
+builds; ports 80 (dashboard), 18080 (REST) and 19090 (gRPC) free. On Windows
+the quickstart runs in a WSL 2 shell with Docker Desktop's WSL 2 backend
+([On Windows](docs/QUICKSTART.md#on-windows)).
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
@@ -137,6 +139,28 @@ Next:
 
 To stop: `docker compose -f deploy/docker-compose.prod.yml down` (add `-v` to
 delete the data).
+
+### Get the CLI
+
+`fleetml` for macOS, Linux and Windows is attached to every
+[release](https://github.com/fleetml/fleetml/releases) with a `SHA256SUMS`
+file: `fleetml-linux-amd64.tar.gz`, `fleetml-linux-arm64.tar.gz`,
+`fleetml-darwin-amd64.tar.gz`, `fleetml-darwin-arm64.tar.gz`,
+`fleetml-windows-amd64.zip` and `fleetml-windows-arm64.zip`. On macOS and
+Linux (on Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`):
+
+```bash
+OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && sudo mv fleetml /usr/local/bin/
+fleetml version
+```
+
+On Windows, the PowerShell version is in
+[Get the CLI](docs/QUICKSTART.md#get-the-cli). From source, with Go 1.24:
+`go build -o bin/fleetml ./cmd/fleetml`.
 
 ### Install the SDKs
 
