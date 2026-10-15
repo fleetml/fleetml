@@ -7,6 +7,14 @@ change APIs).
 
 ## [0.4.0] - Unreleased
 
+### Added
+
+- The Android SDK is published to Maven Central as `dev.fleetml:fleetml-sdk`
+  (with sources and javadoc jars, every file signed) by the hand-run Android
+  publish workflow; the version comes from `sdkVersion` in
+  `android/gradle.properties`, and protobuf-lite is now an `api` dependency
+  because its types appear in the SDK's public API.
+
 ### Changed
 
 - The README opens with what FleetML does and why it exists, describes each
@@ -22,6 +30,11 @@ change APIs).
   LAN address and `S3_PUBLIC_ENDPOINT`, personal team signing,
   `ENABLE_PREVIEWS=NO` for command-line builds), and both SDKs are stated as
   verified on a physical phone (an iPhone on iOS 26.6.1, an Android 15 phone).
+- Docs: the Android install section leads with the Maven Central dependency
+  and keeps including the module from a clone for unreleased changes; the iOS
+  install section keeps the local package and says why adding it by the
+  repository URL does not work yet; the README shows both, and `RELEASING.md`
+  has a step that publishes the Android SDK.
 
 ## [0.3.0] - 2026-10-08
 
