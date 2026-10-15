@@ -1,0 +1,52 @@
+name: Python publish
+
+# Builds the Python client (python/) and publishes it to PyPI as `fleetml`
+# with Trusted Publishing: PyPI trusts this workflow file in the pypi
+# environment, so no token is stored. Run by hand after a release is tagged
+# (docs/RELEASING.md); the version must match fleetml.__version__.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (must equal __version__ in python/src/fleetml/__init__.py)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/fleetml/
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          expected=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/fleetml/__init__.py)
+          if [ "$INPUT_VERSION" != "$expected" ]; then
+            echo "::error::version input '$INPUT_VERSION' does not match __version__ '$expected' in python/src/fleetml/__init__.py"
+            exit 1
+          fi
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
