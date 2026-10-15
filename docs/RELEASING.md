@@ -22,8 +22,8 @@ Every release, in this order; the numbered sections below have the details.
 - [ ] `CHANGELOG.md` section dated; versions bumped where they changed (CLI,
       agent, dashboard, `sdkVersion` in `android/gradle.properties`,
       `FleetML.sdkVersion` in the iOS package).
-- [ ] CI green on `main` at the release commit (Go, Dashboard, Android SDK,
-      Docs site, Helm chart, iOS).
+- [ ] CI green on `main` at the release commit (Go, CLI on Windows,
+      Dashboard, Android SDK, Docs site, Helm chart, iOS).
 - [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
 - [ ] GitHub release from the tag, with the changelog section as its body.
 - [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
@@ -146,9 +146,9 @@ organisation plan). In **Settings → Branches → Add branch protection rule**
 (or a ruleset) for `main`:
 
 - require a pull request before merging;
-- require the CI checks to pass (`Go`, `Dashboard`, `Android SDK`, `Docs site`,
-  `Helm chart`); not `iOS SDK`, which runs only when `ios/` changes and would
-  otherwise block other pull requests;
+- require the CI checks to pass (`Go`, `CLI on Windows`, `Dashboard`,
+  `Android SDK`, `Docs site`, `Helm chart`); not `iOS SDK`, which runs only
+  when `ios/` changes and would otherwise block other pull requests;
 - block force pushes and deletion of the branch.
 
 From then on every change to `main` goes through a pull request.
