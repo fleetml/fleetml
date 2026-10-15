@@ -311,7 +311,7 @@ The runbook works on an iPhone too, over Wi-Fi:
    cd ios/SampleApp && xcodegen generate
    xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> ENABLE_PREVIEWS=NO build
    xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/FleetMLSample.app
-   xcrun devicectl device process launch --device <device> --console com.fleetml.sample -fleetmlHost <Mac LAN IP> -fleetmlEnrollmentKey "$EK"
+   xcrun devicectl device process launch --device <device> --console com.fleetml.sample -- -fleetmlHost <Mac LAN IP> -fleetmlEnrollmentKey "$EK"
    ```
 
    Command-line builds for a device fail at codesign with
