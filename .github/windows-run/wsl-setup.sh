@@ -37,13 +37,13 @@ curl -fsSL "https://go.dev/dl/$gover.linux-$(dpkg --print-architecture).tar.gz" 
 ln -sf /usr/local/go/bin/go /usr/local/bin/go
 
 # dockerd as a systemd service when systemd runs (Ubuntu's WSL default), else
-# with the package's init script.
+# in the background (the workflow keeps the distribution running).
 if [ "$(cat /proc/1/comm)" = systemd ]; then
   systemctl enable --now docker
   how="systemd"
 else
-  service docker start
-  how="init script (no systemd)"
+  nohup dockerd >/var/log/dockerd.log 2>&1 &
+  how="dockerd in the background (no systemd)"
 fi
 for _ in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 1; done
 
