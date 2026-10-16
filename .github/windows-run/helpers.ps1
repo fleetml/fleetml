@@ -57,6 +57,31 @@ function Invoke-Native {
     $out
 }
 
+# Start-FakeServer: starts clitest-server (built by the "fake" step into
+# $env:RUNNER_TEMP) on 127.0.0.1:18081 with $env:CLITEST_KEY and waits for
+# /healthz. Each step that drives the CLI starts its own: on the Windows
+# runner a process started by one step does not survive into the next (the
+# first run's calls step found the port refused after the fake step had
+# passed its health check).
+function Start-FakeServer {
+    $server = "$env:RUNNER_TEMP\clitest-server.exe"
+    if (-not (Test-Path $server)) {
+        $null = Invoke-Native go build -tags clitest -o $server ./internal/cli/clitest/cmd/clitest-server
+    }
+    $p = Start-Process $server -ArgumentList '-addr', '127.0.0.1:18081', '-key', $env:CLITEST_KEY -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput "$env:RUNNER_TEMP\clitest-server.log" -RedirectStandardError "$env:RUNNER_TEMP\clitest-server.err"
+    $health = $null
+    foreach ($i in 1..30) {
+        try { $health = Invoke-RestMethod http://127.0.0.1:18081/healthz -UseBasicParsing; break } catch { Start-Sleep 1 }
+    }
+    if ($health.status -ne 'ok') {
+        if (Test-Path "$env:RUNNER_TEMP\clitest-server.err") { Get-Content "$env:RUNNER_TEMP\clitest-server.err" | ForEach-Object { Write-Host "  $_" } }
+        throw 'clitest-server did not answer /healthz on 127.0.0.1:18081'
+    }
+    Write-Host "clitest-server running (PID $($p.Id)) on 127.0.0.1:18081"
+    $p
+}
+
 # Save-ReleaseAsset <name> <file>: downloads an asset of release $env:TAG.
 # Public repository: the docs' URL, $ReleaseBase/<name>. Private (until the
 # repository goes public) that URL answers 404, so the asset is looked up
