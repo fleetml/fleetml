@@ -99,8 +99,9 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 **Requirements:** macOS, Linux or Windows, with Docker with Compose v2 and
 `openssl`; about 2 GB of free memory for the six containers and the two image
 builds; ports 80 (dashboard), 18080 (REST) and 19090 (gRPC) free. On Windows
-the quickstart runs in a WSL 2 shell with Docker Desktop's WSL 2 backend
-([On Windows](docs/QUICKSTART.md#on-windows)).
+FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell with Docker
+Desktop's WSL 2 backend ([On Windows](docs/QUICKSTART.md#on-windows)), and the
+CLI is exercised on GitHub's Windows runner.
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml

@@ -3,9 +3,9 @@
 // upload and finalize, deployments and devices. It answers with the same paths,
 // status codes, JSON envelope ({"data": ...} or {"error": {"code", "message"}})
 // and checks as internal/api/rest, so the CLI can be tested end to end where
-// the real server cannot run (the Windows CI job). The same CLI calls run
-// against a real server in cmd/fleetml's smoke test when FLEETML_SMOKE_SERVER
-// is set.
+// the real server cannot run (the Windows CI job, and the Windows run workflow
+// through cmd/clitest-server). The same CLI calls run against a real server in
+// cmd/fleetml's smoke test when FLEETML_SMOKE_SERVER is set.
 package clitest
 
 import (
@@ -41,7 +41,20 @@ type Server struct {
 // NewServer starts a fake that accepts the admin key apiKey and has one
 // registered device. It is closed when the test ends.
 func NewServer(t testing.TB, apiKey string) *Server {
-	s := &Server{
+	s := newFake(apiKey)
+	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
+	t.Cleanup(s.Close)
+	return s
+}
+
+// NewHandler returns the same fake as NewServer as a handler, for a process
+// that serves it on a port of its own (cmd/clitest-server).
+func NewHandler(apiKey string) http.Handler {
+	return http.HandlerFunc(newFake(apiKey).serve)
+}
+
+func newFake(apiKey string) *Server {
+	return &Server{
 		apiKey:      apiKey,
 		variants:    map[string]map[string]any{},
 		uploads:     map[string][]byte{},
@@ -51,9 +64,6 @@ func NewServer(t testing.TB, apiKey string) *Server {
 			"chipset": "simulated", "labels": map[string]string{"app": "smoke"},
 		}},
 	}
-	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
-	t.Cleanup(s.Close)
-	return s
 }
 
 // Upload returns the bytes uploaded for a variant.
@@ -82,6 +92,11 @@ func (s *Server) Variants() []map[string]any {
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
+	// The probes, like the real server's, need no API key.
+	if r.Method == http.MethodGet && (r.URL.Path == "/healthz" || r.URL.Path == "/readyz") {
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
 	// The presigned upload URL: like the object store, it must not be sent the admin key.
 	if id, ok := strings.CutPrefix(r.URL.Path, "/upload/"); ok && r.Method == http.MethodPut {
 		if r.Header.Get("Authorization") != "" {
@@ -322,13 +337,15 @@ func filter(items []map[string]any, key, value string) []map[string]any {
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 func respondData(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	respondJSON(w, status, map[string]any{"data": data})
 }
 
 func respondError(w http.ResponseWriter, status int, code, message string) {
+	respondJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+func respondJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}})
+	_ = json.NewEncoder(w).Encode(body)
 }
