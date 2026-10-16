@@ -44,6 +44,13 @@ change APIs).
 
 ### Fixed
 
+- The Postgres health check in both compose files and the Helm chart now
+  connects over TCP (`pg_isready -h 127.0.0.1`). The socket check reported
+  ready during the image's first-start initialisation, about a second before
+  the real server listened, so `migrate` could start too early and exit with
+  "connection refused", and `docker compose up` then failed with "service
+  migrate didn't complete successfully". Seen on GitHub's Windows runner under
+  WSL 2; possible on any first start.
 - `scripts/demo.sh` prints the Docker Compose output when the dev stack fails
   to start, instead of exiting without a message; `scripts/android-e2e.sh`
   and `scripts/signing-e2e.sh` use `sha256sum` where `shasum` is missing.
