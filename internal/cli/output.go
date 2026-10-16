@@ -57,6 +57,14 @@ func PrintDetail(title string, pairs [][2]string) {
 	}
 }
 
+// isTerminal reports whether f is an interactive terminal (a character device:
+// a Unix tty or a Windows console), so that redrawn output such as the upload
+// progress bar is not written into pipes, files and CI logs.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 // ProgressWriter wraps an io.Writer to show upload progress.
 type ProgressWriter struct {
 	Total   int64

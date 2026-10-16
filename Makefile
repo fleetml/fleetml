@@ -1,4 +1,4 @@
-.PHONY: env-file build build-server build-cli install-cli test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev docs-site
+.PHONY: env-file build build-server build-cli install-cli release-binaries test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev docs-site
 
 -include .env
 
@@ -29,6 +29,13 @@ build-agent:
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="-s -w" -o bin/fleetml-agent-$$os-$$arch ./cmd/fleetml-agent || exit 1; \
 	done
 	@ls -la bin/fleetml-agent-*
+
+# The release binaries into dist/, as the Release workflow attaches them to a
+# GitHub release (CLI for Linux, macOS and Windows, Linux agent, SHA256SUMS):
+# make release-binaries VERSION=0.5.0
+VERSION ?= dev
+release-binaries:
+	./scripts/release-binaries.sh $(VERSION)
 
 # The documentation site into site/ (MkDocs Material, pinned, in Docker), then
 # an offline check of every internal link and anchor. Nothing is deployed.

@@ -58,6 +58,28 @@ jobs:
           name: go-coverage
           path: coverage.out
 
+  cli-windows:
+    name: CLI on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -o bin\fleetml.exe .\cmd\fleetml
+      - name: fleetml version
+        run: .\bin\fleetml.exe version
+      - name: fleetml --help
+        run: .\bin\fleetml.exe --help
+      # Unit tests (httptest only, no integration tag), and the quickstart's CLI
+      # calls (project create, push, deploy create and start, device list) run
+      # by the Windows binary against a fake of the REST API
+      # (internal/cli/clitest); scripts/e2e.sh runs the same test against a
+      # real server.
+      - name: Unit tests and the CLI smoke test
+        run: go test -count=1 ./internal/cli/... ./cmd/fleetml/...
+
   dashboard:
     name: Dashboard
     runs-on: ubuntu-latest
