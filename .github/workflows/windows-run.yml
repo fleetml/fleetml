@@ -381,7 +381,7 @@ jobs:
         if: always() && steps.setup.outcome == 'success'
         run: |
           . .github\windows-run\helpers.ps1
-          $null = Invoke-Native wsl -d Ubuntu -u tester --exec bash -c 'if [ -f ~/.fleetml-run.env ]; then . ~/.fleetml-run.env && cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml down -v; else echo no stack was started; fi'
+          $null = Invoke-Native wsl -d Ubuntu -u tester --exec bash -c 'if [ -f ~/.fleetml-run.env ]; then . ~/.fleetml-run.env; else export JWT_SECRET=x SIGNING_MASTER_KEY=x FLEETML_ADMIN_KEY=x; fi; if [ -f ~/fleetml/deploy/docker-compose.prod.yml ]; then cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml down -v --remove-orphans; else echo no stack was started; fi'
           $left = Invoke-Native wsl -d Ubuntu -u tester --exec docker ps -aq
           Test-Expect 'no containers left' "$(@($left -split "`n" | Where-Object { $_ }).Count) left" (-not $left.Trim())
           Add-Note 'stack and its volumes removed'

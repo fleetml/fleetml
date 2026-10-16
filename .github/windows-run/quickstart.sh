@@ -69,8 +69,10 @@ qs_on_exit() {
   [ -z "${FLEETML_ADMIN_KEY:-}" ] || echo "::add-mask::$FLEETML_ADMIN_KEY"
   if [ -n "$QS_CURRENT" ]; then echo "--- the block $QS_LABEL failed; it printed:"; cat "$QS_CURRENT"; fi
   if [ -d ~/fleetml ]; then
-    echo "--- docker compose ps and the server's last log lines"
-    (cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml ps && docker compose -f deploy/docker-compose.prod.yml logs --tail 50 server) || true
+    echo "--- docker compose ps -a, then the last log lines of migrate, postgres and server"
+    (cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml ps -a && docker compose -f deploy/docker-compose.prod.yml logs --tail 50 migrate postgres server) || true
+    echo "--- the migrations the migrate container sees"
+    echo "$(find ~/fleetml/internal/db/migrations -name '*.sql' 2>/dev/null | wc -l) .sql files in ~/fleetml/internal/db/migrations" 
   fi
   [ ! -f /tmp/fleetml-sim.log ] || { echo "--- simulator log, last lines"; tail -20 /tmp/fleetml-sim.log; }
   case "${QS_NOTES[*]: -1}" in
