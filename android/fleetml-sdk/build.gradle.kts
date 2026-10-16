@@ -109,7 +109,7 @@ mavenPublishing {
             developer {
                 id.set("fleetml-maintainers")
                 name.set("FleetML Maintainers")
-                email.set("fleetml.maintainers@gmail.com")
+                email.set("hello@fleetml.dev")
             }
         }
         scm {
