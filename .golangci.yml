@@ -5,6 +5,7 @@ run:
   build-tags:
     - integration
     - e2e
+    - clitest
 
 formatters:
   enable:
