@@ -29,6 +29,8 @@ Every release, in this order; the numbered sections below have the details.
 - [ ] GitHub release from the tag, with the changelog section as its body.
 - [ ] Binaries: the **Release** workflow attached the eight archives and
       `SHA256SUMS` to that release.
+- [ ] **Windows run** workflow green with the release tag as `tag`
+      (`windows-latest`; `windows-11-arm` too once the repository is public).
 - [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
       `sdkVersion` changed, then check that
       `https://repo1.maven.org/maven2/dev/fleetml/fleetml-sdk/X.Y.Z/` answers.

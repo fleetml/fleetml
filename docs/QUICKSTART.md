@@ -27,7 +27,12 @@ with `/api/v1/api-keys`).
 
 The server, Postgres, NATS and the object store are Linux containers, and the
 quickstart, the tour and the scripts are bash, so on Windows they run in a
-WSL 2 shell with Docker Desktop's WSL 2 backend:
+WSL 2 shell with Docker Desktop's WSL 2 backend. Docker Desktop needs Windows 11
+Pro, Enterprise or Education 23H2 or later (Home runs Linux containers, which
+is all FleetML uses) and WSL 2.1.5 or later; see Docker's
+[system requirements](https://docs.docker.com/desktop/setup/install/windows-install/).
+Docker labels Docker Desktop for Windows on Arm early access, so Arm laptops
+are not a tested path.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
    and keep **Use the WSL 2 based engine** on (Settings → General).
@@ -85,6 +90,15 @@ Expand-Archive fleetml.zip -DestinationPath "$env:LOCALAPPDATA\fleetml" -Force
 $env:Path += ";$env:LOCALAPPDATA\fleetml"
 fleetml version
 ```
+
+If the first `Invoke-WebRequest` fails with a secure-channel (SSL/TLS) error
+on an older Windows, run `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`
+first.
+
+The amd64 binary and this block are exercised in Windows PowerShell 5.1 on
+GitHub's Windows runner by the
+[Windows run](../.github/workflows/windows-run.yml) workflow; the arm64
+binary is cross-compiled and not yet run on Windows on Arm.
 
 `fleetml version` prints the release, for example `✓ fleetml v0.4.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
