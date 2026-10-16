@@ -56,4 +56,6 @@ echo "Expect: docker answers as $user (Server: Docker Engine - Community)"
 server=$(su "$user" -c "docker version --format '{{.Server.Platform.Name}} {{.Server.Version}}'")
 echo "Got:    $server"
 case "$server" in *"Docker Engine"*) echo PASS ;; *) note "FAILED: docker as $user"; exit 1 ;; esac
-note "$(. /etc/os-release && echo "$PRETTY_NAME"); $server, dockerd via $how; $(go version | cut -d' ' -f3); curl/openssl: ${missing:+missing$missing (installed)}${missing:-already there}"
+tools="already there"
+[ -z "$missing" ] || tools="missing:$missing (installed here)"
+note "$(. /etc/os-release && echo "$PRETTY_NAME"); $server, dockerd via $how; $(go version | cut -d' ' -f3); curl and openssl: $tools"
