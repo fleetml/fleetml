@@ -27,6 +27,12 @@ change APIs).
   unit tests and a smoke test of the quickstart's CLI calls (project create,
   push, deploy create and start, device list) against a fake of the REST API;
   `scripts/e2e.sh` runs the same smoke test against a real server.
+- A hand-run "Windows run" workflow on GitHub's Windows runners
+  (`windows-latest`, `windows-11-arm`): the "Get the CLI" PowerShell block
+  with a release's assets in Windows PowerShell 5.1, the released
+  `fleetml.exe` against the CLI's fake of the REST API (`clitest-server`),
+  and the quickstart with the tour's sections 1 to 3 in WSL 2, reached from
+  Windows at `localhost`.
 
 ### Changed
 
@@ -52,6 +58,9 @@ change APIs).
 - "Get the CLI" in the README and the quickstart: the release assets, the
   checksum check and the commands for macOS and Linux (curl) and Windows
   (PowerShell); the Linux agent installs from its release archive.
+- Windows: Docker Desktop's requirements and its early-access status on Arm,
+  a TLS 1.2 note for the PowerShell download, and what the Windows run
+  workflow exercises (the amd64 binary; arm64 not yet run on Windows on Arm).
 
 ## [0.4.0] - 2026-10-15
 
