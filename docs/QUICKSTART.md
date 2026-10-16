@@ -110,6 +110,10 @@ export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
 api() { curl -sf -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' -d "$3" "localhost:18080$2"; }
 ```
 
+From Python, the same steps run with `pip install fleetml`; sections 1 to 3
+are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
+page.
+
 ### 1. Publish a model
 
 `fleetml push` creates the model and version if needed, uploads the file

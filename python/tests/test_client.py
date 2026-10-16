@@ -1,0 +1,509 @@
+"""Unit tests: every method against httpx.MockTransport, no server."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import httpx
+import pytest
+
+import fleetml
+from fleetml import FleetML, FleetMLError
+
+SERVER = "http://fleet.test:18080"
+API = SERVER + "/api/v1"
+Handler = Callable[[httpx.Request], httpx.Response]
+
+
+def data(payload: Any, status: int = 200) -> httpx.Response:
+    return httpx.Response(status, json={"data": payload})
+
+
+def error(status: int, code: str, message: str) -> httpx.Response:
+    return httpx.Response(status, json={"error": {"code": code, "message": message}})
+
+
+class Fake:
+    """Routes (method, URL path) to handlers and records every request."""
+
+    def __init__(self) -> None:
+        self.routes: Dict[Tuple[str, str], Handler] = {}
+        self.requests: List[httpx.Request] = []
+
+    def on(self, method: str, path: str, handler: Any) -> None:
+        """Answers with ``handler(request)``, or with ``handler`` if it is a response."""
+        if isinstance(handler, httpx.Response):
+            response = handler
+
+            def handler(_request: httpx.Request) -> httpx.Response:
+                return response
+
+        self.routes[(method, path)] = handler
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        request.read()
+        self.requests.append(request)
+        handler = self.routes.get((request.method, request.url.path))
+        if handler is None:
+            return error(404, "NOT_FOUND", f"no route {request.method} {request.url.path}")
+        return handler(request)
+
+    def body(self, i: int = -1) -> Any:
+        return json.loads(self.requests[i].content)
+
+    def client(self, api_key: Optional[str] = "k-test") -> FleetML:
+        return FleetML(SERVER, api_key=api_key, transport=httpx.MockTransport(self))
+
+
+@pytest.fixture
+def fake() -> Fake:
+    return Fake()
+
+
+PROJECT = {"id": "p1", "name": "demo", "slug": "demo", "description": "", "created_at": "2026-10-15T00:00:00Z"}
+MODEL = {"id": "m1", "project_id": "p1", "name": "iris", "framework": "TFLITE", "task_type": "CLASSIFICATION"}
+VERSION = {"id": "v1", "model_id": "m1", "version": "1.0.0", "status": "DRAFT", "metadata": {"accuracy": 0.97}}
+DEPLOYMENT = {
+    "id": "d1",
+    "project_id": "p1",
+    "model_version_id": "v1",
+    "strategy": "CANARY",
+    "status": "PENDING",
+    "target_selector": {"app": "demo"},
+    "current_stage": 0,
+    "urgent": False,
+}
+
+
+def test_version_is_the_package_version() -> None:
+    assert fleetml.__version__ == "0.4.0"
+
+
+def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fake: Fake) -> None:
+    monkeypatch.setenv("FLEETML_SERVER", "http://env.test:9000/")
+    monkeypatch.setenv("FLEETML_API_KEY", "k-env")
+    fake.on("GET", "/api/v1/projects", data([]))
+    with FleetML(transport=httpx.MockTransport(fake)) as fm:
+        assert fm.server == "http://env.test:9000"
+        assert fm.projects.list() == []
+    assert str(fake.requests[0].url) == "http://env.test:9000/api/v1/projects"
+    assert fake.requests[0].headers["Authorization"] == "Bearer k-env"
+
+
+def test_defaults_without_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FLEETML_SERVER", raising=False)
+    monkeypatch.delenv("FLEETML_API_KEY", raising=False)
+    assert FleetML().server == "http://localhost:18080"
+
+
+def test_no_key_sends_no_authorization(fake: Fake) -> None:
+    fake.on("GET", "/api/v1/projects", data([]))
+    fake.client(api_key="").projects.list()
+    assert "Authorization" not in fake.requests[0].headers
+
+
+def test_projects(fake: Fake) -> None:
+    fake.on("POST", "/api/v1/projects", data(PROJECT, 201))
+    fake.on("GET", "/api/v1/projects", data([PROJECT]))
+    fake.on("GET", "/api/v1/projects/p1", data(PROJECT))
+    fm = fake.client()
+    p = fm.projects.create("demo", description="d")
+    assert (p.id, p.name, p.slug) == ("p1", "demo", "demo")
+    assert fake.body() == {"name": "demo", "description": "d"}
+    assert [x.id for x in fm.projects.list(limit=50, offset=10)] == ["p1"]
+    assert fake.requests[-1].url.params["limit"] == "50"
+    assert fake.requests[-1].url.params["offset"] == "10"
+    assert fm.projects.get("p1").raw["created_at"] == "2026-10-15T00:00:00Z"
+    assert fake.requests[0].headers["Authorization"] == "Bearer k-test"
+
+
+def test_models(fake: Fake) -> None:
+    fake.on("POST", "/api/v1/projects/p1/models", data(MODEL, 201))
+    fake.on("GET", "/api/v1/projects/p1/models", data([MODEL]))
+    fm = fake.client()
+    m = fm.models.create("p1", "iris", framework="ONNX", task="DETECTION")
+    assert m.task_type == "CLASSIFICATION"
+    assert fake.body() == {"name": "iris", "framework": "ONNX", "task_type": "DETECTION"}
+    assert [x.name for x in fm.models.list("p1")] == ["iris"]
+
+
+def test_versions(fake: Fake) -> None:
+    fake.on("POST", "/api/v1/models/m1/versions", data(VERSION, 201))
+    fake.on("GET", "/api/v1/models/m1/versions", data([VERSION]))
+    fake.on("GET", "/api/v1/versions/v1", data(VERSION))
+    fm = fake.client()
+    v = fm.versions.create("m1", "1.0.0", metadata={"accuracy": 0.97})
+    assert fake.body() == {"version": "1.0.0", "metadata": {"accuracy": 0.97}}
+    assert v.metadata == {"accuracy": 0.97}
+    fm.versions.create("m1", "1.0.0")
+    assert fake.body() == {"version": "1.0.0"}
+    assert [x.version for x in fm.versions.list("m1")] == ["1.0.0"]
+    assert fm.versions.get("v1").status == "DRAFT"
+
+
+def test_enrollment_keys(fake: Fake) -> None:
+    fake.on(
+        "POST",
+        "/api/v1/projects/p1/enrollment-keys",
+        data({"id": "e1", "project_id": "p1", "name": "ci", "key": "secret"}, 201),
+    )
+    k = fake.client().enrollment_keys.create("p1", "ci")
+    assert k.key == "secret"
+    assert "secret" not in repr(k)
+    assert fake.body() == {"name": "ci"}
+
+
+def test_deployments(fake: Fake) -> None:
+    fake.on("POST", "/api/v1/deployments", data(DEPLOYMENT, 201))
+    fake.on("POST", "/api/v1/deployments/d1/start", data({**DEPLOYMENT, "status": "ROLLING_OUT"}))
+    fake.on("GET", "/api/v1/deployments/d1", data({**DEPLOYMENT, "status": "ROLLING_OUT"}))
+    fake.on("GET", "/api/v1/deployments", data([DEPLOYMENT]))
+    fake.on(
+        "POST",
+        "/api/v1/deployments/d1/rollback",
+        data({**DEPLOYMENT, "status": "ROLLED_BACK", "rollback_reason": "bad"}),
+    )
+    fm = fake.client()
+    stages = [{"percentage": 25, "min_duration": "10m"}, {"percentage": 100, "min_duration": "0s"}]
+    gate = {"max_error_rate": 0.05, "min_events": 30, "on_failure": "ROLLBACK"}
+    d = fm.deployments.create(
+        "p1",
+        "v1",
+        strategy="CANARY",
+        target_selector={"app": "demo"},
+        health_gate=gate,
+        canary_stages=stages,
+        urgent=True,
+    )
+    assert d.target_selector == {"app": "demo"}
+    assert fake.body() == {
+        "project_id": "p1",
+        "model_version_id": "v1",
+        "strategy": "CANARY",
+        "urgent": True,
+        "target_selector": {"app": "demo"},
+        "health_gate": gate,
+        "canary_stages": stages,
+    }
+    fm.deployments.create("p1", "v1", rolling_config={"batch_size_percent": 20, "batch_interval": "1m"})
+    assert fake.body() == {
+        "project_id": "p1",
+        "model_version_id": "v1",
+        "strategy": "ALL_AT_ONCE",
+        "urgent": False,
+        "rolling_config": {"batch_size_percent": 20, "batch_interval": "1m"},
+    }
+    assert fm.deployments.start("d1").status == "ROLLING_OUT"
+    assert fm.deployments.get("d1").status == "ROLLING_OUT"
+    assert [x.id for x in fm.deployments.list()] == ["d1"]
+    r = fm.deployments.rollback("d1", reason="bad")
+    assert (r.status, r.rollback_reason) == ("ROLLED_BACK", "bad")
+    assert fake.body() == {"reason": "bad"}
+
+
+def test_devices_with_label_filters(fake: Fake) -> None:
+    dev = {
+        "id": "x",
+        "project_id": None,
+        "os": "ANDROID",
+        "os_version": "14",
+        "ram_mb": 6144,
+        "chipset": "sim",
+        "agent_version": "simulator",
+        "labels": {"app": "demo"},
+        "last_seen_at": None,
+    }
+    fake.on("GET", "/api/v1/devices", data([dev]))
+    [d] = fake.client().devices.list(labels={"app": "demo", "tier": "beta"}, limit=100)
+    assert (d.os, d.ram_mb, d.labels, d.project_id) == ("ANDROID", 6144, {"app": "demo"}, None)
+    params = fake.requests[-1].url.params
+    assert (params["label.app"], params["label.tier"], params["limit"]) == ("demo", "beta", "100")
+
+
+def test_telemetry_summary(fake: Fake) -> None:
+    fake.on(
+        "GET",
+        "/api/v1/telemetry/summary/v1",
+        data(
+            {
+                "model_version_id": "v1",
+                "total_events": 104,
+                "error_count": 2,
+                "avg_latency_ms": 19.9,
+                "p95_latency_ms": 27.8,
+            }
+        ),
+    )
+    s = fake.client().telemetry.summary("v1")
+    assert (s.total_events, s.error_count, s.avg_latency_ms, s.p99_latency_ms) == (104, 2, 19.9, 0.0)
+
+
+def test_experiments(fake: Fake) -> None:
+    exp = {
+        "id": "x1",
+        "project_id": "p1",
+        "name": "latency",
+        "status": "DRAFT",
+        "control_version_id": "v1",
+        "treatment_version_id": "v2",
+        "primary_metric": "latency",
+        "split_ratio": 50,
+        "min_sample_size": 300,
+    }
+    fake.on("POST", "/api/v1/experiments", data(exp, 201))
+    fake.on("POST", "/api/v1/experiments/x1/start", data({**exp, "status": "RUNNING"}))
+    fake.on(
+        "GET",
+        "/api/v1/experiments/x1/results",
+        data(
+            {
+                "control": {"version_id": "v1", "sample_size": 385, "avg_latency_ms": 34.0},
+                "treatment": {"version_id": "v2", "sample_size": 315, "avg_latency_ms": 14.0},
+                "p_value": 0,
+                "effect_size": 7.1,
+                "is_significant": True,
+                "recommendation": "ADOPT_TREATMENT",
+                "final": True,
+            }
+        ),
+    )
+    fm = fake.client()
+    fm.experiments.create(
+        "p1", "latency", control="v1", treatment="v2", target_selector={"app": "demo"}, min_sample_size=300
+    )
+    assert fake.body() == {
+        "project_id": "p1",
+        "name": "latency",
+        "control_version_id": "v1",
+        "treatment_version_id": "v2",
+        "primary_metric": "latency",
+        "split_ratio": 50,
+        "auto_conclude": False,
+        "target_selector": {"app": "demo"},
+        "min_sample_size": 300,
+    }
+    assert fm.experiments.start("x1").status == "RUNNING"
+    r = fm.experiments.results("x1")
+    assert (r.control.sample_size, r.treatment.avg_latency_ms, r.p_value, r.final) == (385, 14.0, 0.0, True)
+    assert r.recommendation == "ADOPT_TREATMENT"
+
+
+def test_experiment_results_before_the_test(fake: Fake) -> None:
+    fake.on(
+        "GET",
+        "/api/v1/experiments/x1/results",
+        data({"control": {}, "treatment": {}, "p_value": None, "recommendation": "COLLECTING_DATA", "final": False}),
+    )
+    r = fake.client().experiments.results("x1")
+    assert (r.p_value, r.effect_size, r.final) == (None, None, False)
+
+
+def test_drift(fake: Fake) -> None:
+    res = {
+        "id": "r1",
+        "model_version_id": "v1",
+        "metric": "latency",
+        "psi_value": 8.18,
+        "severity": "CRITICAL",
+        "message": "Latency PSI=8.18 (CRITICAL)",
+        "checked_at": "2026-10-15T00:00:00Z",
+    }
+    fake.on("POST", "/api/v1/drift/v1/check", data([res]))
+    fake.on("GET", "/api/v1/drift/v1/history", data([res, {**res, "id": "r0", "severity": "NONE"}]))
+    fm = fake.client()
+    assert [(r.metric, r.severity) for r in fm.drift.check("v1")] == [("latency", "CRITICAL")]
+    assert [r.id for r in fm.drift.history("v1")] == ["r1", "r0"]
+
+
+def push_routes(fake: Fake, model_exists: bool = False, version_exists: bool = False) -> Dict[str, bytes]:
+    uploads: Dict[str, bytes] = {}
+    if model_exists:
+        fake.on("POST", "/api/v1/projects/p1/models", error(409, "CONFLICT", "model iris already exists"))
+    else:
+        fake.on("POST", "/api/v1/projects/p1/models", data(MODEL, 201))
+    fake.on("GET", "/api/v1/projects/p1/models", data([{**MODEL, "id": "m0", "name": "other"}, MODEL]))
+    if version_exists:
+        fake.on("POST", "/api/v1/models/m1/versions", error(409, "CONFLICT", "version 1.0.0 already exists"))
+    else:
+        fake.on("POST", "/api/v1/models/m1/versions", data(VERSION, 201))
+    fake.on("GET", "/api/v1/models/m1/versions", data([VERSION]))
+    fake.on(
+        "POST",
+        "/api/v1/versions/v1/variants",
+        lambda r: data(
+            {
+                "variant": {"id": "var1", "status": "PENDING_UPLOAD"},
+                "upload_url": "http://s3.test:19000/models/var1?X-Amz-Signature=s",
+            },
+            201,
+        ),
+    )
+
+    def upload(r: httpx.Request) -> httpx.Response:
+        uploads["auth"] = r.headers.get("Authorization", "").encode()
+        uploads["length"] = r.headers.get("Content-Length", "").encode()
+        uploads["body"] = r.content
+        return httpx.Response(200)
+
+    fake.on("PUT", "/models/var1", upload)
+    fake.on("POST", "/api/v1/variants/var1/finalize", data({"id": "var1", "status": "READY"}))
+    fake.on(
+        "PATCH", "/api/v1/versions/v1/status", lambda r: data({**VERSION, "status": json.loads(r.content)["status"]})
+    )
+    fake.on("GET", "/api/v1/versions/v1", data({**VERSION, "status": "DRAFT"}))
+    return uploads
+
+
+def test_push(fake: Fake, tmp_path: Path) -> None:
+    blob = b"TFL3\x00\r\n binary model bytes" * 1000
+    model = tmp_path / "my models" / "iris v1.tflite"
+    model.parent.mkdir()
+    model.write_bytes(blob)
+    uploads = push_routes(fake)
+
+    v = fake.client().push(model, project="p1", model="iris", version="1.0.0", quantization="FP16")
+
+    assert v.id == "v1"
+    calls = [(r.method, r.url.path) for r in fake.requests]
+    assert calls == [
+        ("POST", "/api/v1/projects/p1/models"),
+        ("POST", "/api/v1/models/m1/versions"),
+        ("POST", "/api/v1/versions/v1/variants"),
+        ("PUT", "/models/var1"),
+        ("POST", "/api/v1/variants/var1/finalize"),
+        ("GET", "/api/v1/versions/v1"),
+    ]
+    assert json.loads(fake.requests[0].content) == {
+        "name": "iris",
+        "framework": "TFLITE",
+        "task_type": "CLASSIFICATION",
+    }
+    assert json.loads(fake.requests[2].content) == {
+        "quantization": "FP16",
+        "target_runtime": "TFLITE",
+        "blob_size_bytes": len(blob),
+        "blob_sha256": hashlib.sha256(blob).hexdigest(),
+    }
+    assert uploads["body"] == blob
+    assert uploads["length"] == str(len(blob)).encode()
+    assert uploads["auth"] == b"", "the API key must not be sent to the object store"
+
+
+def test_push_into_an_existing_model_and_version_and_promote(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.onnx"
+    model.write_bytes(b"onnx")
+    push_routes(fake, model_exists=True, version_exists=True)
+    fake.client().push(str(model), project="p1", model="iris", version="1.0.0", target_runtime="ONNX", promote=True)
+    calls = [(r.method, r.url.path) for r in fake.requests]
+    assert ("GET", "/api/v1/projects/p1/models") in calls
+    assert ("GET", "/api/v1/models/m1/versions") in calls
+    patches = [json.loads(r.content) for r in fake.requests if r.method == "PATCH"]
+    assert patches == [{"status": "STAGED"}, {"status": "ACTIVE"}]
+    assert json.loads(fake.requests[0].content)["framework"] == "ONNX"
+
+
+def test_push_raises_the_create_error_when_nothing_is_found(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    fake.on(
+        "POST", "/api/v1/projects/p1/models", error(400, "VALIDATION_ERROR", "framework must be one of TFLITE, ONNX")
+    )
+    fake.on("GET", "/api/v1/projects/p1/models", data([]))
+    with pytest.raises(FleetMLError) as e:
+        fake.client().push(model, project="p1", model="iris", version="1.0.0", target_runtime="NOPE")
+    assert (e.value.status, e.value.code) == (400, "VALIDATION_ERROR")
+
+
+def test_push_upload_and_integrity_failures(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    push_routes(fake)
+    fake.on("PUT", "/models/var1", httpx.Response(403, text="<Error>SignatureDoesNotMatch</Error>"))
+    with pytest.raises(FleetMLError) as e:
+        fake.client().push(model, project="p1", model="iris", version="1.0.0")
+    assert (e.value.status, e.value.code) == (403, "UPLOAD_FAILED")
+
+    fake.on("PUT", "/models/var1", httpx.Response(200))
+    fake.on(
+        "POST", "/api/v1/variants/var1/finalize", error(422, "INTEGRITY_ERROR", "uploaded blob sha256 does not match")
+    )
+    with pytest.raises(FleetMLError) as e:
+        fake.client().push(model, project="p1", model="iris", version="1.0.0")
+    assert e.value.code == "INTEGRITY_ERROR"
+
+
+def test_push_missing_file(fake: Fake, tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        fake.client().push(tmp_path / "none.tflite", project="p1", model="iris", version="1.0.0")
+    assert fake.requests == []
+
+
+@pytest.mark.parametrize(
+    ("response", "status", "code", "text"),
+    [
+        (error(404, "NOT_FOUND", "project not found"), 404, "NOT_FOUND", "404 NOT_FOUND: project not found"),
+        (error(409, "CONFLICT", "already exists"), 409, "CONFLICT", "409 CONFLICT: already exists"),
+        (error(401, "UNAUTHORIZED", "missing API key"), 401, "UNAUTHORIZED", "FLEETML_API_KEY"),
+        (httpx.Response(502, text="Bad Gateway"), 502, "HTTP_ERROR", "502 HTTP_ERROR: Bad Gateway"),
+        (
+            httpx.Response(
+                500,
+                json={
+                    "error": {"code": "INTERNAL_ERROR", "message": "An internal error occurred", "request_id": "r-1"}
+                },
+            ),
+            500,
+            "INTERNAL_ERROR",
+            "internal error",
+        ),
+        (httpx.Response(200, text="not json"), 200, "INVALID_RESPONSE", "not json"),
+    ],
+)
+def test_error_mapping(fake: Fake, response: httpx.Response, status: int, code: str, text: str) -> None:
+    fake.on("GET", "/api/v1/projects/p1", response)
+    with pytest.raises(FleetMLError) as e:
+        fake.client().projects.get("p1")
+    assert (e.value.status, e.value.code) == (status, code)
+    assert text in str(e.value)
+
+
+def test_unreachable_server() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    with pytest.raises(FleetMLError) as e:
+        FleetML(SERVER, api_key="k", transport=httpx.MockTransport(refuse)).projects.list()
+    assert (e.value.status, e.value.code) == (0, "UNAVAILABLE")
+    assert "server unavailable" in e.value.message
+
+
+def test_wait_for_deployment(fake: Fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    statuses = iter(["PENDING", "ROLLING_OUT", "ROLLING_OUT", "ROLLED_BACK"])
+    fake.on("GET", "/api/v1/deployments/d1", lambda _r: data({**DEPLOYMENT, "status": next(statuses)}))
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    d = fake.client().wait_for_deployment("d1", timeout=60)
+    assert d.status == "ROLLED_BACK"
+    assert len(fake.requests) == 4
+
+
+def test_wait_for_deployment_until_given_statuses(fake: Fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake.on("GET", "/api/v1/deployments/d1", data({**DEPLOYMENT, "status": "ROLLING_OUT"}))
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    assert fake.client().wait_for_deployment("d1", statuses={"ROLLING_OUT"}).status == "ROLLING_OUT"
+
+
+def test_wait_for_deployment_times_out(fake: Fake) -> None:
+    fake.on("GET", "/api/v1/deployments/d1", data({**DEPLOYMENT, "status": "ROLLING_OUT"}))
+    with pytest.raises(TimeoutError, match="still ROLLING_OUT"):
+        fake.client().wait_for_deployment("d1", timeout=0.05, interval=0.01)
+
+
+def test_license_matches_the_repository() -> None:
+    here = Path(__file__).resolve().parents[1]
+    repo = here.parent
+    for name in ("LICENSE", "NOTICE"):
+        if (repo / name).exists():
+            assert (here / name).read_bytes() == (repo / name).read_bytes(), f"python/{name} differs from {name}"
