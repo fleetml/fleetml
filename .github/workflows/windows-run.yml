@@ -1,0 +1,408 @@
+name: Windows run
+
+# FleetML as a Windows user meets it, run by hand on GitHub's Windows runners:
+# the "Get the CLI" PowerShell block of docs/QUICKSTART.md with the real
+# release assets in Windows PowerShell 5.1, the released fleetml.exe against
+# the CLI's fake of the REST API (cmd/clitest-server), and the quickstart with
+# the tour's sections 1 to 3 in Ubuntu on WSL 2 (Docker Engine: Docker Desktop
+# cannot be installed on a runner), reached from Windows at localhost. Every
+# step prints what it checks ("Expect", "Got"); each job writes a table to the
+# run's summary. windows-latest runs the amd64 binary; windows-11-arm (public
+# repositories only) runs the arm64 one and the amd64 one under emulation.
+#
+# Actions, Windows run, Run workflow (default branch), or through the API:
+#   POST /repos/fleetml/fleetml/actions/workflows/windows-run.yml/dispatches
+#   {"ref":"main","inputs":{"tag":"v0.4.0","runner":"windows-latest"}}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release whose assets are downloaded (vX.Y.Z)
+        type: string
+        default: v0.4.0
+      runner:
+        description: Runner image
+        type: choice
+        options: [windows-latest, windows-11-arm]
+        default: windows-latest
+
+permissions:
+  contents: read
+
+jobs:
+  cli:
+    name: CLI from the release, Windows PowerShell 5.1
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        # Windows PowerShell 5.1 (powershell.exe), the PowerShell every
+        # Windows has; `pwsh` would be PowerShell 7.
+        shell: powershell
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      REPO_PRIVATE: ${{ github.event.repository.private }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: f. Windows, PowerShell and processor
+        id: facts
+        run: |
+          . .github\windows-run\helpers.ps1
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') { throw "tag must read vX.Y.Z, not $env:TAG" }
+          $os = [System.Environment]::OSVersion.Version
+          $ps = $PSVersionTable.PSVersion
+          $caption = (Get-CimInstance Win32_OperatingSystem).Caption
+          $encoding = [Console]::OutputEncoding.WebName
+          Write-Host "Windows: $caption"
+          Write-Host "[System.Environment]::OSVersion.Version: $os"
+          Write-Host "`$PSVersionTable.PSVersion: $ps ($($PSVersionTable.PSEdition))"
+          Write-Host "`$env:PROCESSOR_ARCHITECTURE: $env:PROCESSOR_ARCHITECTURE"
+          Write-Host "[Console]::OutputEncoding: $encoding"
+          Add-Note "$caption $os, PowerShell $ps, $env:PROCESSOR_ARCHITECTURE, console $encoding"
+          Test-Expect 'Windows PowerShell 5.1' "$ps" ($ps.Major -eq 5 -and $ps.Minor -eq 1)
+
+      - name: a. Get the CLI, the docs block, release ${{ inputs.tag }}
+        id: getcli
+        run: |
+          . .github\windows-run\helpers.ps1
+          # The block further down is the PowerShell block of docs/QUICKSTART.md
+          # "Get the CLI" as written, except where a comment says "Differs from
+          # the docs". Check first that the docs still read the same.
+          $docs = Get-Content docs\QUICKSTART.md -Encoding UTF8
+          $from = [array]::IndexOf($docs, '## Get the CLI')
+          $start = $from..($docs.Count - 1) | Where-Object { $docs[$_] -eq '```powershell' } | Select-Object -First 1
+          $end = ($start + 1)..($docs.Count - 1) | Where-Object { $docs[$_] -eq '```' } | Select-Object -First 1
+          $self = Get-Content .github\workflows\windows-run.yml | ForEach-Object { $_.Trim() }
+          $differ = @($docs[($start + 1)..($end - 1)] | Where-Object { $self -notcontains $_.Trim() })
+          Test-Expect 'every line of the docs block is in this step, except $base' ($differ -join ' | ') ($differ.Count -eq 1 -and $differ[0] -like '$base = *')
+
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\get-cli" -Force | Out-Null
+          Set-Location "$env:RUNNER_TEMP\get-cli"
+          Write-Host 'The user Path in the registry before the block:'
+          $before = Invoke-NativeAllowFail reg query HKCU\Environment /v Path
+          $beforeType = if ($before -match 'Path\s+(REG_\w+)') { $Matches[1] } else { 'absent' }
+
+          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+          # Differs from the docs: the release under test (input tag), not releases/latest/download.
+          $base = $ReleaseBase
+          if ($env:REPO_PRIVATE -eq 'true') {
+            # Differs from the docs while the repository is private: these URLs
+            # answer 404 without a login, so the same two files come through the
+            # GitHub API with the job's token (helpers.ps1, Save-ReleaseAsset).
+            Save-ReleaseAsset "fleetml-windows-$arch.zip" fleetml.zip
+            Save-ReleaseAsset SHA256SUMS SHA256SUMS
+          } else {
+            Invoke-WebRequest "$base/fleetml-windows-$arch.zip" -OutFile fleetml.zip -UseBasicParsing
+            Invoke-WebRequest "$base/SHA256SUMS" -OutFile SHA256SUMS -UseBasicParsing
+          }
+          $want = (Select-String -Path SHA256SUMS -Pattern " fleetml-windows-$arch.zip$").Line.Split(' ')[0]
+          if ((Get-FileHash fleetml.zip -Algorithm SHA256).Hash -ne $want) { throw 'fleetml.zip does not match SHA256SUMS' }
+          Expand-Archive fleetml.zip -DestinationPath "$env:LOCALAPPDATA\fleetml" -Force
+          [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$env:LOCALAPPDATA\fleetml", 'User')
+          # Not in the docs: the user Path as stored now, with its value type.
+          $after = Invoke-Native reg query HKCU\Environment /v Path
+          $env:Path += ";$env:LOCALAPPDATA\fleetml"
+          fleetml version
+
+          $exe = "$env:LOCALAPPDATA\fleetml\fleetml.exe"
+          $afterType = if ($after -match 'Path\s+(REG_\w+)') { $Matches[1] } else { 'absent' }
+          $version = Invoke-Native fleetml version
+          $mark = if ($version.Contains([string][char]0x2713)) { 'the check mark shows' } else { "the check mark arrives as '$($version.Split(' ')[0])'" }
+          Test-Expect "fleetml version prints fleetml $env:TAG" $version ($version -match "fleetml $([regex]::Escape($env:TAG))$")
+          Test-Expect "the zip holds fleetml.exe for $arch (PE header)" (Get-PEMachine $exe) ((Get-PEMachine $exe) -eq $arch)
+          Test-Expect "the user Path in the registry ends with $env:LOCALAPPDATA\fleetml" $after ($after -match "$([regex]::Escape("$env:LOCALAPPDATA\fleetml"))\s*$")
+          $source = if ($env:REPO_PRIVATE -eq 'true') { 'through the API (private)' } else { 'from the docs URL' }
+          Add-Note "fleetml-windows-$arch.zip $source, SHA256SUMS match, $version ($mark); user Path $beforeType before, $afterType after"
+
+      - name: b. fleetml from a new shell
+        id: newshell
+        run: |
+          . .github\windows-run\helpers.ps1
+          Update-SessionPath
+          $cmd = (Get-Command fleetml -ErrorAction SilentlyContinue).Source
+          Test-Expect 'a new shell finds fleetml through the user Path' "$cmd" ($cmd -eq "$env:LOCALAPPDATA\fleetml\fleetml.exe")
+          $version = Invoke-Native fleetml version
+          Test-Expect "fleetml version prints fleetml $env:TAG" $version ($version -match "fleetml $([regex]::Escape($env:TAG))$")
+          $help = Invoke-Native fleetml --help
+          Test-Expect 'fleetml --help lists push, deploy, device and simulate' (($help -split "`n")[0]) ($help -match '\bpush\b' -and $help -match '\bdeploy\b' -and $help -match '\bdevice\b' -and $help -match '\bsimulate\b')
+          Add-Note "found at $cmd; version and --help OK"
+
+      - name: c. Start the CLI's fake REST API
+        id: fake
+        run: |
+          . .github\windows-run\helpers.ps1
+          $server = "$env:RUNNER_TEMP\clitest-server.exe"
+          $null = Invoke-Native go build -tags clitest -o $server ./internal/cli/clitest/cmd/clitest-server
+          $key = [guid]::NewGuid().ToString('N')
+          Write-Host "::add-mask::$key"
+          $p = Start-Process $server -ArgumentList '-addr', '127.0.0.1:18081', '-key', $key -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\clitest-server.log" -RedirectStandardError "$env:RUNNER_TEMP\clitest-server.err"
+          "CLITEST_KEY=$key" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CLITEST_PID=$($p.Id)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $health = $null
+          foreach ($i in 1..30) {
+            try { $health = Invoke-RestMethod http://127.0.0.1:18081/healthz -UseBasicParsing; break } catch { Start-Sleep 1 }
+          }
+          Test-Expect 'the fake answers /healthz on 127.0.0.1:18081' ($health | ConvertTo-Json -Compress) ($health.status -eq 'ok')
+          Add-Note "clitest-server (built from source with -tags clitest) on 127.0.0.1:18081"
+
+      - name: c. The quickstart's CLI calls with the released fleetml.exe
+        id: calls
+        run: |
+          . .github\windows-run\helpers.ps1
+          Update-SessionPath
+          $env:FLEETML_SERVER = 'http://127.0.0.1:18081'
+          $env:FLEETML_API_KEY = $env:CLITEST_KEY
+          Remove-Item Env:FLEETML_OUTPUT -ErrorAction SilentlyContinue
+          # The calls of cmd/fleetml/smoke_test.go, as a PowerShell user types them.
+          $out = Invoke-Native fleetml project create --name "windows-run-$(Get-Date -Format yyyyMMddHHmmss)"
+          Test-Expect 'project create prints ID: <id>' $out ($out -match 'ID: (\S+)')
+          $project = $Matches[1]
+
+          $dir = Join-Path $env:RUNNER_TEMP 'my models'
+          New-Item -ItemType Directory $dir -Force | Out-Null
+          $model = Join-Path $dir 'iris v1.tflite'
+          Copy-Item models\iris\iris_v1.tflite $model
+          $out = Invoke-Native fleetml push $model --project $project --model iris --version 1.0.0
+          Test-Expect "push from a path with spaces ($model) prints Pushed" $out ($out -match 'Pushed')
+
+          $models = Invoke-Native fleetml -o json model list --project $project | ConvertFrom-Json
+          Test-Expect '-o json model list parses with ConvertFrom-Json: one model, iris' "$(@($models).Count): $(@($models)[0].name)" (@($models).Count -eq 1 -and @($models)[0].name -eq 'iris')
+          $modelId = @($models)[0].id
+          $versions = Invoke-Native fleetml -o json ver list --model $modelId | ConvertFrom-Json
+          Test-Expect '-o json ver list: one version, 1.0.0' "$(@($versions).Count): $(@($versions)[0].version)" (@($versions).Count -eq 1 -and @($versions)[0].version -eq '1.0.0')
+          $versionId = @($versions)[0].id
+
+          # Windows PowerShell 5.1 drops the inner double quotes of an argument
+          # it passes to a program, so a JSON argument needs \" there
+          # (PowerShell 7.3 and later pass it as written).
+          $dep = Invoke-Native fleetml -o json deploy create --project $project --version $versionId --target '{\"app\":\"smoke\"}' | ConvertFrom-Json
+          Test-Expect 'deploy create returns a PENDING deployment' "$($dep.status)" ($dep.status -eq 'PENDING')
+          $out = Invoke-Native fleetml deploy start $dep.id
+          Test-Expect 'deploy start prints Deployment start -> COMPLETE' $out ($out -match 'Deployment start .*COMPLETE')
+          $out = Invoke-Native fleetml device list
+          Test-Expect 'device list prints its table' (($out -split "`n")[0]) ($out -match 'ID\s+OS\s+RAM\(MB\)\s+Chipset')
+
+          # Recorded, not checked: the JSON as a reader would first type it.
+          $null = Invoke-NativeAllowFail fleetml -o json deploy create --project $project --version $versionId --target '{"app":"smoke"}'
+          $plain = if ($ExitCode -eq 0) { 'accepted' } else { "refused (exit $ExitCode)" }
+          Add-Note "project create, push from a path with spaces, model and ver list -o json with ConvertFrom-Json, deploy create and start (COMPLETE), device list: OK; --target with unescaped JSON quotes: $plain"
+
+      - name: d. fleetml config set-key, then no FLEETML_API_KEY
+        id: setkey
+        run: |
+          . .github\windows-run\helpers.ps1
+          Update-SessionPath
+          $env:FLEETML_SERVER = 'http://127.0.0.1:18081'
+          Remove-Item Env:FLEETML_API_KEY -ErrorAction SilentlyContinue
+          $config = Join-Path $env:USERPROFILE '.fleetml\config.yaml'
+          Test-Expect "no config file yet at $config" "$(Test-Path $config)" (-not (Test-Path $config))
+          $out = Invoke-NativeAllowFail fleetml project list
+          Test-Expect 'without a key, project list is refused and names fleetml config set-key' "exit $ExitCode" ($ExitCode -ne 0 -and $out -match 'config set-key')
+          $out = Invoke-Native fleetml config set-key $env:CLITEST_KEY
+          Test-Expect "set-key saves to $config" $out ($out -match [regex]::Escape($config))
+          Test-Expect 'the file holds api_key' "$(Test-Path $config)" ((Test-Path $config) -and ((Get-Content $config -Raw) -match 'api_key:'))
+          $out = Invoke-Native fleetml project list
+          Test-Expect 'project list without FLEETML_API_KEY uses the saved key' (($out -split "`n") -match 'windows-run-' | Select-Object -First 1) ($out -match 'windows-run-')
+          $acl = (Get-Acl $config).Access | ForEach-Object { "$($_.IdentityReference) $($_.FileSystemRights)" }
+          Write-Host "Access to the config file: $($acl -join '; ')"
+          Add-Note "config at %USERPROFILE%\.fleetml\config.yaml, used without FLEETML_API_KEY; access: $($acl -join ', ')"
+
+      - name: e. The amd64 fleetml.exe under emulation (windows-11-arm)
+        id: amd64
+        if: inputs.runner == 'windows-11-arm'
+        run: |
+          . .github\windows-run\helpers.ps1
+          Set-Location "$env:RUNNER_TEMP\get-cli"
+          Save-ReleaseAsset fleetml-windows-amd64.zip fleetml-amd64.zip
+          $want = (Select-String -Path SHA256SUMS -Pattern ' fleetml-windows-amd64.zip$').Line.Split(' ')[0]
+          $hash = (Get-FileHash fleetml-amd64.zip -Algorithm SHA256).Hash
+          Test-Expect 'fleetml-windows-amd64.zip matches SHA256SUMS' $hash ($hash -eq $want)
+          Expand-Archive fleetml-amd64.zip -DestinationPath "$env:RUNNER_TEMP\fleetml-amd64" -Force
+          $exe = "$env:RUNNER_TEMP\fleetml-amd64\fleetml.exe"
+          Test-Expect 'the amd64 zip holds an amd64 fleetml.exe (PE header)' (Get-PEMachine $exe) ((Get-PEMachine $exe) -eq 'amd64')
+          $out = Invoke-Native $exe version
+          Test-Expect "the amd64 fleetml.exe prints fleetml $env:TAG under emulation" $out ($out -match "fleetml $([regex]::Escape($env:TAG))$")
+          Add-Note "PROCESSOR_ARCHITECTURE $env:PROCESSOR_ARCHITECTURE; amd64 fleetml.exe from a second folder: $out"
+
+      - name: Stop the fake REST API
+        if: always()
+        run: |
+          if ($env:CLITEST_PID) { Stop-Process -Id $env:CLITEST_PID -ErrorAction SilentlyContinue }
+
+      - name: Job summary
+        if: always()
+        env:
+          STEPS: ${{ toJSON(steps) }}
+          RUNNER_INPUT: ${{ inputs.runner }}
+        run: |
+          . .github\windows-run\helpers.ps1
+          Write-JobSummary 'CLI from the release, Windows PowerShell 5.1' "Runner $env:RUNNER_INPUT, release $env:TAG, repository private: $env:REPO_PRIVATE." @(
+            'facts=f. Windows, PowerShell and processor',
+            'getcli=a. Get the CLI block: release zip, SHA256SUMS, user Path',
+            'newshell=b. fleetml version and --help from a new shell',
+            'fake=c. The fake REST API (cmd/clitest-server)',
+            'calls=c. Quickstart CLI calls against the fake',
+            'setkey=d. config set-key, then no FLEETML_API_KEY',
+            'amd64=e. amd64 fleetml.exe under emulation (windows-11-arm only)')
+
+  wsl:
+    name: Quickstart under WSL 2
+    # After the CLI job only for ordering: it runs whatever that job's result.
+    needs: cli
+    if: ${{ !cancelled() }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: powershell
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      REPO_PRIVATE: ${{ github.event.repository.private }}
+      # wsl.exe prints UTF-8 instead of UTF-16; the scripts in Ubuntu see
+      # GITHUB_OUTPUT (as a /mnt path) and REPO_PRIVATE.
+      WSL_UTF8: "1"
+      WSLENV: GITHUB_OUTPUT/p:REPO_PRIVATE
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: a. WSL 2 and Ubuntu
+        id: wsl
+        timeout-minutes: 15
+        run: |
+          . .github\windows-run\helpers.ps1
+          $version = Invoke-NativeAllowFail wsl --version
+          $status = Invoke-NativeAllowFail wsl --status
+          $statusCode = $ExitCode
+          if ($statusCode -ne 0 -or $status -match 'not supported|Virtual Machine Platform|not installed|enable virtuali[sz]ation') {
+            Set-StepOutput wsl2 false
+            $first = @($status -split "`n" | Where-Object { $_.Trim() }) | Select-Object -First 2
+            Add-Note "wsl --status (exit $statusCode): $($first -join ' ')"
+            Write-Host 'WSL 2 unavailable on this runner: the quickstart steps are skipped.'
+            return
+          }
+          Set-StepOutput wsl2 true
+          $null = Invoke-Native wsl --set-default-version 2
+          $null = Invoke-NativeAllowFail wsl --install -d Ubuntu --no-launch --web-download
+          $list = Invoke-NativeAllowFail wsl -l -v
+          if ($list -notmatch '(?m)^\W*Ubuntu\s') {
+            # Not registered without its first launch: import the same image
+            # from the list wsl --install reads.
+            $info = Invoke-RestMethod https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json -UseBasicParsing
+            $ubuntu = $info.ModernDistributions.Ubuntu | Where-Object { $_.Name -eq 'Ubuntu' }
+            $url = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $ubuntu.Arm64Url.Url } else { $ubuntu.Amd64Url.Url }
+            Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\ubuntu.wsl" -UseBasicParsing
+            $null = Invoke-Native wsl --import Ubuntu "$env:RUNNER_TEMP\wsl-ubuntu" "$env:RUNNER_TEMP\ubuntu.wsl" --version 2
+            Add-Note "imported $url (wsl --install --no-launch did not register Ubuntu)"
+            $list = Invoke-Native wsl -l -v
+          }
+          Test-Expect 'wsl -l -v lists Ubuntu with VERSION 2' $list ($list -match '(?m)Ubuntu\s+\w+\s+2\s*$')
+          # The Linux user the docs have the reader create, made without the
+          # interactive first start.
+          $null = Invoke-Native wsl -d Ubuntu -u root --exec useradd -m -s /bin/bash tester
+          # WSL stops a distribution a few seconds after its last command, and
+          # dockerd with it: keep one running until the job ends.
+          Start-Process wsl.exe -ArgumentList '-d', 'Ubuntu', '-u', 'root', '--exec', 'sleep', 'infinity' -WindowStyle Hidden
+          $kernel = Invoke-Native wsl -d Ubuntu -u tester --exec uname -r
+          Add-Note "$((($version -split "`n") | Select-Object -First 1)); Ubuntu VERSION 2, kernel $kernel"
+
+      - name: b. Docker Engine, git, jq and Go in Ubuntu
+        id: setup
+        if: steps.wsl.outputs.wsl2 == 'true'
+        timeout-minutes: 20
+        run: |
+          wsl -d Ubuntu -u root --exec bash .github/windows-run/wsl-setup.sh tester
+          if ($LASTEXITCODE -ne 0) { throw "wsl-setup.sh exited with $LASTEXITCODE" }
+
+      - name: c. Run FleetML and the tour's sections 1 to 3, as written
+        id: quickstart
+        if: steps.setup.outcome == 'success'
+        timeout-minutes: 40
+        run: |
+          wsl -d Ubuntu -u tester --exec bash .github/windows-run/quickstart.sh
+          if ($LASTEXITCODE -ne 0) { throw "quickstart.sh exited with $LASTEXITCODE" }
+
+      - name: d. From Windows, localhost:18080 and fleetml.exe
+        id: windows
+        if: steps.quickstart.outcome == 'success'
+        run: |
+          . .github\windows-run\helpers.ps1
+          $ready = $null
+          try {
+            $ready = Invoke-RestMethod http://localhost:18080/readyz -UseBasicParsing
+            $got = $ready | ConvertTo-Json -Compress
+          } catch {
+            $got = "$_"
+            try { $null = Invoke-RestMethod http://127.0.0.1:18080/readyz -UseBasicParsing; $got += ' (127.0.0.1:18080 answers)' } catch { $got += ' (127.0.0.1:18080 fails too)' }
+          }
+          Test-Expect 'Invoke-RestMethod http://localhost:18080/readyz from Windows says status ok' $got ($ready.status -eq 'ok')
+
+          # The Windows CLI from the release again: jobs do not share disks.
+          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\get-cli" -Force | Out-Null
+          Set-Location "$env:RUNNER_TEMP\get-cli"
+          Save-ReleaseAsset "fleetml-windows-$arch.zip" fleetml.zip
+          Save-ReleaseAsset SHA256SUMS SHA256SUMS
+          $want = (Select-String -Path SHA256SUMS -Pattern " fleetml-windows-$arch.zip$").Line.Split(' ')[0]
+          $hash = (Get-FileHash fleetml.zip -Algorithm SHA256).Hash
+          Test-Expect "fleetml-windows-$arch.zip matches SHA256SUMS" $hash ($hash -eq $want)
+          Expand-Archive fleetml.zip -DestinationPath "$env:RUNNER_TEMP\fleetml" -Force
+
+          $key = wsl -d Ubuntu -u tester --exec bash -c '. ~/.fleetml-run.env && printf %s $FLEETML_ADMIN_KEY'
+          Write-Host "::add-mask::$key"
+          $env:FLEETML_SERVER = 'http://localhost:18080'
+          $env:FLEETML_API_KEY = $key
+          $out = Invoke-Native "$env:RUNNER_TEMP\fleetml\fleetml.exe" project list
+          Test-Expect 'fleetml project list from Windows lists the tour project' (($out -split "`n") -match '\btour\b' | Select-Object -First 1) ($out -match '\btour\b')
+          Add-Note "readyz at localhost from Windows: $got; fleetml.exe ($arch) project list against the WSL server: OK"
+
+      - name: e. Memory
+        id: memory
+        if: always() && steps.setup.outcome == 'success'
+        run: |
+          . .github\windows-run\helpers.ps1
+          $windows = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+          Write-Host "Windows physical memory: $windows GiB"
+          $free = Invoke-Native wsl -d Ubuntu -u tester --exec free -m
+          $docker = Invoke-Native wsl -d Ubuntu -u tester --exec docker info --format '{{.MemTotal}}'
+          $null = Invoke-NativeAllowFail wsl -d Ubuntu -u tester --exec docker stats --no-stream --format '{{.Name}} {{.MemUsage}}'
+          $mem = (($free -split "`n") | Where-Object { $_ -match '^Mem:' }) -split '\s+'
+          Add-Note "Windows $windows GiB; WSL total $($mem[1]) MiB, used $($mem[2]) MiB, available $($mem[6]) MiB; docker info MemTotal $([math]::Round([double]$docker / 1GB, 1)) GiB"
+
+      - name: f. docker compose down -v
+        id: down
+        if: always() && steps.setup.outcome == 'success'
+        run: |
+          . .github\windows-run\helpers.ps1
+          $null = Invoke-Native wsl -d Ubuntu -u tester --exec bash -c 'if [ -f ~/.fleetml-run.env ]; then . ~/.fleetml-run.env && cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml down -v; else echo no stack was started; fi'
+          $left = Invoke-Native wsl -d Ubuntu -u tester --exec docker ps -aq
+          Test-Expect 'no containers left' "$(@($left -split "`n" | Where-Object { $_ }).Count) left" (-not $left.Trim())
+          Add-Note 'stack and its volumes removed'
+
+      - name: Job summary
+        if: always()
+        env:
+          STEPS: ${{ toJSON(steps) }}
+          RUNNER_INPUT: ${{ inputs.runner }}
+          WSL2: ${{ steps.wsl.outputs.wsl2 }}
+        run: |
+          . .github\windows-run\helpers.ps1
+          $case = switch ($env:WSL2) {
+            'true' { 'WSL 2 available: Ubuntu on WSL 2 with Docker Engine from Docker''s apt repository (not Docker Desktop).' }
+            'false' { '**WSL 2 unavailable on this runner** (`wsl --status` shows no WSL 2 support): the quickstart was not run. This is a property of the runner, not a FleetML failure.' }
+            default { 'The WSL check did not finish.' }
+          }
+          Write-JobSummary 'Quickstart under WSL 2' "Runner $env:RUNNER_INPUT, release $env:TAG, repository private: $env:REPO_PRIVATE. $case GitHub's Windows runner has 16 GB for public repositories; check the memory row against the smaller private-repository runner." @(
+            'wsl=a. WSL 2 and Ubuntu',
+            'setup=b. Docker Engine, git, jq, Go',
+            'quickstart=c. Run FleetML, tour sections 1 to 3',
+            'windows=d. Windows to WSL: readyz and fleetml.exe at localhost',
+            'memory=e. Memory',
+            'down=f. docker compose down -v')
