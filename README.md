@@ -178,6 +178,16 @@ iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
 https://github.com/fleetml/fleetml
 ```
 
+Python, for pipelines and notebooks: `pip install fleetml`
+([Python client](docs/PYTHON_CLIENT.md)):
+
+```python
+from fleetml import FleetML
+fm = FleetML("http://localhost:18080", api_key="...")
+v = fm.push("model.tflite", project="<project id>", model="iris", version="1.0.0")
+fm.deployments.start(fm.deployments.create("<project id>", v.id).id)
+```
+
 ## How it works
 
 ```
@@ -228,7 +238,7 @@ invalid variable.
 | [Rollouts, experiments and alerts](docs/ROLLOUTS.md) | Strategies, the health gate, statistics, alert sinks |
 | [Architecture](docs/ARCHITECTURE.md) | Components, request paths, data model, trust boundaries |
 | [Configuration](docs/CONFIG.md) | Every environment variable |
-| [Android SDK](docs/ANDROID_SDK.md), [iOS SDK](docs/IOS_SDK.md), [Linux agent](docs/LINUX_AGENT.md) | Integration guides and device runbooks |
+| [Android SDK](docs/ANDROID_SDK.md), [iOS SDK](docs/IOS_SDK.md), [Linux agent](docs/LINUX_AGENT.md), [Python client](docs/PYTHON_CLIENT.md) | Integration guides and device runbooks |
 | [Roadmap](docs/ROADMAP.md) | What comes next |
 
 `make docs-site` builds these pages, with this README and the changelog, into
