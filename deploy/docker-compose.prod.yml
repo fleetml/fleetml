@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fleetml"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fleetml -d fleetml"]
       interval: 5s
       timeout: 5s
       retries: 5
