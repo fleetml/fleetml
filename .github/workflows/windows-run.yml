@@ -137,26 +137,22 @@ jobs:
         id: fake
         run: |
           . .github\windows-run\helpers.ps1
-          $server = "$env:RUNNER_TEMP\clitest-server.exe"
-          $null = Invoke-Native go build -tags clitest -o $server ./internal/cli/clitest/cmd/clitest-server
           $key = [guid]::NewGuid().ToString('N')
           Write-Host "::add-mask::$key"
-          $p = Start-Process $server -ArgumentList '-addr', '127.0.0.1:18081', '-key', $key -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput "$env:RUNNER_TEMP\clitest-server.log" -RedirectStandardError "$env:RUNNER_TEMP\clitest-server.err"
           "CLITEST_KEY=$key" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "CLITEST_PID=$($p.Id)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          $health = $null
-          foreach ($i in 1..30) {
-            try { $health = Invoke-RestMethod http://127.0.0.1:18081/healthz -UseBasicParsing; break } catch { Start-Sleep 1 }
-          }
+          $env:CLITEST_KEY = $key
+          $p = Start-FakeServer
+          $health = Invoke-RestMethod http://127.0.0.1:18081/healthz -UseBasicParsing
           Test-Expect 'the fake answers /healthz on 127.0.0.1:18081' ($health | ConvertTo-Json -Compress) ($health.status -eq 'ok')
-          Add-Note "clitest-server (built from source with -tags clitest) on 127.0.0.1:18081"
+          Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
+          Add-Note "clitest-server (built from source with -tags clitest) answers on 127.0.0.1:18081; the CLI steps each start their own"
 
       - name: c. The quickstart's CLI calls with the released fleetml.exe
         id: calls
         run: |
           . .github\windows-run\helpers.ps1
           Update-SessionPath
+          $null = Start-FakeServer
           $env:FLEETML_SERVER = 'http://127.0.0.1:18081'
           $env:FLEETML_API_KEY = $env:CLITEST_KEY
           Remove-Item Env:FLEETML_OUTPUT -ErrorAction SilentlyContinue
@@ -199,7 +195,12 @@ jobs:
         run: |
           . .github\windows-run\helpers.ps1
           Update-SessionPath
+          $null = Start-FakeServer
           $env:FLEETML_SERVER = 'http://127.0.0.1:18081'
+          # A fresh fake has no projects: create one with the key in the
+          # environment, then drop the variable and rely on the saved key.
+          $env:FLEETML_API_KEY = $env:CLITEST_KEY
+          $null = Invoke-Native fleetml project create --name "windows-run-setkey"
           Remove-Item Env:FLEETML_API_KEY -ErrorAction SilentlyContinue
           $config = Join-Path $env:USERPROFILE '.fleetml\config.yaml'
           Test-Expect "no config file yet at $config" "$(Test-Path $config)" (-not (Test-Path $config))
@@ -233,8 +234,7 @@ jobs:
 
       - name: Stop the fake REST API
         if: always()
-        run: |
-          if ($env:CLITEST_PID) { Stop-Process -Id $env:CLITEST_PID -ErrorAction SilentlyContinue }
+        run: Get-Process clitest-server -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
 
       - name: Job summary
         if: always()
@@ -306,7 +306,7 @@ jobs:
           Test-Expect 'wsl -l -v lists Ubuntu with VERSION 2' $list ($list -match '(?m)Ubuntu\s+\w+\s+2\s*$')
           # The Linux user the docs have the reader create, made without the
           # interactive first start.
-          $null = Invoke-Native wsl -d Ubuntu -u root --exec useradd -m -s /bin/bash tester
+          $null = Invoke-Native wsl -d Ubuntu -u root --exec /usr/sbin/useradd -m -s /bin/bash tester
           # WSL stops a distribution a few seconds after its last command, and
           # dockerd with it: keep one running until the job ends.
           Start-Process wsl.exe -ArgumentList '-d', 'Ubuntu', '-u', 'root', '--exec', 'sleep', 'infinity' -WindowStyle Hidden
