@@ -15,8 +15,8 @@ feature.
 
 In Xcode, choose **File → Add Package Dependencies**, paste
 `https://github.com/fleetml/fleetml` and add the **FleetMLSDK** library to the
-app target. Until v0.4.0 is tagged, set the Dependency Rule to **Branch**
-`main`; from then on, **Up to Next Major Version** from 0.4.0.
+app target, with the Dependency Rule **Up to Next Major Version** from
+0.4.0.
 
 In a `Package.swift`:
 
@@ -26,8 +26,8 @@ In a `Package.swift`:
 .product(name: "FleetMLSDK", package: "fleetml"),
 ```
 
-The v0.3.0 and earlier tags have no manifest at the repository root, so until
-the v0.4.0 tag exists use `branch: "main"` instead of `from: "0.4.0"`.
+The v0.3.0 and earlier tags have no manifest at the repository root, so
+0.4.0 is the first version Swift Package Manager can install by URL.
 
 ### From a clone
 
