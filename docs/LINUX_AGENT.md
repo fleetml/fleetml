@@ -24,20 +24,30 @@ at the top of the [README](../README.md).
 
 ## Install
 
-Build the binaries (or take them from a release once published):
+Every [GitHub release](https://github.com/fleetml/fleetml/releases) has the
+agent for Linux as `fleetml-agent-linux-amd64.tar.gz` and
+`fleetml-agent-linux-arm64.tar.gz`, listed in `SHA256SUMS`. Each archive holds
+the static binary `fleetml-agent`, the installer `install.sh`,
+`config.example.yaml` and `fleetml-agent.service`. On the machine, the latest
+release, checked, then installed as root:
 
 ```bash
-make build-agent        # bin/fleetml-agent-linux-amd64, -linux-arm64, -darwin-arm64
-```
-
-On the machine, as root:
-
-```bash
-sudo ./deploy/agent/install.sh ./fleetml-agent-linux-arm64
+ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz"
+curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+grep " fleetml-agent-linux-$ARCH.tar.gz\$" SHA256SUMS | sha256sum -c
+mkdir fleetml-agent && tar -xzf "fleetml-agent-linux-$ARCH.tar.gz" -C fleetml-agent
+sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
 sudoedit /etc/fleetml-agent/config.yaml       # server and enrollment_key
 sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
+
+`fleetml-agent -version` prints the release's version. To build the agent from
+source instead, `make build-agent` writes `bin/fleetml-agent-linux-amd64`,
+`-linux-arm64` and `-darwin-arm64` (version `dev`), and
+`sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
+from the repository.
 
 The script installs the binary to `/usr/local/bin`, creates a
 `fleetml-agent` system user, the config file (from

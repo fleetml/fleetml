@@ -1,7 +1,8 @@
 # Quickstart and tour
 
 Run FleetML in containers, then walk through every feature against it with a
-fleet of simulated devices. Each block below was run as written, in order.
+fleet of simulated devices. Each block of the quickstart and the tour below
+was run as written, in order.
 
 ## Run FleetML
 
@@ -22,11 +23,84 @@ once Postgres, the object store and NATS are reachable. The admin key is
 stored on the first start; later starts ignore `FLEETML_ADMIN_KEY` (manage keys
 with `/api/v1/api-keys`).
 
+### On Windows
+
+The server, Postgres, NATS and the object store are Linux containers, and the
+quickstart, the tour and the scripts are bash, so on Windows they run in a
+WSL 2 shell with Docker Desktop's WSL 2 backend:
+
+1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+   and keep **Use the WSL 2 based engine** on (Settings → General).
+2. In PowerShell, `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu; open
+   the **Ubuntu** shell from the Start menu and create its user.
+3. In Docker Desktop, Settings → Resources → WSL integration, turn on
+   integration for Ubuntu, so `docker` works in the Ubuntu shell.
+4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
+   (`curl` and `openssl` are already there), then `cd ~` and run the block
+   above as it is. Keep the clone in the Linux file system (`~`), not under
+   `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
+
+Docker Desktop publishes the containers' ports on Windows too, so the
+dashboard opens in a Windows browser at http://localhost, and PowerShell
+reaches the REST API at `localhost:18080` (for example
+`Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs in the
+same Ubuntu shell; the CLI for PowerShell is in [Get the CLI](#get-the-cli).
+
+## Get the CLI
+
+`fleetml` is a single binary for macOS, Linux and Windows on amd64 and arm64,
+attached to every [GitHub release](https://github.com/fleetml/fleetml/releases)
+with a `SHA256SUMS` file:
+
+| OS | Asset | Binary |
+|---|---|---|
+| Linux | `fleetml-linux-amd64.tar.gz`, `fleetml-linux-arm64.tar.gz` | `fleetml` |
+| macOS | `fleetml-darwin-amd64.tar.gz`, `fleetml-darwin-arm64.tar.gz` | `fleetml` |
+| Windows | `fleetml-windows-amd64.zip`, `fleetml-windows-arm64.zip` | `fleetml.exe` |
+
+On macOS and Linux (and in WSL), the latest release, checked and put on the
+`PATH` (on Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`):
+
+```bash
+OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && sudo mv fleetml /usr/local/bin/
+fleetml version
+```
+
+On Windows, in PowerShell, into `%LOCALAPPDATA%\fleetml`, added to the user's
+`PATH`:
+
+```powershell
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+$base = 'https://github.com/fleetml/fleetml/releases/latest/download'
+Invoke-WebRequest "$base/fleetml-windows-$arch.zip" -OutFile fleetml.zip -UseBasicParsing
+Invoke-WebRequest "$base/SHA256SUMS" -OutFile SHA256SUMS -UseBasicParsing
+$want = (Select-String -Path SHA256SUMS -Pattern " fleetml-windows-$arch.zip$").Line.Split(' ')[0]
+if ((Get-FileHash fleetml.zip -Algorithm SHA256).Hash -ne $want) { throw 'fleetml.zip does not match SHA256SUMS' }
+Expand-Archive fleetml.zip -DestinationPath "$env:LOCALAPPDATA\fleetml" -Force
+[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$env:LOCALAPPDATA\fleetml", 'User')
+$env:Path += ";$env:LOCALAPPDATA\fleetml"
+fleetml version
+```
+
+`fleetml version` prints the release, for example `✓ fleetml v0.4.0`. In PowerShell,
+point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
+and `$env:FLEETML_API_KEY = '<the admin key>'`, then for example
+`fleetml project list`.
+
+From source, with Go 1.24 or later: `go build -o bin/fleetml ./cmd/fleetml`
+in the repository (it reports its version as `dev`).
+
 ## Tour
 
-The tour needs Go 1.24 and `jq`, and runs from the repository root in the same
-shell (it uses `FLEETML_ADMIN_KEY`). It builds the CLI, then drives the server
-with it and with the REST API. The blocks are written to paste into bash or zsh
+The tour needs `jq` and the CLI as `bin/fleetml`, and runs from the repository
+root in the same shell (it uses `FLEETML_ADMIN_KEY`). Its first block builds
+the CLI with Go 1.24; with a downloaded CLI, replace that line with
+`mkdir -p bin && ln -sf "$(command -v fleetml)" bin/fleetml`. It then drives
+the server with the CLI and with the REST API. The blocks are written to paste into bash or zsh
 as they are: what a command prints is given in the text, not in `#` comments,
 which zsh at the prompt passes to the command as arguments.
 

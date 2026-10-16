@@ -41,7 +41,9 @@ case "$CLIENT" in
   ios) MODEL=models/iris/iris_v1.mlmodel FRAMEWORK=COREML ;;
   *) echo "unknown client $CLIENT" >&2; exit 2 ;;
 esac
-SHA=$(shasum -a 256 "$MODEL" | cut -d' ' -f1)
+# sha256sum (coreutils) on Linux and in WSL, shasum on macOS.
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+SHA=$(sha256 "$MODEL")
 
 P=$(api POST /api/v1/projects "{\"name\":\"signing-$LABEL\"}" | jq -r .data.id)
 EK=$(api POST "/api/v1/projects/$P/enrollment-keys" '{"name":"signing-e2e"}' | jq -r .data.key)
