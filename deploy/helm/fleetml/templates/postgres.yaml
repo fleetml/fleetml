@@ -27,7 +27,7 @@ spec:
             - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "fleetml"]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "fleetml", "-d", "fleetml"]
             periodSeconds: 5
           volumeMounts:
             - {name: data, mountPath: /var/lib/postgresql/data}
