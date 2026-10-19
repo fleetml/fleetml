@@ -339,10 +339,12 @@ Prometheus is then on `:19091` and scrapes the server on `:18080`.
 
 ```bash
 kill $SIM
-docker compose -f deploy/docker-compose.prod.yml down -v
+docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
 ```
 
+`--profile observability` also removes Prometheus and Grafana from step 7;
+without it they keep running, and so do their network and Grafana's volume.
 Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command, `down`
 included. From a new shell where they are no longer exported, either export
 them again or pass placeholders: `JWT_SECRET=x SIGNING_MASTER_KEY=x docker
-compose -f deploy/docker-compose.prod.yml down -v`.
+compose -f deploy/docker-compose.prod.yml --profile observability down -v`.
