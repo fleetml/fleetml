@@ -20,7 +20,7 @@ import (
 
 // TestQuickstartCalls builds the fleetml binary and runs the quickstart's CLI
 // calls with it: project create, enrollment-key create and list, push, deploy
-// create and start, device list.
+// create and start, device list (with --project).
 // By default it runs against clitest's fake of the REST API, which works on
 // every OS (the Windows CI job). With FLEETML_SMOKE_SERVER and
 // FLEETML_SMOKE_API_KEY set it runs the same calls against a real server
@@ -104,6 +104,9 @@ func TestQuickstartCalls(t *testing.T) {
 
 	out = run("device", "list")
 	assert.Regexp(t, `ID\s+OS\s+RAM\(MB\)\s+Chipset|No results\.`, out)
+	var devices []map[string]any
+	runJSON(&devices, "device", "list", "--project", "00000000-0000-0000-0000-000000000000")
+	assert.Empty(t, devices, "a project without devices lists none")
 }
 
 func copyFile(t *testing.T, from, to string) {

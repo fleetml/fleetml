@@ -158,7 +158,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "NOT_FOUND", "deployment not found")
 		}
 	case r.Method == http.MethodGet && path == "devices":
-		respondData(w, http.StatusOK, s.devices)
+		s.listDevices(w, r.URL.Query().Get("project_id"))
 	default:
 		respondError(w, http.StatusNotFound, "NOT_FOUND", "no route "+r.Method+" "+r.URL.Path)
 	}
@@ -359,6 +359,24 @@ func (s *Server) startDeployment(w http.ResponseWriter, id string) {
 		d["status"] = "COMPLETE"
 	}
 	respondData(w, http.StatusOK, d)
+}
+
+// listDevices filters on project_id like the server: a value that is not a
+// UUID is refused. The fake's device is enrolled into the first project.
+func (s *Server) listDevices(w http.ResponseWriter, projectID string) {
+	if projectID == "" {
+		respondData(w, http.StatusOK, s.devices)
+		return
+	}
+	if _, err := uuid.Parse(projectID); err != nil {
+		respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "project_id must be a UUID")
+		return
+	}
+	out := []map[string]any{}
+	if len(s.projects) > 0 && s.projects[0]["id"] == projectID {
+		out = s.devices
+	}
+	respondData(w, http.StatusOK, out)
 }
 
 func (s *Server) hasProject(id string) bool { return len(filter(s.projects, "id", id)) > 0 }

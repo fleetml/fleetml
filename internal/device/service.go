@@ -554,14 +554,9 @@ func (s *Service) GetDevice(ctx context.Context, id uuid.UUID) (*Device, error) 
 	return s.devices.GetByID(ctx, id)
 }
 
-// ListDevices returns a paginated list of devices.
-func (s *Service) ListDevices(ctx context.Context, limit, offset int) ([]Device, int, error) {
-	return s.devices.List(ctx, limit, offset)
-}
-
-// ListDevicesByLabels returns devices matching the given labels.
-func (s *Service) ListDevicesByLabels(ctx context.Context, labels map[string]string, limit, offset int) ([]Device, int, error) {
-	return s.devices.ListByLabels(ctx, labels, limit, offset)
+// ListDevices returns the devices that match f.
+func (s *Service) ListDevices(ctx context.Context, f ListFilter, limit, offset int) ([]Device, int, error) {
+	return s.devices.List(ctx, f, limit, offset)
 }
 
 // DeleteDevice deletes a device by ID.

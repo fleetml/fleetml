@@ -58,33 +58,10 @@ func (m *mockDeviceRepo) GetByFingerprint(_ context.Context, fp string) (*Device
 	return m.devices[id], nil
 }
 
-func (m *mockDeviceRepo) List(_ context.Context, limit, offset int) ([]Device, int, error) {
-	var all []Device
-	for _, d := range m.devices {
-		all = append(all, *d)
-	}
-	total := len(all)
-	if offset >= total {
-		return nil, total, nil
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-	return all[offset:end], total, nil
-}
-
-func (m *mockDeviceRepo) ListByLabels(_ context.Context, labels map[string]string, limit, offset int) ([]Device, int, error) {
+func (m *mockDeviceRepo) List(_ context.Context, f ListFilter, limit, offset int) ([]Device, int, error) {
 	var filtered []Device
 	for _, d := range m.devices {
-		match := true
-		for k, v := range labels {
-			if d.Labels[k] != v {
-				match = false
-				break
-			}
-		}
-		if match {
+		if f.Matches(d) {
 			filtered = append(filtered, *d)
 		}
 	}
@@ -478,7 +455,7 @@ func TestListDevices(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	devices, total, err := svc.ListDevices(ctx, 10, 0)
+	devices, total, err := svc.ListDevices(ctx, ListFilter{}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 3, total)
 	assert.Len(t, devices, 3)

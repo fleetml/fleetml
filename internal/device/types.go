@@ -39,3 +39,22 @@ type DeviceClass struct {
 	ChipsetFamily *string   `json:"chipset_family"`
 	CreatedAt     time.Time `json:"created_at"`
 }
+
+// ListFilter narrows a device list; its zero value lists every device.
+type ListFilter struct {
+	ProjectID *uuid.UUID        // only the devices enrolled into this project
+	Labels    map[string]string // only the devices that carry all of these labels
+}
+
+// Matches reports whether d passes the filter (for in-memory repositories).
+func (f ListFilter) Matches(d *Device) bool {
+	if f.ProjectID != nil && (d.ProjectID == nil || *d.ProjectID != *f.ProjectID) {
+		return false
+	}
+	for k, v := range f.Labels {
+		if d.Labels[k] != v {
+			return false
+		}
+	}
+	return true
+}

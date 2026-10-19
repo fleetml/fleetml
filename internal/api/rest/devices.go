@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/fleetml/fleetml/internal/device"
 )
@@ -32,30 +33,29 @@ func (h *DeviceHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/device-classes/:class_id", h.getDeviceClass)
 }
 
+// listDevices filters on project_id and on label.<key>=<value> query parameters.
 func (h *DeviceHandler) listDevices(c *gin.Context) {
 	limit, offset := parsePagination(c)
 
-	// Parse label.* query params
-	labels := make(map[string]string)
+	var f device.ListFilter
+	if v := c.Query("project_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id must be a UUID")
+			return
+		}
+		f.ProjectID = &id
+	}
 	for key, values := range c.Request.URL.Query() {
-		if strings.HasPrefix(key, "label.") {
-			labelKey := strings.TrimPrefix(key, "label.")
-			if len(values) > 0 && labelKey != "" {
-				labels[labelKey] = values[0]
+		if labelKey, ok := strings.CutPrefix(key, "label."); ok && labelKey != "" && len(values) > 0 {
+			if f.Labels == nil {
+				f.Labels = map[string]string{}
 			}
+			f.Labels[labelKey] = values[0]
 		}
 	}
 
-	var (
-		devices []device.Device
-		total   int
-		err     error
-	)
-	if len(labels) > 0 {
-		devices, total, err = h.service.ListDevicesByLabels(c.Request.Context(), labels, limit, offset)
-	} else {
-		devices, total, err = h.service.ListDevices(c.Request.Context(), limit, offset)
-	}
+	devices, total, err := h.service.ListDevices(c.Request.Context(), f, limit, offset)
 	if err != nil {
 		handleDeviceError(c, err)
 		return

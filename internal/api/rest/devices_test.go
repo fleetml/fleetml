@@ -61,33 +61,10 @@ func (m *mockDeviceRepoREST) GetByFingerprint(_ context.Context, fp string) (*de
 	return m.devices[id], nil
 }
 
-func (m *mockDeviceRepoREST) List(_ context.Context, limit, offset int) ([]device.Device, int, error) {
-	var all []device.Device
-	for _, d := range m.devices {
-		all = append(all, *d)
-	}
-	total := len(all)
-	if offset >= total {
-		return nil, total, nil
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-	return all[offset:end], total, nil
-}
-
-func (m *mockDeviceRepoREST) ListByLabels(_ context.Context, labels map[string]string, limit, offset int) ([]device.Device, int, error) {
+func (m *mockDeviceRepoREST) List(_ context.Context, f device.ListFilter, limit, offset int) ([]device.Device, int, error) {
 	var filtered []device.Device
 	for _, d := range m.devices {
-		match := true
-		for k, v := range labels {
-			if d.Labels[k] != v {
-				match = false
-				break
-			}
-		}
-		if match {
+		if f.Matches(d) {
 			filtered = append(filtered, *d)
 		}
 	}
@@ -256,6 +233,34 @@ func TestListDevicesWithLabelFilter(t *testing.T) {
 	body := parseBody(t, w)
 	pagination := body["pagination"].(map[string]interface{})
 	assert.Equal(t, float64(1), pagination["total"])
+}
+
+// project_id lists only the project's devices: a bogus project lists none,
+// and a value that is not a UUID is refused rather than ignored.
+func TestListDevicesWithProjectFilter(t *testing.T) {
+	svc := newDeviceTestService()
+	r := setupDeviceTestRouter(svc)
+	_, err := svc.RegisterDevice(context.Background(), &device.RegisterRequest{
+		EnrollmentKey: restEnrollKey,
+		Fingerprint:   deviceFingerprint("in-project"),
+		OS:            "ANDROID", RAMMB: 8192,
+		Labels: map[string]string{"env": "prod"},
+	})
+	require.NoError(t, err)
+
+	total := func(query string) float64 {
+		t.Helper()
+		w := doJSON(r, "GET", "/api/v1/devices"+query, nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		return parseBody(t, w)["pagination"].(map[string]interface{})["total"].(float64)
+	}
+	assert.Equal(t, float64(1), total("?project_id=33333333-3333-3333-3333-333333333333"))
+	assert.Equal(t, float64(0), total("?project_id="+uuid.New().String()))
+	assert.Equal(t, float64(1), total("?project_id=33333333-3333-3333-3333-333333333333&label.env=prod"))
+	assert.Equal(t, float64(0), total("?project_id=33333333-3333-3333-3333-333333333333&label.env=staging"))
+
+	w := doJSON(r, "GET", "/api/v1/devices?project_id=not-a-uuid", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestGetDevice(t *testing.T) {

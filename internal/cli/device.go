@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/spf13/cobra"
 )
@@ -15,11 +16,16 @@ func newDeviceCmd() *cobra.Command {
 }
 
 func newDeviceListCmd() *cobra.Command {
-	return &cobra.Command{
+	var projectID string
+	cmd := &cobra.Command{
 		Use: "list", Short: "List registered devices",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			path := "/api/v1/devices"
+			if projectID != "" {
+				path += "?project_id=" + url.QueryEscape(projectID)
+			}
 			var result []map[string]interface{}
-			if err := client.Get("/api/v1/devices", &result); err != nil {
+			if err := client.Get(path, &result); err != nil {
 				return err
 			}
 			if outputFmt == "json" {
@@ -37,6 +43,8 @@ func newDeviceListCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&projectID, "project", "", "Only the devices enrolled into this project")
+	return cmd
 }
 
 func newDeviceGetCmd() *cobra.Command {
