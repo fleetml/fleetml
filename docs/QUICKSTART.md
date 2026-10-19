@@ -295,3 +295,8 @@ Prometheus is then on `:19091` and scrapes the server on `:18080`.
 kill $SIM
 docker compose -f deploy/docker-compose.prod.yml down -v
 ```
+
+Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command, `down`
+included. From a new shell where they are no longer exported, either export
+them again or pass placeholders: `JWT_SECRET=x SIGNING_MASTER_KEY=x docker
+compose -f deploy/docker-compose.prod.yml down -v`.
