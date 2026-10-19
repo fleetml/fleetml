@@ -1,6 +1,6 @@
 // Package clitest is an in-memory fake of the part of the FleetML REST API
 // that the quickstart's CLI calls use: projects, models, versions, variant
-// upload and finalize, deployments and devices. It answers with the same paths,
+// upload and finalize, enrollment keys, deployments and devices. It answers with the same paths,
 // status codes, JSON envelope ({"data": ...} or {"error": {"code", "message"}})
 // and checks as internal/api/rest, so the CLI can be tested end to end where
 // the real server cannot run (the Windows CI job, and the Windows run workflow
@@ -36,6 +36,7 @@ type Server struct {
 	uploads     map[string][]byte
 	deployments map[string]map[string]any
 	devices     []map[string]any
+	keys        []map[string]any
 }
 
 // NewServer starts a fake that accepts the admin key apiKey and has one
@@ -134,6 +135,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.createProject(w, body)
 	case r.Method == http.MethodGet && path == "projects":
 		respondData(w, http.StatusOK, s.projects)
+	case len(p) == 3 && p[0] == "projects" && p[2] == "enrollment-keys":
+		s.enrollmentKeys(w, r.Method, p[1], body)
 	case len(p) == 3 && p[0] == "projects" && p[2] == "models":
 		s.projectModels(w, r.Method, p[1], body)
 	case len(p) == 3 && p[0] == "models" && p[2] == "versions":
@@ -197,6 +200,31 @@ func (s *Server) projectModels(w http.ResponseWriter, method, projectID string, 
 		"framework": body["framework"], "task_type": body["task_type"], "created_at": now()}
 	s.models = append(s.models, m)
 	respondData(w, http.StatusCreated, m)
+}
+
+func (s *Server) enrollmentKeys(w http.ResponseWriter, method, projectID string, body map[string]any) {
+	if !s.hasProject(projectID) {
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+		return
+	}
+	if method == http.MethodGet {
+		respondData(w, http.StatusOK, filter(s.keys, "project_id", projectID))
+		return
+	}
+	name, _ := body["name"].(string)
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "name is required")
+		return
+	}
+	// Like the server, only the create response carries the key; the list does not.
+	k := map[string]any{"id": uuid.NewString(), "project_id": projectID, "name": name,
+		"created_at": now(), "last_used_at": nil, "revoked_at": nil}
+	s.keys = append(s.keys, k)
+	created := map[string]any{"key": strings.ReplaceAll(uuid.NewString()+uuid.NewString(), "-", "")}
+	for f, v := range k {
+		created[f] = v
+	}
+	respondData(w, http.StatusCreated, created)
 }
 
 func (s *Server) modelVersions(w http.ResponseWriter, method, modelID string, body map[string]any) {

@@ -19,7 +19,8 @@ import (
 )
 
 // TestQuickstartCalls builds the fleetml binary and runs the quickstart's CLI
-// calls with it: project create, push, deploy create and start, device list.
+// calls with it: project create, enrollment-key create and list, push, deploy
+// create and start, device list.
 // By default it runs against clitest's fake of the REST API, which works on
 // every OS (the Windows CI job). With FLEETML_SMOKE_SERVER and
 // FLEETML_SMOKE_API_KEY set it runs the same calls against a real server
@@ -64,6 +65,23 @@ func TestQuickstartCalls(t *testing.T) {
 	m := regexp.MustCompile(`ID: (\S+)`).FindStringSubmatch(out)
 	require.NotNil(t, m, out)
 	projectID := m[1]
+
+	// The key is printed once, by create; list shows the key's record without it.
+	out = run("enrollment-key", "create", "--project", projectID, "--name", "smoke")
+	assert.Contains(t, out, "Enrollment key created: smoke")
+	km := regexp.MustCompile(`Key: (\S+)`).FindStringSubmatch(out)
+	require.NotNil(t, km, out)
+	var key map[string]any
+	runJSON(&key, "enrollment-key", "create", "--project", projectID)
+	assert.Equal(t, "default", key["name"])
+	assert.NotEmpty(t, key["key"])
+	var keys []map[string]any
+	runJSON(&keys, "enrollment-key", "list", "--project", projectID)
+	require.Len(t, keys, 2)
+	for _, k := range keys {
+		assert.NotContains(t, k, "key")
+	}
+	assert.NotContains(t, run("enrollment-key", "list", "--project", projectID), km[1])
 
 	// The sample model, copied to a path with spaces.
 	dir := filepath.Join(t.TempDir(), "my models")
