@@ -22,7 +22,7 @@ func newDeployCmd() *cobra.Command {
 }
 
 func newDeployCreateCmd() *cobra.Command {
-	var versionID, strategy, target, healthGate, projectID string
+	var versionID, strategy, target, healthGate, canaryStages, rollingConfig, projectID string
 	var urgent bool
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create a deployment",
@@ -49,6 +49,20 @@ func newDeployCreateCmd() *cobra.Command {
 				}
 				body["health_gate"] = hg
 			}
+			if canaryStages != "" {
+				var cs []interface{}
+				if err := json.Unmarshal([]byte(canaryStages), &cs); err != nil {
+					return fmt.Errorf("invalid --canary-stages JSON: %w", err)
+				}
+				body["canary_stages"] = cs
+			}
+			if rollingConfig != "" {
+				var rc map[string]interface{}
+				if err := json.Unmarshal([]byte(rollingConfig), &rc); err != nil {
+					return fmt.Errorf("invalid --rolling-config JSON: %w", err)
+				}
+				body["rolling_config"] = rc
+			}
 			var result map[string]interface{}
 			if err := client.Post("/api/v1/deployments", body, &result); err != nil {
 				return err
@@ -63,9 +77,11 @@ func newDeployCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&versionID, "version", "", "Model version ID (required)")
 	cmd.Flags().StringVar(&projectID, "project", "", "Project ID (required)")
-	cmd.Flags().StringVar(&strategy, "strategy", "ALL_AT_ONCE", "Strategy")
+	cmd.Flags().StringVar(&strategy, "strategy", "ALL_AT_ONCE", "Strategy (ALL_AT_ONCE, CANARY, ROLLING)")
 	cmd.Flags().StringVar(&target, "target", "", "Target selector JSON")
 	cmd.Flags().StringVar(&healthGate, "health-gate", "", "Health gate JSON")
+	cmd.Flags().StringVar(&canaryStages, "canary-stages", "", `Canary stages JSON, e.g. [{"percentage":25,"min_duration":"10m"},{"percentage":100,"min_duration":"0s"}]`)
+	cmd.Flags().StringVar(&rollingConfig, "rolling-config", "", `Rolling config JSON, e.g. {"batch_size_percent":20,"batch_interval":"1m"}`)
 	cmd.Flags().BoolVar(&urgent, "urgent", false, "Devices download on any network, ignoring their download policy")
 	_ = cmd.MarkFlagRequired("version")
 	_ = cmd.MarkFlagRequired("project")

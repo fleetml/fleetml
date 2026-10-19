@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -21,8 +22,8 @@ func newExperimentCmd() *cobra.Command {
 }
 
 func newExpCreateCmd() *cobra.Command {
-	var projectID, name, control, treatment, metric string
-	var split int
+	var projectID, name, control, treatment, metric, target string
+	var split, minSamples int
 	var autoConclude bool
 	cmd := &cobra.Command{
 		Use: "create", Short: "Create an experiment",
@@ -35,6 +36,16 @@ func newExpCreateCmd() *cobra.Command {
 				"primary_metric":       metric,
 				"split_ratio":          split,
 				"auto_conclude":        autoConclude,
+			}
+			if target != "" {
+				var ts map[string]interface{}
+				if err := json.Unmarshal([]byte(target), &ts); err != nil {
+					return fmt.Errorf("invalid --target JSON: %w", err)
+				}
+				body["target_selector"] = ts
+			}
+			if minSamples > 0 {
+				body["min_sample_size"] = minSamples
 			}
 			var result map[string]interface{}
 			if err := client.Post("/api/v1/experiments", body, &result); err != nil {
@@ -55,6 +66,8 @@ func newExpCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&metric, "metric", "latency", "Primary metric (latency, error_rate, confidence)")
 	cmd.Flags().IntVar(&split, "split", 50, "Traffic split % to treatment")
 	cmd.Flags().BoolVar(&autoConclude, "auto-conclude", false, "Auto-conclude on significance")
+	cmd.Flags().StringVar(&target, "target", "", "Target selector JSON")
+	cmd.Flags().IntVar(&minSamples, "min-sample-size", 0, "Inferences per arm before the test runs (server default if 0)")
 	_ = cmd.MarkFlagRequired("project")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("control")
@@ -150,7 +163,11 @@ func newExpConcludeCmd() *cobra.Command {
 			if err := client.Post("/api/v1/experiments/"+args[0]+"/conclude", body, &result); err != nil {
 				return err
 			}
-			PrintSuccess(fmt.Sprintf("Experiment concluded: winner=%s", winner[:12]))
+			if outputFmt == "json" {
+				PrintJSON(result)
+				return nil
+			}
+			PrintSuccess(fmt.Sprintf("Experiment conclude → %s (winner %s)", result["status"], winner))
 			return nil
 		},
 	}
