@@ -377,6 +377,10 @@ Contributors on the dev stack (`make dev`) use the key from `.env` and port
    adb shell am start -n com.fleetml.sample/.MainActivity
    ```
 
+   On an emulator where the sample app ran before, its saved settings win
+   over the prefilled key: check the key on the screen, or
+   `adb shell pm clear com.fleetml.sample` first.
+
    The app registers, downloads iris 1.0.0, validates it and shows
    **Active model: iris 1.0.0**; logcat (`adb logcat -s FleetML`) shows the
    registration and `Model iris 1.0.0 is active`. **Classify sample flower**
