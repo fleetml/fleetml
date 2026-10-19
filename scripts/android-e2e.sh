@@ -4,7 +4,8 @@
 #
 #   1. start the server: make dev
 #   2. start an emulator (Android Studio, or: emulator -avd <name>); the script
-#      forwards the object store port so download URLs (localhost:19000) work
+#      forwards the object store ports so download URLs work (localhost:19000
+#      on the dev stack, localhost:19100 on the quickstart's compose stack)
 #   3. FLEETML_API_KEY=<admin key> ./scripts/android-e2e.sh
 #
 # The script creates a project, a model version with the Iris v2 model, an
@@ -38,6 +39,7 @@ echo "fixtures: project $P, version $V, deployment $D, label e2e-run=$LABEL"
 
 ADB=$(command -v adb || echo "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb")
 "$ADB" reverse tcp:19000 tcp:19000 >/dev/null
+"$ADB" reverse tcp:19100 tcp:19100 >/dev/null
 
 cd android
 JAVA_HOME=${JAVA_HOME_17:-/opt/homebrew/opt/openjdk@17} ./gradlew :fleetml-sdk:connectedDebugAndroidTest \
