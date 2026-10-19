@@ -88,7 +88,7 @@ public enum FleetML {
             inst?.scheduleBackgroundRefresh() // the next run, whatever happens to this one
             let work = Task {
                 let reached = await inst?.syncNow() ?? false
-                Log.sdk.info("Background refresh: server \(reached ? "reached" : "unreachable")")
+                Log.sdk.info("Background refresh: server \(reached ? "reached" : "unreachable", privacy: .public)")
                 task.setTaskCompleted(success: reached)
             }
             task.expirationHandler = { work.cancel() }
@@ -131,6 +131,8 @@ final class Instance {
     private var foreground = false
     private var observers: [NSObjectProtocol] = []
     private var startTask: Task<Void, Never>?
+    /// The wait between registration attempts (shorter in tests).
+    var registrationRetryNanoseconds: UInt64 = 10_000_000_000
 
     /// - Parameters:
     ///   - conditions: overrides the network and battery readings (tests).
@@ -214,13 +216,20 @@ final class Instance {
             guard let self else { return }
             // Offline start: what was active last time is usable immediately.
             for model in self.models.activeModels { self.delegate?.fleetML(modelReady: model) }
+            var lastFailure: String?
             while self.needsRegistration && !Task.isCancelled {
                 do {
                     try await self.registration.register { try await self.register() }
                 } catch {
-                    Log.sdk.error("Registration failed: \(error.localizedDescription)")
+                    let failure = String(describing: error)
+                    Log.sdk.error("Registration failed: \(failure, privacy: .public)")
                     self.delegate?.fleetML(connectionChanged: false)
-                    try? await Task.sleep(nanoseconds: 10_000_000_000)
+                    // The developer sees why, once per distinct error, not every retry.
+                    if failure != lastFailure {
+                        lastFailure = failure
+                        self.delegate?.fleetML(connectionFailed: error)
+                    }
+                    try? await Task.sleep(nanoseconds: self.registrationRetryNanoseconds)
                 }
             }
             guard !Task.isCancelled else { return }
@@ -299,9 +308,9 @@ final class Instance {
         request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
         do {
             try BGTaskScheduler.shared.submit(request)
-            Log.sdk.info("In the background: next refresh in \(Int(interval))s or later")
+            Log.sdk.info("In the background: next refresh in \(Int(interval), privacy: .public)s or later")
         } catch {
-            Log.sdk.warning("Background refresh not scheduled: \(error.localizedDescription)")
+            Log.sdk.warning("Background refresh not scheduled: \(error.localizedDescription, privacy: .public)")
         }
         #endif
     }
@@ -313,7 +322,7 @@ final class Instance {
                 try await registration.register { try await self.register() }
                 lock.withLock { registered = true }
             } catch {
-                Log.sdk.warning("Registration failed: \(error.localizedDescription)")
+                Log.sdk.warning("Registration failed: \(error.localizedDescription, privacy: .public)")
                 return false
             }
         }
@@ -339,7 +348,7 @@ final class Instance {
                                 expiresAtUnix: response.tokenExpiresAt, signature: signature)
         apply(response.config) // the server's DeviceConfig wins over the local defaults
         models.setSigningKeys(response.signingKeys)
-        Log.sdk.info("Registered as device \(response.deviceID)")
+        Log.sdk.info("Registered as device \(response.deviceID, privacy: .public)")
         delegate?.fleetML(registered: response.deviceID)
         telemetry.onReconnected()
     }

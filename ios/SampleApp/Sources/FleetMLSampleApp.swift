@@ -147,4 +147,8 @@ final class AppState: ObservableObject, FleetMLDelegate {
         DispatchQueue.main.async { self.connected = connected }
         refresh()
     }
+
+    func fleetML(connectionFailed error: Error) {
+        note("Cannot register: \(error)")
+    }
 }

@@ -75,7 +75,7 @@ final class HeartbeatManager {
                 } catch is UnauthenticatedError {
                     throw UnauthenticatedError()
                 } catch {
-                    Log.sdk.warning("Token refresh failed: \(error.localizedDescription)") // retried next heartbeat
+                    Log.sdk.warning("Token refresh failed: \(error.localizedDescription, privacy: .public)") // retried next heartbeat
                 }
             }
             var request = Fleetml_Device_V1_HeartbeatRequest()
@@ -96,7 +96,7 @@ final class HeartbeatManager {
             setConnected(false)
             return false
         } catch {
-            Log.sdk.warning("Heartbeat failed: \(error.localizedDescription)")
+            Log.sdk.warning("Heartbeat failed: \(error.localizedDescription, privacy: .public)")
             setConnected(false)
             return false
         }

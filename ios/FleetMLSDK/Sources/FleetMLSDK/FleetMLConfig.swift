@@ -91,6 +91,11 @@ public protocol FleetMLDelegate: AnyObject {
     func fleetML(registered deviceID: String)
     /// The server became reachable or unreachable.
     func fleetML(connectionChanged connected: Bool)
+    /// The SDK could not register with the server: called with the error on
+    /// the first failure after start, and again whenever the error changes
+    /// (registration is retried every 10 seconds). The same text is in the
+    /// SDK's log (subsystem `com.fleetml.sdk`, category `FleetML`).
+    func fleetML(connectionFailed error: Error)
 }
 
 public extension FleetMLDelegate {
@@ -99,4 +104,5 @@ public extension FleetMLDelegate {
     func fleetML(modelLoadFailed modelName: String, version: String, reason: String) {}
     func fleetML(registered deviceID: String) {}
     func fleetML(connectionChanged connected: Bool) {}
+    func fleetML(connectionFailed error: Error) {}
 }

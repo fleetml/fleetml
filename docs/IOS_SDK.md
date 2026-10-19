@@ -83,6 +83,30 @@ final class AppModel: FleetMLDelegate {
 models and the registration. Delegate methods have empty default
 implementations and are called on a background queue.
 
+### When it does not connect
+
+If the SDK cannot register, `fleetML(connectionChanged:)` reports `false` and
+`fleetML(connectionFailed:)` receives the error, on the first failure after
+start and again whenever the error changes (registration is retried every
+10 seconds). Print it while you set up the app:
+
+```swift
+func fleetML(connectionFailed error: Error) {
+    print("FleetML cannot register: \(error)")
+}
+```
+
+A wrong host or port, or a server that is not running, reads like
+`deadlineExceeded (Connection errors: ... Connection refused)`; a wrong
+enrollment key is refused by the server as `unauthenticated`. The SDK also
+logs every step (registration, downloads, validation, heartbeats) to the
+unified log with subsystem `com.fleetml.sdk` and category `FleetML`. Xcode's
+console shows it while the app runs from Xcode; without a debugger, open
+Console.app on the Mac, select the phone (or the simulator) in the sidebar,
+press Start, and search for `subsystem:com.fleetml.sdk`. For the simulator,
+`xcrun simctl spawn booted log stream --predicate 'subsystem == "com.fleetml.sdk"'`
+prints it in a terminal.
+
 ## Enrollment and identity
 
 The first registration needs a valid enrollment key; the device is enrolled

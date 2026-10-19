@@ -67,14 +67,14 @@ final class ModelManager {
         // a model that fails it is not even downloaded.
         if let reason = ArtifactSignature.verify(keys: store.signingKeys, keyID: a.signingKeyID, signature: a.signature,
                                                  modelID: a.modelID, version: a.version, sha256: a.blobSha256, now: now()) {
-            Log.sdk.warning("Model \(a.modelName) \(a.version) rejected: \(reason); keeping the current model")
+            Log.sdk.warning("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) rejected: \(reason, privacy: .public); keeping the current model")
             store.markFailed(a.variantID, at: now())
             telemetry?.reportModelEvent(versionID: a.versionID, .signatureInvalid, error: reason)
             delegate()?.fleetML(modelLoadFailed: a.modelName, version: a.version, reason: "signature: \(reason)")
             return
         }
         if cache.cachedFile(a.variantID) == nil && !canDownload(a.urgent) {
-            Log.sdk.info("Download of \(a.modelName) \(a.version) waits for the download policy (inexpensive network or charging)")
+            Log.sdk.info("Download of \(a.modelName, privacy: .public) \(a.version, privacy: .public) waits for the download policy (inexpensive network or charging)")
             return // the assignment is repeated on the next heartbeat
         }
         guard let url = URL(string: a.downloadURL) else { return }
@@ -98,7 +98,7 @@ final class ModelManager {
         let started = now()
         switch validator.validate(fileURL: file, model: candidate) {
         case .invalid(let reason):
-            Log.sdk.warning("Model \(a.modelName) \(a.version) failed validation: \(reason); keeping the current model")
+            Log.sdk.warning("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) failed validation: \(reason, privacy: .public); keeping the current model")
             store.markFailed(a.variantID, at: now())
             if !store.protectedVariants.contains(a.variantID) { cache.delete(a.variantID) }
             telemetry?.reportModelEvent(versionID: a.versionID, .loadFailed, error: reason)
@@ -106,7 +106,7 @@ final class ModelManager {
         case .valid:
             store.activate(record)
             telemetry?.reportModelEvent(versionID: a.versionID, .load, latencyMs: Int(now().timeIntervalSince(started) * 1000))
-            Log.sdk.info("Model \(a.modelName) \(a.version) is active")
+            Log.sdk.info("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) is active")
             delegate()?.fleetML(modelReady: candidate)
         }
     }
@@ -123,7 +123,7 @@ final class ModelManager {
         defer { cache.delete(deltaID) }
         guard case .downloaded(let deltaFile) = await downloader.download(variant: deltaID, url: deltaURL, sha256: a.deltaSha256,
                                                                           expectedSize: Int64(a.deltaSizeBytes), protected: store.protectedVariants) else {
-            Log.sdk.warning("Delta for \(a.modelName) \(a.version) failed; downloading the full model")
+            Log.sdk.warning("Delta for \(a.modelName, privacy: .public) \(a.version, privacy: .public) failed; downloading the full model")
             return nil
         }
         do {
@@ -132,13 +132,13 @@ final class ModelManager {
             let part = cache.partFile(a.variantID)
             try out.write(to: part)
             guard let file = cache.commit(a.variantID, part: part, sha256: a.blobSha256) else {
-                Log.sdk.warning("Model \(a.modelName) \(a.version) built from a delta does not match its sha256; downloading the full model")
+                Log.sdk.warning("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) built from a delta does not match its sha256; downloading the full model")
                 return nil
             }
-            Log.sdk.info("Model \(a.modelName) \(a.version) built from a \(patch.count)-byte delta instead of \(a.blobSizeBytes) bytes")
+            Log.sdk.info("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) built from a \(patch.count, privacy: .public)-byte delta instead of \(a.blobSizeBytes, privacy: .public) bytes")
             return file
         } catch {
-            Log.sdk.warning("Delta for \(a.modelName) \(a.version) unusable (\(String(describing: error))); downloading the full model")
+            Log.sdk.warning("Delta for \(a.modelName, privacy: .public) \(a.version, privacy: .public) unusable (\(String(describing: error), privacy: .public)); downloading the full model")
             return nil
         }
     }
