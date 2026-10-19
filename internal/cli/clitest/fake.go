@@ -263,8 +263,19 @@ func (s *Server) createVariant(w http.ResponseWriter, r *http.Request, versionID
 		respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "quantization, target_runtime, blob_size_bytes, and blob_sha256 are required")
 		return
 	}
+	// Like the server: a variant that was never verified is replaced; a READY one is kept.
+	for id, old := range s.variants {
+		if old["model_version_id"] == versionID && old["quantization"] == body["quantization"] && old["target_runtime"] == body["target_runtime"] {
+			if old["status"] == "READY" {
+				respondError(w, http.StatusConflict, "CONFLICT", "already exists: variant of this version is already uploaded and verified; push a new version")
+				return
+			}
+			delete(s.variants, id)
+			delete(s.uploads, id)
+		}
+	}
 	v := map[string]any{"id": uuid.NewString(), "model_version_id": versionID, "quantization": body["quantization"],
-		"target_runtime": body["target_runtime"], "blob_size_bytes": int64(size), "blob_sha256": sha, "status": "PENDING_UPLOAD"}
+		"target_runtime": body["target_runtime"], "blob_size_bytes": int64(size), "blob_sha256": sha, "status": "UPLOADING"}
 	s.variants[v["id"].(string)] = v
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
