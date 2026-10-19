@@ -19,5 +19,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- The reason iOS shows in the Local Network prompt on a phone. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connects to the FleetML server on your local network.</string>
 </dict>
 </plist>
