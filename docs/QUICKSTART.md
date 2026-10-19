@@ -7,7 +7,8 @@ was run as written, in order.
 ## Run FleetML
 
 Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
-APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100.
+APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100
+(`FLEETML_S3_PUBLIC_PORT` moves it, see [CONFIG.md](CONFIG.md#docker-compose)).
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
@@ -19,18 +20,24 @@ echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMI
 ```
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
-once Postgres, the object store and NATS are reachable. The admin key is
-stored on the first start; later starts ignore `FLEETML_ADMIN_KEY` (manage keys
-with `/api/v1/api-keys`).
+once Postgres, the object store and NATS are reachable, and the project list
+answers `{"data":[],"pagination":{...}}`: no projects yet. The first start
+builds the images and takes a few minutes; if nothing appears after about two
+minutes more, run `docker compose -f deploy/docker-compose.prod.yml ps -a` and
+`docker compose -f deploy/docker-compose.prod.yml logs server` to see which
+container stopped and why (a port already in use is the usual cause). The
+admin key is stored on the first start; later starts ignore
+`FLEETML_ADMIN_KEY` (more keys and their routes: [API keys](CONFIG.md#api-keys)).
 
 ### On Windows
 
 The server, Postgres, NATS and the object store are Linux containers, and the
 quickstart, the tour and the scripts are bash, so on Windows they run in a
-WSL 2 shell with Docker Desktop's WSL 2 backend. Docker Desktop needs Windows 11
-Pro, Enterprise or Education 23H2 or later (Home runs Linux containers, which
-is all FleetML uses) and WSL 2.1.5 or later; see Docker's
-[system requirements](https://docs.docker.com/desktop/setup/install/windows-install/).
+WSL 2 shell with Docker Desktop's WSL 2 backend. Docker Desktop runs on 64-bit
+Windows 11 23H2 or later and Windows 10 22H2, with WSL 2.1.5 or later; Home
+editions run only Linux containers, which is all FleetML uses. See Docker's
+[system requirements](https://docs.docker.com/desktop/setup/install/windows-install/)
+for the current list.
 Docker labels Docker Desktop for Windows on Arm early access, so Arm laptops
 are not a tested path.
 
@@ -44,6 +51,10 @@ are not a tested path.
    (`curl` and `openssl` are already there), then `cd ~` and run the block
    above as it is. Keep the clone in the Linux file system (`~`), not under
    `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
+5. For the tour, install the Linux CLI in the same shell with the first block
+   of [Get the CLI](#get-the-cli). To build it from source instead, install
+   Go 1.24 or later from [go.dev](https://go.dev/doc/install): Ubuntu's
+   `golang` package is older.
 
 Docker Desktop publishes the containers' ports on Windows too, so the
 dashboard opens in a Windows browser at http://localhost, and PowerShell
@@ -100,31 +111,51 @@ GitHub's Windows runner by the
 [Windows run](../.github/workflows/windows-run.yml) workflow; the arm64
 binary is cross-compiled and not yet run on Windows on Arm.
 
-`fleetml version` prints the release, for example `✓ fleetml v0.4.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.5.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
-and `$env:FLEETML_API_KEY = '<the admin key>'`, then for example
-`fleetml project list`.
+and `$env:FLEETML_API_KEY = '<the admin key>'`; then `fleetml project list`
+prints the same projects as in WSL (`No results.` before the tour). Pushing
+from Windows works too, because Docker Desktop also publishes the object
+store's port 19100 on Windows, for example
+`fleetml push C:\models\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`.
+Windows PowerShell 5.1, the one built into Windows, drops the inner double
+quotes of an argument it passes to a program, so a JSON flag needs them
+escaped: `--target '{\"app\":\"tour\"}'`. PowerShell 7.3 and later pass
+`--target '{"app":"tour"}'` as written; there, do not escape.
 
 From source, with Go 1.24 or later: `go build -o bin/fleetml ./cmd/fleetml`
 in the repository (it reports its version as `dev`).
 
+The server image contains the CLI too, so without installing anything,
+`docker compose -f deploy/docker-compose.prod.yml exec -e FLEETML_API_KEY=$FLEETML_ADMIN_KEY server fleetml project list`
+runs it next to the server. Every command works that way except
+`fleetml push`: its upload goes to `localhost:19100`, which inside the
+container is not the object store.
+
 ## Tour
 
-The tour needs `jq` and the CLI as `bin/fleetml`, and runs from the repository
-root in the same shell (it uses `FLEETML_ADMIN_KEY`). Its first block builds
-the CLI with Go 1.24; with a downloaded CLI, replace that line with
-`mkdir -p bin && ln -sf "$(command -v fleetml)" bin/fleetml`. It then drives
-the server with the CLI and with the REST API. The blocks are written to paste into bash or zsh
-as they are: what a command prints is given in the text, not in `#` comments,
-which zsh at the prompt passes to the command as arguments.
+The tour runs from the repository root, in the same shell as the stack (it
+uses `FLEETML_ADMIN_KEY`), and needs `jq` and the `fleetml` CLI on the `PATH`:
+the release from [Get the CLI](#get-the-cli). Without it, build the CLI from
+source with Go 1.24 or later and put it on the `PATH` for this shell:
 
 ```bash
-go build -o bin/fleetml ./cmd/fleetml
-export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
-api() { curl -sf -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' -d "$3" "localhost:18080$2"; }
+go build -o bin/fleetml ./cmd/fleetml && export PATH="$PWD/bin:$PATH"
 ```
 
-From Python, the same steps run with `pip install fleetml`; sections 1 to 3
+The blocks are written to paste into bash or zsh as they are: what a command
+prints is given in the text, not in `#` comments, which zsh at the prompt
+passes to the command as arguments. Point the CLI at the server:
+
+```bash
+export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+fleetml project list
+```
+
+`fleetml project list` prints `No results.` on the new server.
+
+From Python, the same steps run with the Python client (`pip install fleetml`
+from 0.5.0; until then `pip install ./python` from a clone); sections 1 to 3
 are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
 page.
 
@@ -132,51 +163,62 @@ page.
 
 `fleetml push` creates the model and version if needed, uploads the file
 straight to the object store with a presigned URL, and asks the server to
-verify it. Three versions of the sample Iris classifier
+verify it. A project and three versions of the sample Iris classifier
 ([models/iris](../models/iris)):
 
 ```bash
-P=$(api POST /api/v1/projects '{"name":"tour"}' | jq -r .data.id)
-./bin/fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-./bin/fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
-./bin/fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.1.0
-M=$(api GET /api/v1/projects/$P/models | jq -r '.data[0].id')
-vid() { api GET /api/v1/models/$M/versions | jq -r --arg v "$1" '.data[] | select(.version == $v) | .id'; }
+P=$(fleetml project create --name tour -o json | jq -r .id)
+fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
+fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.1.0
+M=$(fleetml model list --project $P -o json | jq -r '.[0].id')
+vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
 V1=$(vid 1.0.0); V2=$(vid 2.0.0); V21=$(vid 2.1.0)
 ```
 
+Each push prints `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)`
+and the variant's ID. If an upload fails (the object store unreachable, say),
+run the same push again: a variant that was never verified is replaced.
+
 An upload that does not match its declared sha256 is refused and never
-reaches a device:
+reaches a device. This one step uses the REST API with curl, because
+`fleetml push` always declares the file's real sha256: here the declared hash
+is all zeros, the real file is uploaded, and the server's check at finalize
+refuses it.
 
 ```bash
-OUT=$(api POST /api/v1/versions/$V2/variants "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$(printf '0%.0s' $(seq 64))\"}")
+H="Authorization: Bearer $FLEETML_API_KEY"
+OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$(printf '0%.0s' $(seq 64))\"}" localhost:18080/api/v1/versions/$V2/variants)
 curl -s -o /dev/null -X PUT --data-binary @models/iris/iris_v1.tflite "$(echo "$OUT" | jq -r .data.upload_url)"
-curl -s -X POST -H "Authorization: Bearer $FLEETML_API_KEY" localhost:18080/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
+curl -s -X POST -H "$H" localhost:18080/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
 ```
 
 The finalize call answers `{"code":"INTEGRITY_ERROR","message":"..."}`.
 
 ### 2. A fleet and a rollout
 
-`fleetml simulate` runs devices on the real device protocol: they register
-with the project's enrollment key, heartbeat, download and verify what they
-are assigned, and report telemetry. Here 2.0.0 fails 40% of inferences, 2.1.0
-is faster, and each device also reports a week of past telemetry as a drift
-baseline:
+Every device registers into a project with one of its enrollment keys
+(`fleetml enrollment-key create` prints the key once). `fleetml simulate` runs
+devices on the real device protocol: they register with the key, heartbeat,
+download and verify what they are assigned, and report telemetry. Here 2.0.0
+fails 40% of inferences, 2.1.0 is faster, and each device also reports a week
+of past telemetry as a drift baseline:
 
 ```bash
-EK=$(api POST /api/v1/projects/$P/enrollment-keys '{"name":"tour"}' | jq -r .data.key)
-./bin/fleetml simulate --enrollment-key $EK --devices 20 --label app=tour \
+EK=$(fleetml enrollment-key create --project $P --name tour -o json | jq -r .key)
+fleetml simulate --enrollment-key $EK --devices 20 --label app=tour \
   --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
-D1=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V1\",\"target_selector\":{\"app\":\"tour\"}}" | jq -r .data.id)
-api POST /api/v1/deployments/$D1/start | jq -r .data.status
+D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' -o json | jq -r .id)
+fleetml deploy start $D1
 sleep 5; tail -1 /tmp/fleetml-sim.log
-./bin/fleetml device list | head -5
+fleetml device list --project $P | head -5
 ```
 
-The deployment goes to all devices at once, so it starts as `COMPLETE`, and
-the simulator's last line reads `iris 1.0.0 on 20`.
+The deployment goes to all devices at once, so it starts as `COMPLETE`
+(`✓ Deployment start → COMPLETE`), the simulator's last line reads
+`iris 1.0.0 on 20`, and `fleetml device list` shows the devices (ID, OS,
+RAM, chipset).
 
 ### 3. A canary that rolls itself back
 
@@ -185,25 +227,26 @@ over at least 30 events from the canary cohort rolls it back. The deploy loop
 runs every 30 seconds:
 
 ```bash
-D2=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V2\",\"strategy\":\"CANARY\",\"target_selector\":{\"app\":\"tour\"},
-  \"canary_stages\":[{\"percentage\":25,\"min_duration\":\"10m\"},{\"percentage\":100,\"min_duration\":\"0s\"}],
-  \"health_gate\":{\"max_error_rate\":0.05,\"min_events\":30,\"on_failure\":\"ROLLBACK\"}}" | jq -r .data.id)
-api POST /api/v1/deployments/$D2/start | jq -r .data.status
+D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target '{"app":"tour"}' \
+  --canary-stages '[{"percentage":25,"min_duration":"10m"},{"percentage":100,"min_duration":"0s"}]' \
+  --health-gate '{"max_error_rate":0.05,"min_events":30,"on_failure":"ROLLBACK"}' -o json | jq -r .id)
+fleetml deploy start $D2
 sleep 5; tail -1 /tmp/fleetml-sim.log
-until [ "$(api GET /api/v1/deployments/$D2 | jq -r .data.status)" = ROLLED_BACK ]; do sleep 5; done
-api GET /api/v1/deployments/$D2 | jq -r .data.rollback_reason
+until [ "$(fleetml deploy get $D2 | jq -r .status)" = ROLLED_BACK ]; do sleep 5; done
+fleetml deploy get $D2 | jq -r .rollback_reason
 sleep 5; tail -1 /tmp/fleetml-sim.log
 ```
 
-The deployment starts as `ROLLING_OUT` and the simulator shows the cohort on
-2.0.0. Once the gate trips, the rollback reason reads `error rate ... exceeds
-threshold 5.00% ...` and the simulator is back to `iris 1.0.0 on 20`.
+The deployment starts as `ROLLING_OUT` (`✓ Deployment start → ROLLING_OUT`)
+and the simulator shows the cohort on 2.0.0. Once the gate trips, the rollback
+reason reads `error rate ... exceeds threshold 5.00% ...` and the simulator is
+back to `iris 1.0.0 on 20`.
 
 The rollback also creates a deployment that returns the cohort to 1.0.0, and
 sends a rollback alert (NATS subject `fleetml.alerts.rollback`, the
 project's alert sinks from the dashboard's Alerts page, and the webhook if
 `ALERT_WEBHOOK_URL` is set). Rolling deployments
-(`"strategy":"ROLLING"`, `"rolling_config":{"batch_size_percent":20,"batch_interval":"1m"}`)
+(`--strategy ROLLING --rolling-config '{"batch_size_percent":20,"batch_interval":"1m"}'`)
 use the same gate; see [ROLLOUTS.md](ROLLOUTS.md).
 
 ### 4. An A/B experiment
@@ -212,18 +255,19 @@ Half the fleet runs 1.0.0, half 2.1.0. The test runs once both arms have 300
 inferences:
 
 ```bash
-EXP=$(api POST /api/v1/experiments "{\"project_id\":\"$P\",\"name\":\"iris 2.1.0 latency\",\"control_version_id\":\"$V1\",\"treatment_version_id\":\"$V21\",\"target_selector\":{\"app\":\"tour\"},\"min_sample_size\":300}" | jq -r .data.id)
-api POST /api/v1/experiments/$EXP/start | jq -r .data.status
-until [ "$(api GET /api/v1/experiments/$EXP/results | jq -r .data.final)" = true ]; do sleep 3; done
-api GET /api/v1/experiments/$EXP/results | jq '.data | {control_ms: .control.avg_latency_ms, treatment_ms: .treatment.avg_latency_ms, p_value, recommendation}'
-api POST /api/v1/experiments/$EXP/conclude "{\"winner_version_id\":\"$V21\"}" | jq -r .data.status
+EXP=$(fleetml experiment create --project $P --name "iris 2.1.0 latency" --control $V1 --treatment $V21 --target '{"app":"tour"}' --min-sample-size 300 -o json | jq -r .id)
+fleetml experiment start $EXP
+until [ "$(fleetml experiment results $EXP | jq -r .final)" = true ]; do sleep 3; done
+fleetml experiment results $EXP | jq '{control_ms: .control.avg_latency_ms, treatment_ms: .treatment.avg_latency_ms, p_value, recommendation}'
+fleetml experiment conclude $EXP --winner $V21
 ```
 
-The experiment is `RUNNING` once started and `CONCLUDED` at the end. A
-`p_value` of `0` means the p-value is below the precision of a double; read it
-as p < 0.0001, which is how the demo and the dashboard show it. Each device
-keeps its arm for the experiment's life, and its telemetry carries the arm ID,
-so results are per arm even when a device's arm model changes.
+The experiment is `RUNNING` once started (`✓ Experiment start → RUNNING`) and
+`CONCLUDED` at the end. A `p_value` of `0` means the p-value is below the
+precision of a double; read it as p < 0.0001, which is how the demo and the
+dashboard show it. Each device keeps its arm for the experiment's life, and its
+telemetry carries the arm ID, so results are per arm even when a device's arm
+model changes.
 
 ### 5. Drift
 
@@ -232,22 +276,23 @@ confidence with the 7 days before (PSI). Against the week of history the
 devices reported, 1.0.0 looks stable:
 
 ```bash
-./bin/fleetml drift check $V1
+fleetml drift check $V1
 ```
 
 Now the devices get slower:
 
 ```bash
 kill $SIM; sleep 1
-./bin/fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
+fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 sleep 20
-./bin/fleetml drift check $V1
-api GET /api/v1/drift/$V1/history | jq -r '.data[] | "\(.checked_at) \(.metric) \(.severity)"'
+fleetml drift check $V1
+fleetml drift status $V1
 ```
 
-The second check reports latency as CRITICAL. The drift loop runs every 5
-minutes (`DRIFT_TICK_INTERVAL`); a change into CRITICAL sends a drift alert.
+The second check reports latency as CRITICAL, and `fleetml drift status`
+shows the latest result per metric. The drift loop runs every 5 minutes
+(`DRIFT_TICK_INTERVAL`); a change into CRITICAL sends a drift alert.
 
 ### 6. Dashboard
 
@@ -276,10 +321,11 @@ redeliveries, request rates, deployments, alerts) run as a compose profile:
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
-open http://localhost:13000
 ```
 
-Grafana opens on port 13000 with the "FleetML" dashboard.
+Open http://localhost:13000 in a browser: Grafana shows the "FleetML"
+dashboard to anonymous visitors, who can only view. To edit, sign in as
+`admin` with the password `admin`; Grafana then asks for a new password.
 
 Run it in the same shell as the stack, since compose needs the same secrets.
 It runs the one-shot `migrate` service again and restarts the server once; the

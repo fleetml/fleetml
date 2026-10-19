@@ -46,6 +46,25 @@ and NATS, so it can start together with them.
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
 | `GRPC_REFLECTION` | `false` | Register gRPC server reflection, for tools like `grpcurl` without proto files |
 
+### API keys
+
+`FLEETML_ADMIN_KEY` is the first admin key. More keys, and users with roles
+per project, are managed with the REST API by a global admin; a key is shown
+once, in the response that creates it. The routes, all under `/api/v1`:
+
+| Route | Does |
+|---|---|
+| `POST /api-keys` with `{"name": "..."}` | Creates a key for the calling admin |
+| `GET /api-keys` | Lists the keys (names and dates, never the keys) |
+| `POST /api-keys/{id}/revoke` | Revokes a key; the last active admin key cannot be revoked |
+| `POST /users`, `GET /users` | Creates and lists users (a global admin, or a user with roles per project) |
+| `POST /users/{id}/api-keys` | Creates a key for that user |
+| `PUT /projects/{id}/members`, `DELETE /projects/{id}/members/{user_id}` | Sets or removes a user's role in a project (`viewer`, `operator`, `admin`) |
+
+What each role may do is in [ARCHITECTURE.md](ARCHITECTURE.md#users-roles-and-the-audit-log). Enrollment
+keys, which devices use, are per project: `fleetml enrollment-key create
+--project <id>` (the CLI) or `POST /projects/{id}/enrollment-keys`.
+
 ### Devices
 
 Sent to devices at registration and with every heartbeat; the SDKs and the

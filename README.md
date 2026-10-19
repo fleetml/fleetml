@@ -98,7 +98,8 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 
 **Requirements:** macOS, Linux or Windows, with Docker with Compose v2 and
 `openssl`; about 2 GB of free memory for the six containers and the two image
-builds; ports 80 (dashboard), 18080 (REST) and 19090 (gRPC) free. On Windows
+builds; ports 80 (dashboard), 18080 (REST), 19090 (gRPC) and 19100 (model
+files; `FLEETML_S3_PUBLIC_PORT` moves it) free. On Windows
 FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell with Docker
 Desktop's WSL 2 backend ([On Windows](docs/QUICKSTART.md#on-windows)), and the
 CLI is exercised on GitHub's Windows runner.
@@ -131,7 +132,7 @@ Next:
 - **See it work:** `./scripts/demo.sh` (Go and jq).
 - **Take the tour:** [docs/QUICKSTART.md](docs/QUICKSTART.md) walks through
   publishing, rollouts, a canary rollback, an A/B test, drift and the
-  dashboard against these containers.
+  dashboard against these containers (jq, and the released CLI or Go 1.24).
 - **Connect an app:** [Android](docs/ANDROID_SDK.md) or [iOS](docs/IOS_SDK.md).
 - **Run it on Kubernetes:** the Helm chart in
   [deploy/helm/fleetml](deploy/helm/fleetml) (`helm test` included).
@@ -205,9 +206,9 @@ has the request paths, data model, device protocol and trust boundaries.
 
 | Credential | Who uses it | Manage |
 |---|---|---|
-| API key | CLI and scripts (`Authorization: Bearer`); the dashboard logs in with one. Each key acts as a user with a role per project (viewer, operator, admin) or as a global admin | `POST/GET /api/v1/users`, `POST /api/v1/users/{id}/api-keys`, `PUT /api/v1/projects/{id}/members`, `POST /api/v1/api-keys/{id}/revoke` |
+| API key | CLI and scripts (`Authorization: Bearer`); the dashboard logs in with one. Each key acts as a user with a role per project (viewer, operator, admin) or as a global admin | The REST routes in [CONFIG.md](docs/CONFIG.md#api-keys) |
 | Dashboard session | One browser after logging in (`httpOnly` cookie, 12 hours) | Settings → Active sessions, `GET /api/v1/auth/sessions`, `POST /api/v1/auth/sessions/{id}/revoke` |
-| Enrollment key | An app's first device registration, per project | `POST/GET /api/v1/projects/{id}/enrollment-keys`, `POST /api/v1/enrollment-keys/{id}/rotate`, `.../revoke` |
+| Enrollment key | An app's first device registration, per project | `fleetml enrollment-key create --project <id>` and `list`; `POST /api/v1/enrollment-keys/{id}/rotate`, `.../revoke` |
 | Device token | Every device call after registering (30 days, refreshed by the SDK) | `POST /api/v1/devices/{id}/revoke` |
 
 ## Configuration
