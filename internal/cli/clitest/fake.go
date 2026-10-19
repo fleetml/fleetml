@@ -81,6 +81,13 @@ func (s *Server) Projects() []map[string]any {
 	return append([]map[string]any(nil), s.projects...)
 }
 
+// Versions returns every model version created so far.
+func (s *Server) Versions() []map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]map[string]any(nil), s.versions...)
+}
+
 // Variants returns every variant created so far.
 func (s *Server) Variants() []map[string]any {
 	s.mu.Lock()
@@ -247,7 +254,7 @@ func (s *Server) modelVersions(w http.ResponseWriter, method, modelID string, bo
 			return
 		}
 	}
-	v := map[string]any{"id": uuid.NewString(), "model_id": modelID, "version": ver, "status": "DRAFT", "created_at": now()}
+	v := map[string]any{"id": uuid.NewString(), "model_id": modelID, "version": ver, "status": "DRAFT", "metadata": body["metadata"], "created_at": now()}
 	s.versions = append(s.versions, v)
 	respondData(w, http.StatusCreated, v)
 }

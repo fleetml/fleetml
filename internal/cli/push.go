@@ -3,6 +3,7 @@ package cli
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -11,12 +12,12 @@ import (
 )
 
 func newPushCmd() *cobra.Command {
-	var projectID, modelName, ver, quant, framework, task string
+	var projectID, modelName, ver, quant, framework, task, metadata string
 	var promote bool
 
 	cmd := &cobra.Command{
 		Use:   "push [file]",
-		Short: "Upload a model variant (create project/model/version if needed)",
+		Short: "Upload a model variant (create the model and version if needed)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			filePath := args[0]
@@ -66,8 +67,16 @@ func newPushCmd() *cobra.Command {
 			modelID := fmt.Sprint(model["id"])
 
 			// Step 2: Ensure version exists
+			versionBody := map[string]interface{}{"version": ver}
+			if metadata != "" {
+				var md map[string]interface{}
+				if err := json.Unmarshal([]byte(metadata), &md); err != nil {
+					return fmt.Errorf("invalid --metadata JSON: %w", err)
+				}
+				versionBody["metadata"] = md
+			}
 			var version map[string]interface{}
-			err = client.Post("/api/v1/models/"+modelID+"/versions", map[string]string{"version": ver}, &version)
+			err = client.Post("/api/v1/models/"+modelID+"/versions", versionBody, &version)
 			if err != nil {
 				var versions []map[string]interface{}
 				if err2 := client.Get("/api/v1/models/"+modelID+"/versions", &versions); err2 != nil {
@@ -81,6 +90,9 @@ func newPushCmd() *cobra.Command {
 				}
 				if version == nil {
 					return fmt.Errorf("creating version: %s", err)
+				}
+				if metadata != "" {
+					fmt.Fprintf(os.Stderr, "Warning: version %s already exists; --metadata applies only when push creates the version\n", ver)
 				}
 			}
 			versionID := fmt.Sprint(version["id"])
@@ -148,6 +160,7 @@ func newPushCmd() *cobra.Command {
 	cmd.Flags().StringVar(&framework, "framework", "TFLITE", "Framework/runtime")
 	cmd.Flags().StringVar(&task, "task", "CLASSIFICATION", "Task type")
 	cmd.Flags().BoolVar(&promote, "promote", false, "Promote version to ACTIVE after upload")
+	cmd.Flags().StringVar(&metadata, "metadata", "", `Version metadata JSON for a new version, e.g. {"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}`)
 	_ = cmd.MarkFlagRequired("project")
 	_ = cmd.MarkFlagRequired("model")
 	_ = cmd.MarkFlagRequired("version")
