@@ -14,7 +14,7 @@ id fleetml-agent >/dev/null 2>&1 || useradd --system --home-dir /var/lib/fleetml
 install -d -m 0755 /etc/fleetml-agent
 if [ ! -f /etc/fleetml-agent/config.yaml ]; then
   install -m 0640 -g fleetml-agent "$HERE/config.example.yaml" /etc/fleetml-agent/config.yaml
-  echo "Wrote /etc/fleetml-agent/config.yaml: set server and enrollment_key, then run: systemctl enable --now fleetml-agent"
+  echo "Wrote /etc/fleetml-agent/config.yaml: set server, enrollment_key and tls (false for a server without TLS), then run: systemctl enable --now fleetml-agent"
 fi
 install -m 0644 "$HERE/fleetml-agent.service" /etc/systemd/system/fleetml-agent.service
 systemctl daemon-reload
