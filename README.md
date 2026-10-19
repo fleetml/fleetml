@@ -180,8 +180,8 @@ iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
 https://github.com/fleetml/fleetml
 ```
 
-Python, for pipelines and notebooks: `pip install fleetml`
-([Python client](docs/PYTHON_CLIENT.md)):
+Python, for pipelines and notebooks: `pip install fleetml` from 0.5.0; until
+then `pip install ./python` from a clone ([Python client](docs/PYTHON_CLIENT.md)):
 
 ```python
 from fleetml import FleetML
