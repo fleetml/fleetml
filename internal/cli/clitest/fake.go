@@ -1,6 +1,6 @@
 // Package clitest is an in-memory fake of the part of the FleetML REST API
 // that the quickstart's CLI calls use: projects, models, versions, variant
-// upload and finalize, deployments and devices. It answers with the same paths,
+// upload and finalize, enrollment keys, deployments and devices. It answers with the same paths,
 // status codes, JSON envelope ({"data": ...} or {"error": {"code", "message"}})
 // and checks as internal/api/rest, so the CLI can be tested end to end where
 // the real server cannot run (the Windows CI job, and the Windows run workflow
@@ -36,6 +36,7 @@ type Server struct {
 	uploads     map[string][]byte
 	deployments map[string]map[string]any
 	devices     []map[string]any
+	keys        []map[string]any
 }
 
 // NewServer starts a fake that accepts the admin key apiKey and has one
@@ -78,6 +79,13 @@ func (s *Server) Projects() []map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]map[string]any(nil), s.projects...)
+}
+
+// Versions returns every model version created so far.
+func (s *Server) Versions() []map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]map[string]any(nil), s.versions...)
 }
 
 // Variants returns every variant created so far.
@@ -134,6 +142,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.createProject(w, body)
 	case r.Method == http.MethodGet && path == "projects":
 		respondData(w, http.StatusOK, s.projects)
+	case len(p) == 3 && p[0] == "projects" && p[2] == "enrollment-keys":
+		s.enrollmentKeys(w, r.Method, p[1], body)
 	case len(p) == 3 && p[0] == "projects" && p[2] == "models":
 		s.projectModels(w, r.Method, p[1], body)
 	case len(p) == 3 && p[0] == "models" && p[2] == "versions":
@@ -155,7 +165,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "NOT_FOUND", "deployment not found")
 		}
 	case r.Method == http.MethodGet && path == "devices":
-		respondData(w, http.StatusOK, s.devices)
+		s.listDevices(w, r.URL.Query().Get("project_id"))
 	default:
 		respondError(w, http.StatusNotFound, "NOT_FOUND", "no route "+r.Method+" "+r.URL.Path)
 	}
@@ -199,6 +209,31 @@ func (s *Server) projectModels(w http.ResponseWriter, method, projectID string, 
 	respondData(w, http.StatusCreated, m)
 }
 
+func (s *Server) enrollmentKeys(w http.ResponseWriter, method, projectID string, body map[string]any) {
+	if !s.hasProject(projectID) {
+		respondError(w, http.StatusNotFound, "NOT_FOUND", "project not found")
+		return
+	}
+	if method == http.MethodGet {
+		respondData(w, http.StatusOK, filter(s.keys, "project_id", projectID))
+		return
+	}
+	name, _ := body["name"].(string)
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "name is required")
+		return
+	}
+	// Like the server, only the create response carries the key; the list does not.
+	k := map[string]any{"id": uuid.NewString(), "project_id": projectID, "name": name,
+		"created_at": now(), "last_used_at": nil, "revoked_at": nil}
+	s.keys = append(s.keys, k)
+	created := map[string]any{"key": strings.ReplaceAll(uuid.NewString()+uuid.NewString(), "-", "")}
+	for f, v := range k {
+		created[f] = v
+	}
+	respondData(w, http.StatusCreated, created)
+}
+
 func (s *Server) modelVersions(w http.ResponseWriter, method, modelID string, body map[string]any) {
 	if len(filter(s.models, "id", modelID)) == 0 {
 		respondError(w, http.StatusNotFound, "NOT_FOUND", "model not found")
@@ -219,7 +254,7 @@ func (s *Server) modelVersions(w http.ResponseWriter, method, modelID string, bo
 			return
 		}
 	}
-	v := map[string]any{"id": uuid.NewString(), "model_id": modelID, "version": ver, "status": "DRAFT", "created_at": now()}
+	v := map[string]any{"id": uuid.NewString(), "model_id": modelID, "version": ver, "status": "DRAFT", "metadata": body["metadata"], "created_at": now()}
 	s.versions = append(s.versions, v)
 	respondData(w, http.StatusCreated, v)
 }
@@ -235,8 +270,19 @@ func (s *Server) createVariant(w http.ResponseWriter, r *http.Request, versionID
 		respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "quantization, target_runtime, blob_size_bytes, and blob_sha256 are required")
 		return
 	}
+	// Like the server: a variant that was never verified is replaced; a READY one is kept.
+	for id, old := range s.variants {
+		if old["model_version_id"] == versionID && old["quantization"] == body["quantization"] && old["target_runtime"] == body["target_runtime"] {
+			if old["status"] == "READY" {
+				respondError(w, http.StatusConflict, "CONFLICT", "already exists: variant of this version is already uploaded and verified; push a new version")
+				return
+			}
+			delete(s.variants, id)
+			delete(s.uploads, id)
+		}
+	}
 	v := map[string]any{"id": uuid.NewString(), "model_version_id": versionID, "quantization": body["quantization"],
-		"target_runtime": body["target_runtime"], "blob_size_bytes": int64(size), "blob_sha256": sha, "status": "PENDING_UPLOAD"}
+		"target_runtime": body["target_runtime"], "blob_size_bytes": int64(size), "blob_sha256": sha, "status": "UPLOADING"}
 	s.variants[v["id"].(string)] = v
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -320,6 +366,24 @@ func (s *Server) startDeployment(w http.ResponseWriter, id string) {
 		d["status"] = "COMPLETE"
 	}
 	respondData(w, http.StatusOK, d)
+}
+
+// listDevices filters on project_id like the server: a value that is not a
+// UUID is refused. The fake's device is enrolled into the first project.
+func (s *Server) listDevices(w http.ResponseWriter, projectID string) {
+	if projectID == "" {
+		respondData(w, http.StatusOK, s.devices)
+		return
+	}
+	if _, err := uuid.Parse(projectID); err != nil {
+		respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "project_id must be a UUID")
+		return
+	}
+	out := []map[string]any{}
+	if len(s.projects) > 0 && s.projects[0]["id"] == projectID {
+		out = s.devices
+	}
+	respondData(w, http.StatusOK, out)
 }
 
 func (s *Server) hasProject(id string) bool { return len(filter(s.projects, "id", id)) > 0 }

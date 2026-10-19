@@ -632,6 +632,56 @@ func TestCreateVariant(t *testing.T) {
 	})
 }
 
+// A push whose upload failed (or whose finalize refused the blob) can be
+// retried: the next create for the same quantization and runtime replaces the
+// unfinalized variant. A READY variant is never replaced.
+func TestCreateVariantRetryAfterFailedUpload(t *testing.T) {
+	env := newTestEnv()
+	svc := env.svc
+	ctx := context.Background()
+	ver := createTestVersion(t, svc, createTestModel(t, svc, createTestProject(t, svc).ID).ID)
+	blob := bytes.Repeat([]byte("model-bytes-"), 100)
+	sum := sha256.Sum256(blob)
+	input := CreateVariantInput{VersionID: ver.ID, Quantization: "INT8", TargetRuntime: "TFLITE",
+		BlobSizeBytes: int64(len(blob)), BlobSHA256: hex.EncodeToString(sum[:])}
+
+	first, err := svc.CreateVariant(ctx, input)
+	require.NoError(t, err)
+
+	// The upload never reached the object store; the push is run again.
+	second, err := svc.CreateVariant(ctx, input)
+	require.NoError(t, err, "a retry after a failed upload must not be refused")
+	assert.NotEqual(t, first.Variant.ID, second.Variant.ID)
+	assert.NotEmpty(t, second.UploadURL)
+	assert.Equal(t, VariantUploading, second.Variant.Status)
+	assert.NotContains(t, env.variants.variants, first.Variant.ID, "the unfinalized variant is replaced, not kept")
+	assert.Len(t, env.variants.variants, 1)
+
+	// A FAILED variant (finalize refused the blob) is replaced the same way.
+	env.storage.objects[second.Variant.BlobKey] = 1
+	_, err = svc.FinalizeVariant(ctx, second.Variant.ID)
+	require.ErrorIs(t, err, ErrIntegrity)
+	third, err := svc.CreateVariant(ctx, input)
+	require.NoError(t, err)
+
+	env.storage.objects[third.Variant.BlobKey] = int64(len(blob))
+	env.storage.content[third.Variant.BlobKey] = blob
+	_, err = svc.FinalizeVariant(ctx, third.Variant.ID)
+	require.NoError(t, err)
+
+	_, err = svc.CreateVariant(ctx, input)
+	assert.ErrorIs(t, err, ErrConflict, "a READY variant is never replaced")
+	assert.Contains(t, err.Error(), "already uploaded and verified")
+	assert.Equal(t, VariantReady, env.variants.variants[third.Variant.ID].Status)
+
+	// Another quantization of the same version is a new variant, not a replacement.
+	other := input
+	other.Quantization = "FP16"
+	_, err = svc.CreateVariant(ctx, other)
+	require.NoError(t, err)
+	assert.Len(t, env.variants.variants, 2)
+}
+
 func TestFinalizeVariant(t *testing.T) {
 	env := newTestEnv()
 	svc := env.svc

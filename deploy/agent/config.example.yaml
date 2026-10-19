@@ -1,6 +1,8 @@
 # /etc/fleetml-agent/config.yaml (see docs/LINUX_AGENT.md)
 server: fleetml.example.com:19090
-tls: true
+# tls: set to true when the server is behind a TLS proxy; the quickstart's
+# compose server speaks plain gRPC on 19090.
+tls: false
 enrollment_key: "<project enrollment key>"
 labels:
   site: factory-1

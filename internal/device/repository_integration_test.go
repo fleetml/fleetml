@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fleetml/fleetml/internal/dbtest"
+	"github.com/fleetml/fleetml/internal/scope"
 )
 
 func TestDeviceRepo_Integration(t *testing.T) {
@@ -40,14 +41,35 @@ func TestDeviceRepo_Integration(t *testing.T) {
 
 	other := &Device{Fingerprint: GenerateFingerprint("ANDROID", "other", 2048), OS: "ANDROID", Labels: map[string]string{"region": "us"}}
 	require.NoError(t, repo.Create(ctx, other))
-	all, total, err := repo.List(ctx, 10, 0)
+	all, total, err := repo.List(ctx, ListFilter{}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, all, 2)
-	eu, total, err := repo.ListByLabels(ctx, map[string]string{"region": "eu"}, 10, 0)
+	eu, total, err := repo.List(ctx, ListFilter{Labels: map[string]string{"region": "eu"}}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	assert.Equal(t, d.ID, eu[0].ID)
+
+	// project_id: only the devices enrolled into that project; a project
+	// without devices (or an unknown ID) lists none.
+	mine, total, err := repo.List(ctx, ListFilter{ProjectID: &fx.ProjectID}, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Equal(t, d.ID, mine[0].ID)
+	unknown := uuid.New()
+	none, total, err := repo.List(ctx, ListFilter{ProjectID: &unknown}, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, total)
+	assert.Empty(t, none)
+	none, _, err = repo.List(ctx, ListFilter{ProjectID: &fx.ProjectID, Labels: map[string]string{"region": "us"}}, 10, 0)
+	require.NoError(t, err)
+	assert.Empty(t, none, "project and labels both apply")
+
+	// A caller limited to other projects sees none of these devices, with or without labels.
+	limited := scope.WithProjects(ctx, []uuid.UUID{unknown})
+	none, _, err = repo.List(limited, ListFilter{Labels: map[string]string{"region": "eu"}}, 10, 0)
+	require.NoError(t, err)
+	assert.Empty(t, none, "the label filter stays within the caller's projects")
 
 	require.NoError(t, repo.RecordHeartbeat(ctx, d.ID, []string{"variant-a"}))
 	got, _ = repo.GetByID(ctx, d.ID)
@@ -122,7 +144,7 @@ func TestService_Integration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, resp.Assignments)
 
-	devices, _, err := svc.ListDevicesByLabels(ctx, map[string]string{}, 10, 0)
+	devices, _, err := svc.ListDevices(ctx, ListFilter{}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, devices, 1)
 	classes, err := svc.ListDeviceClasses(ctx)

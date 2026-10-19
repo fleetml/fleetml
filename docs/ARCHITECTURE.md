@@ -352,10 +352,14 @@ project, users, API keys, creating projects; the `bootstrap` user that owns
 | `admin` | also delete, manage enrollment keys, alert sinks and the signing key, edit the project, manage its members, read its audit log |
 
 ```bash
-U=$(api POST /api/v1/users '{"name":"vera"}' | jq -r .data.id)              # global admin only
-api POST /api/v1/users/$U/api-keys '{"name":"laptop"}'                         # the key is shown once
-api PUT /api/v1/projects/$P/members "{\"user_id\":\"$U\",\"role\":\"viewer\"}"   # project admin
+U=$(api POST /api/v1/users '{"name":"vera"}' | jq -r .data.id)
+api POST /api/v1/users/$U/api-keys '{"name":"laptop"}'
+api PUT /api/v1/projects/$P/members "{\"user_id\":\"$U\",\"role\":\"viewer\"}"
 ```
+
+Creating a user needs a global admin; the new key is shown once, in the
+response; setting a member needs an admin of that project. All the routes are
+listed in [CONFIG.md](CONFIG.md#api-keys).
 
 The permission matrix (`internal/api/rest/permissions.go`) lists the role and
 the project of every route; a route that is not in it is refused, and a test

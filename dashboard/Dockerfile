@@ -1,4 +1,5 @@
-FROM node:20-alpine AS builder
+# The build output is static files: build once, on the build machine's platform.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci

@@ -108,3 +108,28 @@ func TestE2E_DeleteDeviceKeepsTelemetry(t *testing.T) {
 	assert.Equal(t, driftBefore, check(), "drift check")
 	assert.Equal(t, historyBefore, history(), "drift history")
 }
+
+// GET /api/v1/devices?project_id= lists only that project's devices, as the
+// dashboard and `fleetml device list --project` ask for.
+func TestE2E_ListDevicesByProject(t *testing.T) {
+	e := newEnv(t)
+	a, b := e.newFixture(t), e.newFixture(t)
+	inA := e.register(t, a.enrollKey, nil)
+	inB := e.register(t, b.enrollKey, nil)
+
+	list := func(query string) []string {
+		t.Helper()
+		var devices []idOnly
+		require.Equal(t, 200, e.call(t, "GET", "/api/v1/devices"+query, nil, &devices))
+		ids := []string{}
+		for _, d := range devices {
+			ids = append(ids, d.ID)
+		}
+		return ids
+	}
+	assert.Equal(t, []string{inA.id}, list("?project_id="+a.project+"&limit=100"))
+	assert.Equal(t, []string{inB.id}, list("?project_id="+b.project+"&limit=100"))
+	assert.Empty(t, list("?project_id=00000000-0000-0000-0000-000000000000"), "an unknown project has no devices")
+	assert.Subset(t, list("?limit=100"), []string{inA.id, inB.id}, "without project_id the list spans projects")
+	assert.Equal(t, 400, e.call(t, "GET", "/api/v1/devices?project_id=bogus", nil, nil))
+}

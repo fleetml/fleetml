@@ -55,3 +55,21 @@ func TestPush_MissingFile(t *testing.T) {
 	err := runCLI(t, fake.URL, "k", "push", filepath.Join(t.TempDir(), "no such dir", "m.tflite"), "--project", "p", "--model", "m", "--version", "1.0.0")
 	assert.ErrorContains(t, err, "file not found")
 }
+
+// --metadata sets a new version's metadata, such as the requirements override
+// a Core ML FP32 variant needs on an iPhone (docs/IOS_SDK.md).
+func TestPush_Metadata(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	file := filepath.Join(t.TempDir(), "iris.mlmodel")
+	require.NoError(t, os.WriteFile(file, []byte("coreml bytes"), 0o644))
+	require.NoError(t, runCLI(t, fake.URL, "k", "project", "create", "--name", "md"))
+	projectID := fake.Projects()[0]["id"].(string)
+	require.NoError(t, runCLI(t, fake.URL, "k", "push", file, "--project", projectID, "--model", "iris", "--version", "1.0.0",
+		"--framework", "COREML", "--quantization", "FP32", "--metadata", `{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}`))
+	versions := fake.Versions()
+	require.Len(t, versions, 1)
+	assert.Equal(t, map[string]any{"fleetml_requirements": map[string]any{"min_ram_mb": float64(64), "min_score": float64(0)}}, versions[0]["metadata"])
+
+	err := runCLI(t, fake.URL, "k", "push", file, "--project", projectID, "--model", "iris", "--version", "2.0.0", "--metadata", "{")
+	assert.ErrorContains(t, err, "invalid --metadata JSON")
+}

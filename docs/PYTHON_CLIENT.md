@@ -14,8 +14,9 @@ which stays the command-line tool; the package installs no command.
 pip install fleetml
 ```
 
-Python 3.9 or later; the only dependency is `httpx`. To work against
-unreleased changes, install it from a clone: `pip install ./python`.
+`pip install fleetml` works from 0.5.0; until then, `pip install ./python`
+from a clone of the repository (also the way to work against unreleased
+changes). Python 3.9 or later; the only dependency is `httpx`.
 
 ## Configure
 
@@ -31,6 +32,10 @@ API key (an admin key, as for the CLI) to `FLEETML_API_KEY`. `FleetML` is a
 context manager (`with FleetML() as fm:`), or call `fm.close()`.
 
 ## The tour in Python
+
+Run it from the root of a clone of the repository (it reads the sample models
+in `models/iris`), with the `fleetml` CLI installed for the simulated fleet
+([Get the CLI](QUICKSTART.md#get-the-cli)).
 
 The [tour](QUICKSTART.md#tour)'s sections 1 to 3 against the quickstart's
 server: publish two versions of the Iris classifier, roll 1.0.0 out to a

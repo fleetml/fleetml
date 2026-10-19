@@ -82,9 +82,11 @@ The private keys are stored encrypted with a key derived from
 before signing existed are signed when the server starts.
 
 ```bash
-api GET  /api/v1/projects/$P/signing-key                       # the keys devices accept, active first
+api GET  /api/v1/projects/$P/signing-key
 api POST /api/v1/projects/$P/signing-key/rotate '{"grace":"24h"}'
 ```
+
+The GET lists the keys devices accept, the active one first.
 
 Rotating creates a new active key and signs every READY variant again with
 it, but only those whose current signature verifies with the old key. The old
@@ -257,12 +259,16 @@ api POST /api/v1/projects/$P/alert-sinks \
   '{"name":"on-call","kind":"webhook","config":{"url":"https://example.com/fleetml","secret":"change-me"}}'
 api POST /api/v1/projects/$P/alert-sinks \
   '{"name":"#ml-alerts","kind":"slack","config":{"webhook_url":"https://hooks.slack.com/services/…"}}'
-api GET    /api/v1/projects/$P/alert-sinks          # secrets are shown redacted
+api GET    /api/v1/projects/$P/alert-sinks
 api PATCH  /api/v1/alert-sinks/$SINK '{"enabled":false}'
-api POST   /api/v1/alert-sinks/$SINK/test           # one test alert, no retries; returns the attempt
-api GET    /api/v1/alert-sinks/$SINK/deliveries     # the last 50 attempts, newest first
+api POST   /api/v1/alert-sinks/$SINK/test
+api GET    /api/v1/alert-sinks/$SINK/deliveries
 api DELETE /api/v1/alert-sinks/$SINK
 ```
+
+The list shows secrets redacted; `test` sends one test alert, without
+retries, and returns the attempt; `deliveries` lists the last 50 attempts,
+newest first.
 
 A PATCH may send the redacted config back unchanged; redacted values keep
 their stored secret.
@@ -344,23 +350,26 @@ api() {
   if [ -n "$3" ]; then curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' -d "$3" "localhost:18080$2"
   else curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" "localhost:18080$2"; fi
 }
-# upload version_id file: create an INT8/TFLITE variant, PUT the blob, finalize
 upload() {
   local out=$(api POST /api/v1/versions/$1/variants "{\"quantization\":\"INT8\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < "$2" | tr -d ' '),\"blob_sha256\":\"${3:-$(shasum -a 256 "$2" | cut -d' ' -f1)}\"}")
   curl -s -o /dev/null -X PUT --data-binary @"$2" "$(echo "$out" | jq -r .data.upload_url)"
   api POST /api/v1/variants/$(echo "$out" | jq -r .data.variant.id)/finalize
 }
-# grpcurl with the FleetML protos (the server has no reflection unless GRPC_REFLECTION=true)
 g() { grpcurl -plaintext -import-path proto -proto fleetml/v1/device.proto -proto fleetml/v1/telemetry.proto "$@"; }
-# register enrollment_key labels_json -> "device_id token"
 register() { g -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"ram_mb\":4096,\"enrollment_key\":\"$1\",\"labels\":$2}" \
   localhost:19090 fleetml.device.v1.DeviceService/Register | jq -r '"\(.deviceId) \(.authToken)"'; }
 heartbeat() { g -H "authorization: Bearer $1" -d "{\"loaded_models\":${2:-[]}}" localhost:19090 fleetml.device.v1.DeviceService/Heartbeat; }
-# report token version_id count type [arm_id]
 report() { local ev="{\"model_version_id\":\"$2\",\"type\":\"$4\",\"latency_ms\":20,\"experiment_arm_id\":\"${5:-}\"}"
   g -H "authorization: Bearer $1" -d "{\"events\":[$(for i in $(seq $3); do printf '%s,' "$ev"; done | sed 's/,$//')]}" \
   localhost:19090 fleetml.telemetry.v1.TelemetryService/ReportBatch; }
 ```
+
+`upload <version ID> <file> [sha256]` creates an INT8/TFLITE variant, PUTs the
+blob and finalizes it; `g` is grpcurl with the FleetML protos (the server has
+no reflection unless `GRPC_REFLECTION=true`); `register <enrollment key>
+<labels JSON>` prints `<device ID> <token>`; `heartbeat <token> [loaded models
+JSON]`; and `report <token> <version ID> <count> <type> [arm ID]` sends that
+many telemetry events.
 
 Create a project, a model with two versions and an enrollment key:
 
@@ -370,18 +379,22 @@ M=$(api POST /api/v1/projects/$P/models '{"name":"clf","framework":"TFLITE","tas
 V1=$(api POST /api/v1/models/$M/versions '{"version":"1.0.0"}' | jq -r .data.id)
 V2=$(api POST /api/v1/models/$M/versions '{"version":"2.0.0"}' | jq -r .data.id)
 head -c 4096 /dev/urandom > v1.bin; head -c 5000 /dev/urandom > v2.bin
-upload $V1 v1.bin | jq -c '.data.status'      # "READY"
-upload $V2 v2.bin | jq -c '.data.status'      # "READY"
+upload $V1 v1.bin | jq -c '.data.status'
+upload $V2 v2.bin | jq -c '.data.status'
 EK=$(api POST /api/v1/projects/$P/enrollment-keys '{"name":"runbook"}' | jq -r .data.key)
 ```
+
+Both uploads print `"READY"`.
 
 **Integrity.** A wrong declared hash is rejected and the version cannot be deployed:
 
 ```bash
 VBAD=$(api POST /api/v1/models/$M/versions '{"version":"9.9.9"}' | jq -r .data.id)
-upload $VBAD v1.bin 0000000000000000000000000000000000000000000000000000000000000000 | jq -c .error.code   # "INTEGRITY_ERROR"
-api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$VBAD\"}" | jq -c .error.code   # "NOT_DEPLOYABLE"
+upload $VBAD v1.bin 0000000000000000000000000000000000000000000000000000000000000000 | jq -c .error.code
+api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$VBAD\"}" | jq -c .error.code
 ```
+
+The upload prints `"INTEGRITY_ERROR"`, the deployment `"NOT_DEPLOYABLE"`.
 
 **Canary with the default gate and an automatic rollback.** Register six
 devices, ship v1 to all, then start a v2 canary at 50% (stage held for an hour)
@@ -390,19 +403,21 @@ and make the canary devices report errors:
 ```bash
 for i in 1 2 3 4 5 6; do register $EK '{"fleet":"runbook"}'; done > devices.txt
 D1=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V1\",\"target_selector\":{\"fleet\":\"runbook\"}}" | jq -r .data.id)
-api POST /api/v1/deployments/$D1/start | jq -r .data.status                                  # COMPLETE
+api POST /api/v1/deployments/$D1/start | jq -r .data.status
 D2=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V2\",\"strategy\":\"CANARY\",\"target_selector\":{\"fleet\":\"runbook\"},\"canary_stages\":[{\"percentage\":50,\"min_duration\":\"1h\"},{\"percentage\":100}]}" | jq -r .data.id)
-api GET /api/v1/deployments/$D2 | jq -c .data.health_gate                                     # the default gate
+api GET /api/v1/deployments/$D2 | jq -c .data.health_gate
 api POST /api/v1/deployments/$D2/start >/dev/null
 while read -r dev tok; do
   if heartbeat $tok | jq -e --arg v "$V2" '.assignments[]? | select(.versionId == $v)' >/dev/null; then
     report $tok $V2 10 ERROR >/dev/null; echo "canary device $dev reported 10 errors"
   fi
 done < devices.txt
-sleep 15; api GET /api/v1/deployments/$D2 | jq -c '.data | {status, rollback_reason}'      # ROLLED_BACK, error rate ...
+sleep 15; api GET /api/v1/deployments/$D2 | jq -c '.data | {status, rollback_reason}'
 ```
 
-Devices that were in the canary are offered v1 again on their next heartbeat
+The deployment of v1 starts as `COMPLETE`, the canary shows the default
+health gate, and 15 seconds after the errors the canary is `ROLLED_BACK` with
+a rollback reason that starts with `error rate`. Devices that were in the canary are offered v1 again on their next heartbeat
 (an `UPDATE` with v1's URL and sha256 when they report v2 loaded), and the
 webhook receiver prints one `rollback` alert.
 
@@ -420,17 +435,23 @@ while true; do
   [ "$st" = "$before" ] && [ "$st: $n" != "$last" ] && echo "$(date +%T) $st: $n/20 devices offered v2" && last="$st: $n"
   case "$st" in COMPLETE*) break;; esac
   sleep 5
-done                                                                                        # 5, 10, 15, 20, then COMPLETE
+done
 ```
+
+It prints 5, 10, 15 and 20 of 20 devices offered v2, one batch at a time,
+then `COMPLETE`.
 
 **Manual rollback of a completed deployment** and **cancel**:
 
 ```bash
-api POST /api/v1/deployments/$D3/rollback '{"reason":"runbook"}' | jq -r .data.status       # ROLLED_BACK
-api POST /api/v1/deployments/$D3/rollback | jq -r .error.code                              # INVALID_TRANSITION
+api POST /api/v1/deployments/$D3/rollback '{"reason":"runbook"}' | jq -r .data.status
+api POST /api/v1/deployments/$D3/rollback | jq -r .error.code
 D4=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V2\",\"strategy\":\"CANARY\"}" | jq -r .data.id)
-api POST /api/v1/deployments/$D4/start >/dev/null; api POST /api/v1/deployments/$D4/cancel | jq -r .data.status   # CANCELLED
+api POST /api/v1/deployments/$D4/start >/dev/null; api POST /api/v1/deployments/$D4/cancel | jq -r .data.status
 ```
+
+The first rollback prints `ROLLED_BACK`, the second `INVALID_TRANSITION`
+(it is already rolled back), and the cancel `CANCELLED`.
 
 **A/B experiment.** Devices learn their arm and download their arm's model;
 tagged telemetry is attributed per arm:

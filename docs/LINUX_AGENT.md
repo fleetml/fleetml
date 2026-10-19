@@ -38,22 +38,88 @@ curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SU
 grep " fleetml-agent-linux-$ARCH.tar.gz\$" SHA256SUMS | sha256sum -c
 mkdir fleetml-agent && tar -xzf "fleetml-agent-linux-$ARCH.tar.gz" -C fleetml-agent
 sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
-sudoedit /etc/fleetml-agent/config.yaml       # server and enrollment_key
-sudo systemctl enable --now fleetml-agent
-journalctl -u fleetml-agent -f
+fleetml-agent -version
 ```
 
-`fleetml-agent -version` prints the release's version. To build the agent from
-source instead, `make build-agent` writes `bin/fleetml-agent-linux-amd64`,
-`-linux-arm64` and `-darwin-arm64` (version `dev`), and
+`sha256sum -c` prints `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
+`fleetml-agent -version` prints the release without a `v`, for example
+`fleetml-agent 0.5.0`. To build the agent from source instead, `make
+build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
+and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
-from the repository.
+from the clone.
 
 The script installs the binary to `/usr/local/bin`, creates a
 `fleetml-agent` system user, the config file (from
 [`config.example.yaml`](../deploy/agent/config.example.yaml)) and the
 [systemd unit](../deploy/agent/fleetml-agent.service), which keeps its state in
-`/var/lib/fleetml-agent`.
+`/var/lib/fleetml-agent`. It starts nothing while the config still holds the
+placeholder key.
+
+### Connect it to the server
+
+The agent registers into a project with one of the project's enrollment keys.
+Create one with the CLI, wherever the CLI talks to the server with the admin
+key (as in the [tour](QUICKSTART.md#2-a-fleet-and-a-rollout)); it prints the
+key once:
+
+```bash
+fleetml enrollment-key create --project <project ID> --name edge
+```
+
+Then, on the machine, set the settings and start the service:
+
+```bash
+sudoedit /etc/fleetml-agent/config.yaml
+sudo systemctl enable --now fleetml-agent
+journalctl -u fleetml-agent -f
+```
+
+In `config.yaml`, set `server` (the server's host and gRPC port, `19090`),
+`enrollment_key`, and `tls`: `false` for the quickstart's compose server,
+which speaks plain gRPC on 19090, or `true` when the server is behind a TLS
+proxy. Set `labels` too: deployments and experiments reach the machine through
+them (a `target_selector` such as `{"site":"factory-1"}` matches every device
+whose labels include it; see [ROLLOUTS.md](ROLLOUTS.md#how-a-device-gets-a-model)).
+
+The journal then shows the agent start and register (the time stamps left out
+here):
+
+```text
+level=INFO msg="fleetml-agent starting" version=0.5.0 server=fleetml.example.com:19090 models_dir=/var/lib/fleetml-agent/models
+level=INFO msg=registered device_id=<device ID>
+```
+
+and the machine appears in `fleetml device list --project <project ID>` with
+OS `LINUX`. Once a deployment targets its labels, the next heartbeat (every
+30 seconds) brings the model:
+
+```text
+level=INFO msg="model downloaded" model=iris version=1.0.0 bytes=<size>
+level=INFO msg="model active" model=iris version=1.0.0 path=/var/lib/fleetml-agent/models/iris/current
+```
+
+`/var/lib/fleetml-agent/models/iris/current` then links to the active
+version's folder ([Where models go](#where-models-go)). A
+`transport: authentication handshake failed` error means `tls: true` against a
+server without TLS; `registration failed` with `Unauthenticated` means the
+enrollment key is wrong or revoked.
+
+### Server on another machine
+
+The quickstart's compose stack signs model download URLs for
+`localhost:19100`, which only the server's own machine can reach: an agent on
+another machine registers and heartbeats, and then every download fails. Start
+the stack with the server's LAN address as the object store's public endpoint,
+and let the agent's machine reach ports 19090 (gRPC) and 19100 (model files):
+
+```bash
+S3_PUBLIC_ENDPOINT=<server LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+```
+
+and set `server: <server LAN IP>:19090` in the agent's config.
+[CONFIG.md](CONFIG.md#docker-compose) has the compose settings; a server in
+production sits behind a TLS proxy with a real host name instead.
 
 ## Configure
 
@@ -69,7 +135,7 @@ Settings come from the YAML file (`-config`), and flags override them
 | `enrollment_key` | | Project enrollment key for the first registration |
 | `labels` | `{}` | Labels deployments and experiments target |
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
-| `models_dir` | `<state_dir>/models` | Where models are placed (below) |
+| `models_dir` | `<state_dir>/models` | Where models are placed (below). The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) |
 | `validator` | none | Shell command that checks a downloaded model; `{file}` is its path; exit code 0 means valid |
 | `post_activate` | none | Shell command run after a version becomes active |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
@@ -130,9 +196,11 @@ reports inferences over HTTP on the machine, without a client library:
 ```bash
 curl -s -X POST localhost:9601/v1/events -H 'Content-Type: application/json' \
   -d '{"model":"detector","latency_ms":12,"confidence":0.93,"label":"person"}'
-# {"accepted":1,"rejected":0}
-curl -s localhost:9601/v1/models     # the active models and their paths
+curl -s localhost:9601/v1/models
 ```
+
+The first call answers `{"accepted":1,"rejected":0}`; the second lists the
+active models and their paths.
 
 `POST /v1/events` takes one event or an array; set `"error"` to a message for
 a failed inference (it counts against the health gate), and `"features"` to

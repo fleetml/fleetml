@@ -3,7 +3,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"net/http"
 	"testing"
 	"time"
 
@@ -37,6 +41,47 @@ func TestE2E_ArtifactIntegrity(t *testing.T) {
 	assert.Equal(t, good, got.VersionId)
 	assert.Equal(t, sha, got.BlobSha256)
 	assert.Equal(t, sha, fetchSHA(t, got.DownloadUrl), "the served blob is the verified one")
+}
+
+// A push whose upload never reached the object store (an unreachable
+// S3_PUBLIC_ENDPOINT, say) can be run again: the second create replaces the
+// unfinalized variant. Once a variant is READY, the same create is refused.
+func TestE2E_PushRetryAfterFailedUpload(t *testing.T) {
+	e := newEnv(t)
+	f := e.newFixture(t)
+	var v idOnly
+	require.Equal(t, 201, e.call(t, "POST", "/api/v1/models/"+f.model+"/versions", map[string]string{"version": "1.0.0"}, &v))
+	blob := randomBlob(4096)
+	sum := sha256.Sum256(blob)
+	body := map[string]any{"quantization": "INT8", "target_runtime": "TFLITE", "blob_size_bytes": len(blob), "blob_sha256": hex.EncodeToString(sum[:])}
+	type created struct {
+		Variant   idOnly `json:"variant"`
+		UploadURL string `json:"upload_url"`
+	}
+
+	var first, second created
+	require.Equal(t, 201, e.call(t, "POST", "/api/v1/versions/"+v.ID+"/variants", body, &first))
+	require.Equal(t, 201, e.call(t, "POST", "/api/v1/versions/"+v.ID+"/variants", body, &second), "the retry is not refused")
+	assert.NotEqual(t, first.Variant.ID, second.Variant.ID)
+	assert.Equal(t, 404, e.call(t, "GET", "/api/v1/variants/"+first.Variant.ID, nil, nil), "the unfinalized variant was replaced")
+
+	req, err := http.NewRequest("PUT", second.UploadURL, bytes.NewReader(blob))
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Less(t, resp.StatusCode, 300)
+	require.Equal(t, 200, e.call(t, "POST", "/api/v1/variants/"+second.Variant.ID+"/finalize", nil, nil))
+
+	assert.Equal(t, 409, e.call(t, "POST", "/api/v1/versions/"+v.ID+"/variants", body, nil), "a READY variant is never replaced")
+	var variants []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	require.Equal(t, 200, e.call(t, "GET", "/api/v1/versions/"+v.ID+"/variants", nil, &variants))
+	require.Len(t, variants, 1)
+	assert.Equal(t, second.Variant.ID, variants[0].ID)
+	assert.Equal(t, "READY", variants[0].Status)
 }
 
 // 3.4: rolling back a COMPLETE deployment sends devices back to the previous

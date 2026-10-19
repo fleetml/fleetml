@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Windows qs_run workflow's quickstart in WSL 2
 # (.github/workflows/windows-run.yml): runs the "Run FleetML" qs_block of
-# docs/QUICKSTART.md and the tour's first qs_block and sections 1 to 3 in one bash
+# docs/QUICKSTART.md and the tour's two setup blocks and sections 1 to 3 in one bash
 # session, as a reader pastes them, each qs_block read from the docs at qs_run time;
 # then checks what they printed against the docs' text, as scripts/e2e.sh and
 # the Python live test do (COMPLETE, ROLLING_OUT, ROLLED_BACK). Run it from the
@@ -111,9 +111,13 @@ qs_check 'the project list answers {"data":[],"pagination":{...}}' "$(grep -o '{
 qs_check "the Dashboard line" "$(grep -c '^Dashboard: http://localhost' "$QS_OUT/run-fleetml") line(s)" grep -q '^Dashboard: http://localhost' "$QS_OUT/run-fleetml"
 qs_note "Run FleetML: readyz all connected"
 
-# The tour, from the repository root in the same shell.
-qs_run tour-setup "$(qs_block '## Tour')"
-qs_check "bin/fleetml built" "$(./bin/fleetml version 2>&1)" test -x bin/fleetml
+# The tour, from the repository root in the same shell. Its first block builds
+# the CLI from source (the release's CLI may predate the commit under test);
+# the second points it at the server.
+qs_run tour-cli "$(qs_block '## Tour' 1)"
+qs_check "fleetml on the PATH is the one built from source" "$(command -v fleetml) $(fleetml version 2>&1)" test "$(command -v fleetml)" = "$PWD/bin/fleetml"
+qs_run tour-setup "$(qs_block '## Tour' 2)"
+qs_check "fleetml project list prints No results." "$(cat "$QS_OUT/tour-setup")" grep -qx 'No results.' "$QS_OUT/tour-setup"
 
 qs_run tour-1 "$(qs_block '### 1. Publish a model' 1)"
 qs_check "three pushes print Pushed" "$(grep -c Pushed "$QS_OUT/tour-1") of 3" test "$(grep -c Pushed "$QS_OUT/tour-1")" -eq 3
@@ -123,16 +127,16 @@ qs_check 'the finalize call answers {"code":"INTEGRITY_ERROR",...}' "$(cat "$QS_
 qs_note "1: three pushes, INTEGRITY_ERROR on a bad sha256"
 
 qs_run tour-2 "$(qs_block '### 2. A fleet and a rollout' 1)"
-qs_check "the deployment of 1.0.0 starts as COMPLETE" "$(grep -x 'COMPLETE\|PENDING\|ROLLING_OUT\|FAILED' "$QS_OUT/tour-2" | head -1)" grep -qx COMPLETE "$QS_OUT/tour-2"
+qs_check "the deployment of 1.0.0 starts as COMPLETE" "$(grep 'Deployment start' "$QS_OUT/tour-2" | head -1)" grep -q '^✓ Deployment start → COMPLETE$' "$QS_OUT/tour-2"
 qs_wait_fleet "iris 1.0.0 on 20" || true
 qs_check "the simulator reads iris 1.0.0 on 20 (within 90 s)" "$(qs_sim_fleet)" test "$(qs_sim_fleet)" = "iris 1.0.0 on 20"
 qs_check "fleetml device list prints its table" "$(grep -m1 '^ID' "$QS_OUT/tour-2")" grep -Eq '^ID +OS +RAM\(MB\) +Chipset' "$QS_OUT/tour-2"
 qs_note "2: COMPLETE, iris 1.0.0 on 20"
 
 qs_run tour-3 "$(qs_block '### 3. A canary that rolls itself back' 1)"
-qs_check "the canary of 2.0.0 starts as ROLLING_OUT" "$(head -1 "$QS_OUT/tour-3")" grep -qx ROLLING_OUT "$QS_OUT/tour-3"
-qs_status=$(api GET "/api/v1/deployments/$D2" | jq -r .data.status)
-qs_reason=$(api GET "/api/v1/deployments/$D2" | jq -r .data.rollback_reason)
+qs_check "the canary of 2.0.0 starts as ROLLING_OUT" "$(head -1 "$QS_OUT/tour-3")" grep -q '^✓ Deployment start → ROLLING_OUT$' "$QS_OUT/tour-3"
+qs_status=$(fleetml deploy get "$D2" | jq -r .status)
+qs_reason=$(fleetml deploy get "$D2" | jq -r .rollback_reason)
 qs_check "the canary ends ROLLED_BACK" "$qs_status" test "$qs_status" = ROLLED_BACK
 qs_check "the rollback reason reads error rate ... exceeds threshold 5.00% ..." "$qs_reason" grep -q 'error rate .* exceeds threshold 5.00%' <<<"$qs_reason"
 qs_wait_fleet "iris 1.0.0 on 20" || true

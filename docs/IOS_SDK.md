@@ -13,7 +13,8 @@ feature.
 
 ## Install
 
-In Xcode, choose **File → Add Package Dependencies**, paste
+It needs Xcode 15 or later (16 recommended; the package manifest is
+swift-tools-version 5.9). In Xcode, choose **File → Add Package Dependencies**, paste
 `https://github.com/fleetml/fleetml` and add the **FleetMLSDK** library to the
 app target, with the Dependency Rule **Up to Next Major Version** from
 0.4.0.
@@ -41,47 +42,124 @@ folder, or in a `Package.swift`:
 .product(name: "FleetMLSDK", package: "fleetml"),
 ```
 
-It depends on grpc-swift 1.27 (the release line that supports iOS 15) and
-swift-protobuf. macOS 12 is supported too, for tests and tools.
+It depends on grpc-swift, pinned to exactly 1.27.6 (the 1.x line, which
+supports iOS 15; 2.x needs iOS 18), and on swift-protobuf from 1.28. An app
+that already depends on grpc-swift must use that same version, or Swift
+Package Manager cannot resolve the graph. macOS 12 is supported too, for tests
+and tools.
 
 ## Configure and start
 
-Initialize once, for example in your `App` or app delegate:
+Initialize once, for example in your `App` or app delegate. The enrollment
+key comes from `fleetml enrollment-key create --project <project ID>`, which
+prints it once:
 
 ```swift
 import FleetMLSDK
 
 final class AppModel: FleetMLDelegate {
+    static let enrollmentKey = "<enrollment key>"
+
     init() {
-        try? FleetML.initialize(
-            config: FleetMLConfig(serverHost: "fleetml.example.com", enrollmentKey: enrollmentKey,
-                                  labels: ["region": "eu", "tier": "beta"]),
-            delegate: self)
+        do {
+            try FleetML.initialize(
+                config: FleetMLConfig(serverHost: "fleetml.example.com", enrollmentKey: Self.enrollmentKey,
+                                      labels: ["region": "eu", "tier": "beta"]),
+                delegate: self)
+        } catch {
+            print("FleetML did not start: \(error)")
+        }
     }
 
     func fleetML(modelReady model: ActiveModel) {
-        // model.fileURL is verified and validated: load it.
+        // model.fileURL is verified and validated: load it (Core ML: below).
     }
 }
 ```
 
+The SDK holds the delegate weakly: keep the object alive for as long as the
+app runs, for example as a property of your `App` or app delegate, or its
+callbacks stop.
+
+In production, behind a proxy that terminates TLS and forwards gRPC over
+HTTP/2 (gRPC needs HTTP/2 end to end):
+`FleetMLConfig(serverHost: "fleetml.example.com", serverPort: 443, enrollmentKey: Self.enrollmentKey, useTLS: true)`.
+
+The delegate's methods all have empty default implementations, so implement
+only what the app needs. They are called on a background queue: switch to the
+main queue before touching the UI.
+
+| Method | When |
+|---|---|
+| `fleetML(modelReady:)` | A model was downloaded, verified and validated and is now active; also at start for models cached from an earlier run |
+| `fleetML(modelUnloaded:modelName:variantID:)` | The server no longer assigns the model |
+| `fleetML(modelLoadFailed:version:reason:)` | A new version could not be downloaded or failed validation; the last-known-good one stays |
+| `fleetML(registered:)` | The device registered (or re-registered) |
+| `fleetML(connectionChanged:)` | The server became reachable or unreachable |
+| `fleetML(connectionFailed:)` | Registration failed, with the error ([When it does not connect](#when-it-does-not-connect)) |
+
+Delivered files keep the server's name (`{variant}.bin`), and Core ML compiles
+only from a path ending in `.mlmodel`, so copy the file to one first (the
+sample app's `IrisClassifier` does the same):
+
+```swift
+func fleetML(modelReady model: ActiveModel) {
+    let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mlmodel")
+    do {
+        try FileManager.default.copyItem(at: model.fileURL, to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let mlModel = try MLModel(contentsOf: try MLModel.compileModel(at: source))
+        // use mlModel
+    } catch {
+        print("Core ML could not load \(model.modelName) \(model.version): \(error)")
+    }
+}
+```
+
+The intervals and the batch size below are what the SDK uses until it first
+hears from the server; from the first registration on, the server's values
+apply (their defaults are in [Battery and data](#battery-and-data)).
+
 | `FleetMLConfig` field | Default | Purpose |
 |---|---|---|
 | `serverHost`, `serverPort` | –, `19090` | The FleetML gRPC endpoint |
-| `enrollmentKey` | `""` | Per-project key for the first registration (`POST /api/v1/projects/{id}/enrollment-keys`) |
+| `enrollmentKey` | `""` | Per-project key for the first registration (`fleetml enrollment-key create`) |
 | `useTLS` | `false` | TLS for gRPC (put the server behind a TLS proxy in production) |
 | `labels` | `[:]` | Labels deployments and experiments target (`target_selector`) |
-| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own |
+| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own (server default 60) |
 | `backgroundHeartbeatIntervalSeconds` | `3600` | Earliest interval of the background refresh, until the server sends its own (at least 15 minutes) |
-| `telemetryBatchSize`, `telemetryFlushIntervalSeconds` | `50`, `30` | Until the server's `DeviceConfig` overrides them |
+| `telemetryBatchSize`, `telemetryFlushIntervalSeconds` | `50`, `30` | Until the server's `DeviceConfig` overrides them (server defaults 100 and 30) |
 | `maxCacheSizeMB` | `500` | Disk budget for models; the active and last-known-good models are never evicted |
 | `downloadPolicy` | `.unmeteredOrCharging` | Which networks non-urgent downloads may use, until the server sends its own ([Battery and data](#battery-and-data)) |
 | `autoStart` | `true` | Call `FleetML.start()` yourself if `false` |
 
 `FleetML.stop()` stops background work so `initialize` can be called again
 (for example with a new server address). `FleetML.reset()` also deletes cached
-models and the registration. Delegate methods have empty default
-implementations and are called on a background queue.
+models and the registration.
+
+### When it does not connect
+
+If the SDK cannot register, `fleetML(connectionChanged:)` reports `false` and
+`fleetML(connectionFailed:)` receives the error, on the first failure after
+start and again whenever the error changes (registration is retried every
+10 seconds). Print it while you set up the app:
+
+```swift
+func fleetML(connectionFailed error: Error) {
+    print("FleetML cannot register: \(error)")
+}
+```
+
+A wrong host or port, or a server that is not running, reads like
+`deadlineExceeded (Connection errors: ... Connection refused)`; a wrong
+enrollment key is refused by the server as `unauthenticated`. The SDK also
+logs every step (registration, downloads, validation, heartbeats) to the
+unified log with subsystem `com.fleetml.sdk` and category `FleetML`. Xcode's
+console shows it while the app runs from Xcode; without a debugger, open
+Console.app on the Mac, select the phone (or the simulator) in the sidebar,
+press Start, and search for `subsystem:com.fleetml.sdk`. For the simulator,
+`xcrun simctl spawn booted log stream --predicate 'subsystem == "com.fleetml.sdk"'`
+prints it in a terminal.
 
 ## Enrollment and identity
 
@@ -142,20 +220,24 @@ struct GoldenInputValidator: ModelValidator {
 try FleetML.initialize(config: config, delegate: self, validator: GoldenInputValidator())
 ```
 
-Delivered files keep the server's name (`{variant}.bin`); Core ML compiles from
-a path ending in `.mlmodel`, so copy the file to one before
-`MLModel.compileModel(at:)` (the sample app's `IrisClassifier` shows how).
-
 ### Which variant a device gets
 
 iOS devices register with OS `IOS`, and the server prefers `COREML` variants
 for them (then `TFLITE`, then `GGUF`). Requirements default by quantization
-(for example FP32 needs a device score of 60 and 2 GB of RAM); override them for
-small models in the version's metadata:
+(for example FP32 needs a device score of 60 and 2 GB of RAM, INT8 a score of
+20), and an iPhone scores 54 at most, so an FP32 Core ML model reaches it only
+with a lower requirement in the version's metadata. `fleetml push` sets it on
+the version it creates:
 
-```json
-{"version": "1.0.0", "metadata": {"fleetml_requirements": {"min_ram_mb": 64, "min_score": 0}}}
+```bash
+fleetml push model.mlmodel --project <project ID> --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata '{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
 ```
+
+If the device registers but never gets an assignment, compare the version's
+requirements with the device: `fleetml device profile <device ID>` prints its
+score and RAM (`fleetml device list --project <project ID>` gives the ID). How
+the server matches devices, labels and variants is in
+[ROLLOUTS.md](ROLLOUTS.md#how-a-device-gets-a-model).
 
 ## Battery and data
 
@@ -186,8 +268,12 @@ small models in the version's metadata:
   variables ([CONFIG.md](CONFIG.md#devices)); `FleetMLConfig` only provides
   the values used before the first response.
 - The iOS Simulator cannot run background tasks (`BGTaskScheduler` reports
-  it unavailable); test the background refresh on a device with Xcode's
-  `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.fleetml.sdk.refresh"]`.
+  it unavailable); test the background refresh on a device: run the app from
+  Xcode, send it to the background, pause it in Xcode's debugger (the LLDB
+  prompt needs the debugger attached, which a `devicectl` launch does not
+  have), and enter
+  `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.fleetml.sdk.refresh"]`,
+  then continue.
 
 ## Offline behaviour
 
@@ -221,110 +307,137 @@ only the counts are sent.
 ## Tests
 
 ```bash
-make ios-test                     # swift test at the repository root: the unit tests on macOS
-xcodebuild test -scheme FleetMLSDK \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'   # the same suite on a simulator, from the root
-FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh            # live test against make dev
-FLEETML_API_KEY=<admin key> ./scripts/signing-e2e.sh ios     # signatures: tampered, and the rotation grace
+make ios-test
 ```
 
-`scripts/ios-e2e.sh` creates a non-urgent deployment and runs
-`LiveServerTests` on the simulator: a device on an expensive network and on
-battery registers, its model waits, then an urgent deployment downloads and
-activates. Without the script's environment the live test is skipped.
+runs the unit tests on macOS (`swift test` at the repository root). The same
+suite runs on a simulator, from the root, with the first available iPhone
+simulator (`xcrun simctl list devices available` lists them):
 
-The package's deployment target is iOS 15. For v0.3.0 the suite, the live
-test and the signing check passed on the iOS 16.4 simulator (an iPhone 14) and
-on the iOS 26.5 simulator; no iOS 15 runtime was tested. Older runtimes are
-installed with `xcodebuild -downloadPlatform iOS -buildVersion 16.4`. The SDK
-was also verified on a physical iPhone 16 Pro Max running iOS 26.6.1
-(lifecycle, update, offline, download policy, signing, background refresh),
-with the sample app as in [Physical device](#physical-device).
+```bash
+SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+xcodebuild test -scheme FleetMLSDK -destination "platform=iOS Simulator,id=$SIM"
+```
+
+For contributors, against the dev stack (`make dev`):
+`FLEETML_API_KEY=<admin key> ./scripts/ios-e2e.sh` runs the live test, and
+`FLEETML_API_KEY=<admin key> ./scripts/signing-e2e.sh ios` the signature
+checks (tampered, and the rotation grace). `scripts/ios-e2e.sh` creates a
+non-urgent deployment and runs `LiveServerTests` on the simulator: a device on
+an expensive network and on battery registers, its model waits, then an urgent
+deployment downloads and activates. Without the script's environment the live
+test is skipped.
+
+The package's deployment target is iOS 15. The suite, the live test and the
+signing check have passed on the iOS 16.4 simulator (an iPhone 14) and on the
+iOS 26 simulator; no iOS 15 runtime was tested. Older runtimes are installed
+with `xcodebuild -downloadPlatform iOS -buildVersion 16.4`. The SDK was also
+verified on a physical iPhone running iOS 26 (lifecycle, update, offline,
+download policy, signing, background refresh), with the sample app as in
+[Physical device](#physical-device).
 
 The suite covers the telemetry queue and reporter, the model store, the
 downloader (including an interrupted transfer resumed with Range), cache
 eviction, the model manager (activation, last-known-good, UPDATE + UNLOAD,
-restart), the token refresh policy, the heartbeat loop and the Core ML
-validator on the real Iris model, the battery and data policy, and signature
-checks against the shared vectors in `internal/artifact/testdata`. `make proto-swift` regenerates the gRPC
-client code from `proto/`.
+restart), the token refresh policy, the heartbeat loop, connection errors
+reaching the delegate, the Core ML validator on the real Iris model, the
+battery and data policy, and signature checks against the shared vectors in
+`internal/artifact/testdata`. `make proto-swift` regenerates the gRPC client
+code from `proto/`.
 
 ## Simulator runbook
 
-This is how the SDK and sample app were verified, against the dev stack on the
-host machine (the simulator shares the host's `localhost`, so no
-`S3_PUBLIC_ENDPOINT` is needed). It needs Xcode and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+This is how the SDK and sample app are verified, against the server from the
+[quickstart](QUICKSTART.md#run-fleetml) (the production compose stack, with the
+admin key in `$FLEETML_ADMIN_KEY`) and the `fleetml` CLI, from the root of a
+clone. The simulator shares the Mac's `localhost`, so the server needs no
+change. It needs Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`). Contributors on the dev stack (`make dev`) use the
+key from `.env` instead.
 
-1. Start the server: `make dev`.
+1. Start the server with the quickstart's "Run FleetML" block, and keep its
+   shell: it holds `FLEETML_ADMIN_KEY`.
 
-2. Upload the Core ML sample models, create an enrollment key and deploy v1 to
-   the sample app's label (`app=sample`):
+2. Publish the Core ML sample models (with the requirements override from
+   [Which variant a device gets](#which-variant-a-device-gets)), create an
+   enrollment key and deploy 1.0.0 to the sample app's label (`app=sample`):
 
    ```bash
-   export FLEETML_API_KEY=$(grep '^FLEETML_ADMIN_KEY=' .env | cut -d= -f2)
-   api() { curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' -d "$3" "localhost:18080$2"; }
-   upload() { local out=$(api POST /api/v1/versions/$1/variants "{\"quantization\":\"FP32\",\"target_runtime\":\"COREML\",\"blob_size_bytes\":$(wc -c < $2 | tr -d ' '),\"blob_sha256\":\"$(shasum -a 256 $2 | cut -d' ' -f1)\"}")
-     curl -s -o /dev/null -X PUT --data-binary @$2 "$(echo "$out" | jq -r .data.upload_url)"
-     api POST /api/v1/variants/$(echo "$out" | jq -r .data.variant.id)/finalize "" | jq -r .data.status; }
-   P=$(api POST /api/v1/projects '{"name":"ios-demo"}' | jq -r .data.id)
-   M=$(api POST /api/v1/projects/$P/models '{"name":"iris","framework":"COREML","task_type":"CLASSIFICATION"}' | jq -r .data.id)
+   export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
-   V1=$(api POST /api/v1/models/$M/versions "{\"version\":\"1.0.0\",\"metadata\":$REQ}" | jq -r .data.id); upload $V1 models/iris/iris_v1.mlmodel
-   V2=$(api POST /api/v1/models/$M/versions "{\"version\":\"2.0.0\",\"metadata\":$REQ}" | jq -r .data.id); upload $V2 models/iris/iris_v2.mlmodel
-   EK=$(api POST /api/v1/projects/$P/enrollment-keys '{"name":"simulator"}' | jq -r .data.key); echo "enrollment key: $EK"
-   D=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V1\",\"target_selector\":{\"app\":\"sample\"}}" | jq -r .data.id)
-   api POST /api/v1/deployments/$D/start "" | jq -r .data.status
+   P=$(fleetml project create --name ios-demo -o json | jq -r .id)
+   fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
+   fleetml push models/iris/iris_v2.mlmodel --project $P --model iris --version 2.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
+   M=$(fleetml model list --project $P -o json | jq -r '.[0].id')
+   V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
+   V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
+   EK=$(fleetml enrollment-key create --project $P --name simulator -o json | jq -r .key)
+   D=$(fleetml deploy create --project $P --version $V1 --target '{"app":"sample"}' -o json | jq -r .id)
+   fleetml deploy start $D
    ```
 
-3. Generate the Xcode project, build, install and launch the sample app with
-   the settings as launch arguments (or open `ios/SampleApp/FleetMLSample.xcodeproj`,
+   Each push prints `✓ Pushed ... (FP32)`, and the deployment starts as
+   `COMPLETE` (`✓ Deployment start → COMPLETE`): it waits for the device.
+
+3. Generate the Xcode project, build, install and launch the sample app on the
+   first available iPhone simulator, with the settings as launch arguments
+   (or, after `xcodegen generate`, open `ios/SampleApp/FleetMLSample.xcodeproj`,
    run it and type them on the config screen):
 
    ```bash
    cd ios/SampleApp && xcodegen generate
-   xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample \
-     -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath build build
-   xcrun simctl boot 'iPhone 17 Pro'; open -a Simulator
-   xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
-   xcrun simctl launch --console-pty booted com.fleetml.sample -fleetmlHost localhost -fleetmlEnrollmentKey "$EK"
+   SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+   xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
+   xcrun simctl boot $SIM; open -a Simulator
+   xcrun simctl install $SIM build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
+   xcrun simctl launch --console-pty $SIM com.fleetml.sample -fleetmlHost localhost -fleetmlEnrollmentKey "$EK"
    ```
 
-   The app registers, downloads iris 1.0.0, validates it with Core ML, shows
-   **Active model: iris 1.0.0** and classifies the sample flower with it,
-   reporting inference telemetry. Deploying `$V2` updates the app to 2.0.0
-   (1.0.0 is kept as last-known-good).
+   `simctl boot` reports an error if that simulator is already booted, which
+   does no harm. The app registers, downloads iris 1.0.0, validates it with
+   Core ML, shows **Active model: iris 1.0.0** and classifies the sample
+   flower with it, reporting inference telemetry; the console prints the same
+   steps (`FleetMLSample: Registered as ...`, `Model ready: iris 1.0.0`).
+   `fleetml deploy create --project $P --version $V2 --target '{"app":"sample"}'`
+   and `deploy start` update the app to 2.0.0 (1.0.0 is kept as
+   last-known-good).
 
-4. Offline start: stop the server, then
-   `xcrun simctl terminate booted com.fleetml.sample` and launch the app again.
+4. Offline start: stop the server
+   (`docker compose -f deploy/docker-compose.prod.yml stop server`), then
+   `xcrun simctl terminate $SIM com.fleetml.sample` and launch the app again.
    The cached model is active immediately and inference works; events are
-   queued and sent once the server is back.
+   queued and sent once the server is back
+   (`docker compose -f deploy/docker-compose.prod.yml start server`).
 
 ### Physical device
 
-The runbook works on an iPhone too, over Wi-Fi:
+The runbook works on an iPhone too, over Wi-Fi, with the same server and
+models:
 
 1. On the phone, turn on Developer Mode (Settings, Privacy & Security,
    Developer Mode) and restart it when asked.
 2. Put the phone and the Mac on the same Wi-Fi network. The phone reaches the
-   server at the Mac's LAN address (`ipconfig getifaddr en0`), so start the
-   server with the object store on that address too, which makes the
-   presigned download URLs reachable from the phone (a value in `.env` takes
-   precedence):
+   server at the Mac's LAN address (`ipconfig getifaddr en0`), so restart the
+   stack with the object store on that address too, in the quickstart's shell,
+   which makes the presigned download URLs reachable from the phone:
 
    ```bash
-   S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19000 make dev
+   S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
    ```
 
-3. In Xcode, add a free Apple ID (Settings, Accounts), open
-   `ios/SampleApp/FleetMLSample.xcodeproj`, and on the FleetMLSample target's
-   Signing & Capabilities tab turn on **Automatically manage signing** with
-   the personal team.
+   A phone that registers but never downloads: it is almost always the
+   endpoint.
+
+3. In Xcode, add a free Apple ID (Settings, Accounts); after
+   `xcodegen generate`, open `ios/SampleApp/FleetMLSample.xcodeproj`, and on
+   the FleetMLSample target's Signing & Capabilities tab turn on
+   **Automatically manage signing** with the personal team.
 4. Build from the command line, then install and launch the app with the
-   Mac's address and the enrollment key as launch arguments. `<team>` is the
-   personal team's ID, which Xcode puts in the target's `DEVELOPMENT_TEAM`
-   setting, and `<device>` is the phone's name or identifier from
-   `xcrun devicectl list devices`:
+   Mac's address and the enrollment key as launch arguments (the config
+   screen's default host, `localhost`, is the phone itself, so on a phone
+   always give the Mac's address). `<team>` is the personal team's ID, which
+   Xcode puts in the target's `DEVELOPMENT_TEAM` setting, and `<device>` is
+   the phone's name or identifier from `xcrun devicectl list devices`:
 
    ```bash
    cd ios/SampleApp && xcodegen generate
@@ -337,10 +450,49 @@ The runbook works on an iPhone too, over Wi-Fi:
    `errSecInternalComponent` on `__preview.dylib` unless `ENABLE_PREVIEWS=NO`
    is passed. The first launch of a personally signed app stops at a trust
    prompt: trust the developer in Settings, General, VPN & Device Management,
-   then launch again.
+   then launch again. iOS then asks whether the app may find and connect to
+   devices on the local network: allow it ([Own app on a real iPhone](#own-app-on-a-real-iphone)).
 
-The sample app's App Transport Security settings already allow plain HTTP to
-local network addresses, so no HTTPS is needed for the Mac's server.
+### Own app on a real iPhone
+
+The sample app has what a phone needs; an own app needs the same three things
+before it can use a server on the Mac:
+
+1. **App Transport Security.** The SDK downloads models with `URLSession`
+   over plain HTTP from the Mac, which ATS blocks. Allow local networks only,
+   in the app's `Info.plist`:
+
+   ```xml
+   <key>NSAppTransportSecurity</key>
+   <dict>
+       <key>NSAllowsLocalNetworking</key>
+       <true/>
+   </dict>
+   ```
+
+2. **Local Network permission.** Add a reason to the `Info.plist`; iOS shows
+   it in the permission prompt on the first launch that connects to the Mac:
+
+   ```xml
+   <key>NSLocalNetworkUsageDescription</key>
+   <string>Connects to the FleetML server on your network.</string>
+   ```
+
+   If the prompt was dismissed or denied, turn the app on in Settings,
+   Privacy & Security, Local Network. Until then the SDK reports
+   `fleetML(connectionChanged: false)`, `fleetML(connectionFailed:)` shows a
+   connection error, and any `URLSession` request to the Mac's LAN address
+   fails with -1009 ("The Internet connection appears to be offline").
+
+3. **The server's object store on the Mac's LAN address:**
+   `S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100` as in step 2 of
+   [Physical device](#physical-device), and `serverHost` set to the same
+   address. Registration goes over gRPC to port 19090, but every download
+   uses a presigned URL for `S3_PUBLIC_ENDPOINT`: registers but never
+   downloads, it is almost always the endpoint.
+
+Release builds need neither exception: they talk to a server behind a TLS
+proxy with a real host name, as in [Configure and start](#configure-and-start).
 
 The live tests (`scripts/ios-e2e.sh` and `scripts/signing-e2e.sh ios`) stay
 simulator-only, because Swift package tests cannot run on a physical device
@@ -357,6 +509,9 @@ with the debugger command in [Battery and data](#battery-and-data).
 `project.yml`: a SwiftUI config screen (host, port, enrollment key), the SDK
 owned by an app-wide object, the Iris Core ML model from `models/iris`
 (Apache-2.0) bundled and used until the server assigns one, and inference
-telemetry. Its `Info.plist` sets `NSAllowsLocalNetworking` so model downloads
-from a dev stack on `localhost` work over plain HTTP; production servers
-should serve presigned URLs over HTTPS.
+telemetry. Its `Info.plist` sets `NSAllowsLocalNetworking` and
+`NSLocalNetworkUsageDescription` so model downloads from a server on the Mac
+work over plain HTTP, on the simulator and on a phone; production servers
+should serve presigned URLs over HTTPS. The config screen's host defaults to
+`localhost`, which works on the simulator; on a phone, use the Mac's LAN
+address.

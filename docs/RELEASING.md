@@ -29,6 +29,15 @@ Every release, in this order; the numbered sections below have the details.
 - [ ] GitHub release from the tag, with the changelog section as its body.
 - [ ] Binaries: the **Release** workflow attached the eight archives and
       `SHA256SUMS` to that release.
+- [ ] Images: the same workflow's **images** job pushed
+      `ghcr.io/fleetml/fleetml-server:X.Y.Z` and
+      `ghcr.io/fleetml/fleetml-dashboard:X.Y.Z` (and `latest`).
+- [ ] **Public step, maintainer only:** after the first images run, make the
+      two ghcr packages public (GitHub, the organisation's **Packages**, each
+      package's **Package settings**, **Change visibility**), then check that
+      `docker pull ghcr.io/fleetml/fleetml-server:X.Y.Z` works without
+      logging in. New packages are private, and the Helm chart's default
+      values pull them anonymously. Once public, later releases need nothing.
 - [ ] **Windows run** workflow green with the release tag as `tag`
       (`windows-latest`; `windows-11-arm` too once the repository is public).
 - [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
@@ -45,16 +54,22 @@ Every release, in this order; the numbered sections below have the details.
 On an up-to-date `main` with a clean working tree:
 
 ```bash
-make lint test                       # Go: golangci-lint, unit tests with -race
-make test-integration                # Go: integration tests against the dev stack
-make e2e                             # end-to-end suite against a fresh server
+make lint test
+make test-integration
+make e2e
 (cd dashboard && npm ci && npx tsc && npm run build)
 (cd android && ./gradlew :fleetml-sdk:testDebugUnitTest)
 make ios-test
-make docs-site                       # docs site builds (strict) and its links resolve
-make release-binaries VERSION=0.1.0  # the release binaries build into dist/
-./scripts/demo.sh                    # the 60-second story, from a fresh dev stack
+make docs-site
+make release-binaries VERSION=0.1.0
+./scripts/demo.sh
 ```
+
+That is golangci-lint and the Go unit tests with `-race`; the integration
+tests against the dev stack; the end-to-end suite against a fresh server; the
+dashboard, Android and iOS checks; the docs site, built strict with its links
+checked; the release binaries into `dist/`; and the 60-second story from a
+fresh dev stack.
 
 Also:
 
@@ -114,6 +129,14 @@ to `dist/`:
 It attaches them to the tag's GitHub release, creating the release as a draft
 if there is none yet, and it never changes a release's notes. The binaries get
 their version from the tag.
+
+Its **images** job builds the server and dashboard images from the tag's two
+Dockerfiles for linux/amd64 and linux/arm64 and pushes them to ghcr.io as
+`ghcr.io/fleetml/fleetml-server:X.Y.Z` and `ghcr.io/fleetml/fleetml-dashboard:X.Y.Z`,
+plus `latest` unless the tag is a pre-release (`v0.5.0-rc.1`); these are the
+Helm chart's default images. A package is private when it is first pushed:
+making the two public is a step for the maintainer, in the browser, once
+(see the checklist).
 
 ## 4. Release notes
 

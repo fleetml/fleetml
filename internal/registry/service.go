@@ -87,6 +87,9 @@ func NewService(
 	audit AuditLogger,
 	logger *slog.Logger,
 ) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Service{
 		projects: projects,
 		models:   models,
@@ -429,7 +432,12 @@ func (s *Service) CreateVariant(ctx context.Context, input CreateVariantInput) (
 	}
 
 	if err := s.variants.Create(ctx, v); err != nil {
-		return nil, err
+		if !errors.Is(err, ErrConflict) {
+			return nil, err
+		}
+		if err := s.replaceUnfinalizedVariant(ctx, v); err != nil {
+			return nil, err
+		}
 	}
 
 	uploadURL, err := s.storage.GeneratePresignedUpload(ctx, blobKey, UploadURLExpiry)
@@ -441,6 +449,37 @@ func (s *Service) CreateVariant(ctx context.Context, input CreateVariantInput) (
 		map[string]any{"quantization": input.Quantization, "runtime": input.TargetRuntime})
 
 	return &CreateVariantOutput{Variant: v, UploadURL: uploadURL}, nil
+}
+
+// replaceUnfinalizedVariant creates v in place of the version's variant with
+// the same quantization and runtime when that one was never verified (its
+// upload failed or never happened, or finalize refused it), so a push can be
+// retried. A READY variant is never replaced.
+func (s *Service) replaceUnfinalizedVariant(ctx context.Context, v *RegistryVariant) error {
+	existing, err := s.variants.ListByVersion(ctx, v.VersionID)
+	if err != nil {
+		return err
+	}
+	for _, old := range existing {
+		if old.Quantization != v.Quantization || old.TargetRuntime != v.TargetRuntime {
+			continue
+		}
+		if old.Status == VariantReady {
+			return fmt.Errorf("%w: variant %s/%s of this version is already uploaded and verified; push a new version",
+				ErrConflict, v.Quantization, v.TargetRuntime)
+		}
+		if err := s.variants.Delete(ctx, old.ID); err != nil {
+			return fmt.Errorf("replacing unfinalized variant: %w", err)
+		}
+		if err := s.variants.Create(ctx, v); err != nil {
+			return err
+		}
+		s.logger.Info("replaced an unfinalized variant", "old_variant_id", old.ID, "variant_id", v.ID, "old_status", old.Status)
+		s.audit.Log(ctx, "system", "replace", "model_variant", v.ID.String(), //nolint:errcheck // audit logging is best-effort
+			map[string]any{"replaced_variant_id": old.ID.String(), "replaced_status": old.Status})
+		return nil
+	}
+	return fmt.Errorf("%w: variant %s/%s for version", ErrConflict, v.Quantization, v.TargetRuntime)
 }
 
 func (s *Service) GetVariant(ctx context.Context, id uuid.UUID) (*RegistryVariant, error) {

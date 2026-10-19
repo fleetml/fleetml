@@ -19,8 +19,9 @@ type DeviceRepository interface {
 	Create(ctx context.Context, d *Device) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Device, error)
 	GetByFingerprint(ctx context.Context, fingerprint string) (*Device, error)
-	List(ctx context.Context, limit, offset int) ([]Device, int, error)
-	ListByLabels(ctx context.Context, labels map[string]string, limit, offset int) ([]Device, int, error)
+	// List returns the devices that match f, newest first, within the
+	// projects the context may see.
+	List(ctx context.Context, f ListFilter, limit, offset int) ([]Device, int, error)
 	// RecordHeartbeat sets last_seen_at and the variants the device reports loaded.
 	RecordHeartbeat(ctx context.Context, id uuid.UUID, loadedVariantIDs []string) error
 	UpdateLabels(ctx context.Context, id uuid.UUID, labels map[string]string) error
@@ -127,28 +128,25 @@ func (r *DeviceRepo) GetByFingerprint(ctx context.Context, fingerprint string) (
 	return d, nil
 }
 
-func (r *DeviceRepo) List(ctx context.Context, limit, offset int) ([]Device, int, error) {
+func (r *DeviceRepo) List(ctx context.Context, f ListFilter, limit, offset int) ([]Device, int, error) {
+	var labels *string
+	if len(f.Labels) > 0 {
+		b, err := json.Marshal(f.Labels)
+		if err != nil {
+			return nil, 0, fmt.Errorf("device.List: marshalling labels: %w", err)
+		}
+		l := string(b)
+		labels = &l
+	}
 	query := `SELECT ` + deviceColumns + `, COUNT(*) OVER() AS total
-		FROM devices WHERE ($3::uuid[] IS NULL OR project_id = ANY($3)) ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-	rows, err := r.pool.Query(ctx, query, limit, offset, scope.Projects(ctx))
+		FROM devices
+		WHERE ($1::uuid[] IS NULL OR project_id = ANY($1))
+		  AND ($2::uuid IS NULL OR project_id = $2)
+		  AND ($3::jsonb IS NULL OR labels_json @> $3::jsonb)
+		ORDER BY created_at DESC LIMIT $4 OFFSET $5`
+	rows, err := r.pool.Query(ctx, query, scope.Projects(ctx), f.ProjectID, labels, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("device.List: %w", err)
-	}
-	defer rows.Close()
-	return scanDeviceRows(rows)
-}
-
-func (r *DeviceRepo) ListByLabels(ctx context.Context, labels map[string]string, limit, offset int) ([]Device, int, error) {
-	labelsJSON, err := json.Marshal(labels)
-	if err != nil {
-		return nil, 0, fmt.Errorf("device.ListByLabels: marshalling labels: %w", err)
-	}
-	query := `SELECT ` + deviceColumns + `, COUNT(*) OVER() AS total
-		FROM devices WHERE labels_json @> $1::jsonb ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-
-	rows, err := r.pool.Query(ctx, query, labelsJSON, limit, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("device.ListByLabels: %w", err)
 	}
 	defer rows.Close()
 	return scanDeviceRows(rows)

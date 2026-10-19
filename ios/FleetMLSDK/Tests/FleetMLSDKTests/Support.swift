@@ -100,16 +100,19 @@ final class RecordingDelegate: FleetMLDelegate {
     private var _failed: [(String, String, String)] = []
     private var _unloaded: [String] = []
     private var _connection: [Bool] = []
+    private var _connectionFailures: [String] = []
 
     var ready: [ActiveModel] { lock.withLock { _ready } }
     var failed: [(name: String, version: String, reason: String)] { lock.withLock { _failed.map { ($0.0, $0.1, $0.2) } } }
     var unloaded: [String] { lock.withLock { _unloaded } }
     var connection: [Bool] { lock.withLock { _connection } }
+    var connectionFailures: [String] { lock.withLock { _connectionFailures } }
 
     func fleetML(modelReady model: ActiveModel) { lock.withLock { _ready.append(model) } }
     func fleetML(modelLoadFailed modelName: String, version: String, reason: String) { lock.withLock { _failed.append((modelName, version, reason)) } }
     func fleetML(modelUnloaded modelID: String, modelName: String, variantID: String) { lock.withLock { _unloaded.append(variantID) } }
     func fleetML(connectionChanged connected: Bool) { lock.withLock { _connection.append(connected) } }
+    func fleetML(connectionFailed error: Error) { lock.withLock { _connectionFailures.append(String(describing: error)) } }
 }
 
 final class FakeSender: TelemetrySender {

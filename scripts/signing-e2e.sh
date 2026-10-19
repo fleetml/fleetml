@@ -104,6 +104,7 @@ run_client() {
     android)
       ADB=$(command -v adb || echo "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb")
       "$ADB" reverse tcp:19000 tcp:19000 >/dev/null
+      "$ADB" reverse tcp:19100 tcp:19100 >/dev/null
       (cd android && JAVA_HOME=${JAVA_HOME_17:-/opt/homebrew/opt/openjdk@17} ./gradlew -q :fleetml-sdk:connectedDebugAndroidTest \
         -Pandroid.testInstrumentationRunnerArguments.class=com.fleetml.sdk.SignatureLiveTest \
         -Pandroid.testInstrumentationRunnerArguments.enrollmentKey="$EK" \
