@@ -27,6 +27,33 @@ project's `settings.gradle.kts` does. The SDK needs minSdk 26. TensorFlow Lite
 is not a dependency of the SDK: the app brings the runtime it uses, and the
 default validator uses it when it is there ([Validators](#validators)).
 
+While the server runs on your own machine without TLS, the app talks plain
+HTTP to it (gRPC on 19090, model downloads on 19100), which Android blocks by
+default. Allow it for debug builds only, to `localhost` only, with a network
+security config, the way the sample app does:
+
+```xml
+<!-- app/src/debug/res/xml/network_security_config.xml -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
+```
+
+```xml
+<!-- app/src/debug/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>
+```
+
+`10.0.2.2` is the emulator's name for the host; a phone over USB reaches the
+host as `localhost` after the `adb reverse` lines in
+[Physical device](#physical-device). Release builds keep Android's default
+and need `useTls = true` with the server behind a TLS proxy.
+
 ### From a clone
 
 To work against changes that are not released yet, include the module from a
@@ -297,7 +324,12 @@ The runbook works the same on a phone connected over USB:
    adb reverse tcp:18080 tcp:18080
    adb reverse tcp:19090 tcp:19090
    adb reverse tcp:19000 tcp:19000
+   adb reverse tcp:19100 tcp:19100
    ```
+
+   The dev stack (`make dev`) serves model files on 19000 and the production
+   compose file from the [quickstart](QUICKSTART.md#run-fleetml) on 19100;
+   forwarding both covers either server.
 
 3. On the sample app's config screen, replace `10.0.2.2` with `localhost`.
 
