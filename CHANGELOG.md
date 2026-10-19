@@ -76,7 +76,8 @@ change APIs).
 - `deploy/agent/config.example.yaml` set `tls: true`, so an agent configured
   as the Linux agent guide said failed against the quickstart's plain-gRPC
   server with "transport: authentication handshake failed"; it is now
-  `false`, the documented default, with a comment on when to set it.
+  `false`, the documented default, with a comment on when to set it, and
+  `install.sh` names `tls` among the settings to edit.
 - A push whose upload failed (an unreachable `S3_PUBLIC_ENDPOINT`, say) can
   be run again: the server replaces a variant that was never verified instead
   of refusing the retry with "variant.Create: already exists"; a READY
