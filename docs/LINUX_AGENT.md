@@ -38,10 +38,15 @@ curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SU
 grep " fleetml-agent-linux-$ARCH.tar.gz\$" SHA256SUMS | sha256sum -c
 mkdir fleetml-agent && tar -xzf "fleetml-agent-linux-$ARCH.tar.gz" -C fleetml-agent
 sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
-sudoedit /etc/fleetml-agent/config.yaml       # server and enrollment_key
+sudoedit /etc/fleetml-agent/config.yaml
 sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
+
+In `config.yaml`, set `server` (the server's host and gRPC port, `19090`),
+`enrollment_key`, and `tls`: `false` for the quickstart's compose server,
+which speaks plain gRPC on 19090, or `true` when the server is behind a TLS
+proxy.
 
 `fleetml-agent -version` prints the release's version. To build the agent from
 source instead, `make build-agent` writes `bin/fleetml-agent-linux-amd64`,
