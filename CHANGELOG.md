@@ -33,6 +33,23 @@ change APIs).
   `fleetml.exe` against the CLI's fake of the REST API (`clitest-server`),
   and the quickstart with the tour's sections 1 to 3 in WSL 2, reached from
   Windows at `localhost`.
+- `fleetml enrollment-key create --project <id> [--name <name>]` prints a new
+  enrollment key once (`-o json` gives it as `.key`), and
+  `fleetml enrollment-key list --project <id>` lists a project's keys without
+  them; every device path needs one, and it took a curl call before.
+- CLI flags the tour needed: `deploy create --canary-stages` and
+  `--rolling-config`, `experiment create --target` and `--min-sample-size`,
+  `push --metadata` for a new version's metadata (such as the requirements
+  override a Core ML FP32 model needs on an iPhone), and
+  `device list --project`.
+- Container images for the Helm chart: the Release workflow's new images job
+  builds the server and dashboard for linux/amd64 and linux/arm64 and pushes
+  `ghcr.io/fleetml/fleetml-server` and `ghcr.io/fleetml/fleetml-dashboard`
+  tagged with the version and `latest`.
+- iOS SDK: `FleetMLDelegate` gains `fleetML(connectionFailed:)` (with an empty
+  default), called with the error on the first registration failure after
+  start and whenever the error changes, and the SDK's log messages are no
+  longer redacted as `<private>` in Console.app.
 
 ### Changed
 
@@ -56,6 +73,19 @@ change APIs).
   and `scripts/signing-e2e.sh` use `sha256sum` where `shasum` is missing.
 - Shell scripts and the Makefile keep LF line endings in Windows checkouts
   (`.gitattributes`).
+- `deploy/agent/config.example.yaml` set `tls: true`, so an agent configured
+  as the Linux agent guide said failed against the quickstart's plain-gRPC
+  server with "transport: authentication handshake failed"; it is now
+  `false`, the documented default, with a comment on when to set it.
+- A push whose upload failed (an unreachable `S3_PUBLIC_ENDPOINT`, say) can
+  be run again: the server replaces a variant that was never verified instead
+  of refusing the retry with "variant.Create: already exists"; a READY
+  variant is still refused.
+- `GET /api/v1/devices` honours `project_id` (it returned every device, even
+  for a bogus project), refuses one that is not a UUID, and keeps its label
+  filter within the caller's projects.
+- `fleetml experiment conclude` no longer panics on a winner ID shorter than
+  12 characters.
 
 ### Docs
 
@@ -68,6 +98,9 @@ change APIs).
 - Windows: Docker Desktop's requirements and its early-access status on Arm,
   a TLS 1.2 note for the PowerShell download, and what the Windows run
   workflow exercises (the amd64 binary; arm64 not yet run on Windows on Arm).
+- First-run guides rewritten against the production compose stack from the
+  quickstart, with the CLI instead of curl, for Android, iOS, the Linux agent
+  and Windows.
 
 ## [0.4.0] - 2026-10-15
 
