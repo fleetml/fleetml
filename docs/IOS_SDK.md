@@ -482,7 +482,10 @@ before it can use a server on the Mac:
    Privacy & Security, Local Network. Until then the SDK reports
    `fleetML(connectionChanged: false)`, `fleetML(connectionFailed:)` shows a
    connection error, and any `URLSession` request to the Mac's LAN address
-   fails with -1009 ("The Internet connection appears to be offline").
+   fails with -1009 ("The Internet connection appears to be offline"). Once
+   allowed, no relaunch is needed: the SDK registers on its next retry (within
+   10 seconds) and the first model arrives with the next heartbeat, up to a
+   minute later.
 
 3. **The server's object store on the Mac's LAN address:**
    `S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100` as in step 2 of
