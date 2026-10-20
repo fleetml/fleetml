@@ -41,6 +41,15 @@ minutes more, run `docker compose -f deploy/docker-compose.prod.yml ps -a` and
 container stopped and why (a port already in use is the usual cause). More
 keys and their routes: [API keys](CONFIG.md#api-keys).
 
+If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
+dashboard to any free port with an override file (Compose 2.24 or later for
+`!override`) and open it on that port, here http://localhost:8081:
+
+```bash
+printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
+docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
+```
+
 ### On Windows
 
 The server, Postgres, NATS and the object store are Linux containers, and the
@@ -55,10 +64,18 @@ are not a tested path.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
    and keep **Use the WSL 2 based engine** on (Settings → General).
-2. In PowerShell, `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu; open
-   the **Ubuntu** shell from the Start menu and create its user.
-3. In Docker Desktop, Settings → Resources → WSL integration, turn on
-   integration for Ubuntu, so `docker` works in the Ubuntu shell.
+2. In PowerShell opened as administrator (right-click, **Run as
+   administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu.
+   Restart Windows if it asks to; WSL 2 also needs virtualization turned on
+   in the firmware (BIOS or UEFI), which most laptops have on, and an error
+   that mentions virtualization or "Virtual Machine Platform" means it is
+   off. Then open the **Ubuntu** shell from the Start menu and create its
+   user.
+3. Start Docker Desktop, and in its Settings → Resources → WSL integration,
+   turn on integration for Ubuntu. `docker` in the Ubuntu shell works only
+   while Docker Desktop is running; "Cannot connect to the Docker daemon"
+   there means it is not, or that the integration was turned on after the
+   shell opened (open a new Ubuntu shell).
 4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
    (`curl` and `openssl` are already there), then `cd ~` and run the block
    above as it is. Keep the clone in the Linux file system (`~`), not under
@@ -71,8 +88,10 @@ are not a tested path.
 Docker Desktop publishes the containers' ports on Windows too, so the
 dashboard opens in a Windows browser at http://localhost, and PowerShell
 reaches the REST API at `localhost:18080` (for example
-`Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs in the
-same Ubuntu shell; the CLI for PowerShell is in [Get the CLI](#get-the-cli).
+`Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs only
+in the Ubuntu shell, since its blocks are bash and use `jq`; single CLI
+commands, such as `fleetml project list` or a push, work from PowerShell too
+with the CLI from [Get the CLI](#get-the-cli).
 PowerShell and the Windows browser need the admin key too: in the Ubuntu shell,
 `echo $FLEETML_ADMIN_KEY` prints it (after `source ~/.fleetml.env` in a new
 one), to paste into `$env:FLEETML_API_KEY = '<the admin key>'` or the
@@ -127,13 +146,24 @@ GitHub's Windows runner by the
 [Windows run](../.github/workflows/windows-run.yml) workflow; the arm64
 binary is cross-compiled and not yet run on Windows on Arm.
 
+`fleetml.exe` is not code-signed. Started from a terminal as above, it runs
+like any console program; a copy downloaded with a browser and started from
+Explorer may get SmartScreen's "Windows protected your PC" prompt (More info,
+Run anyway), and antivirus or a company policy may scan or block an unsigned
+program. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
+([CONFIG.md](CONFIG.md#cli)).
+
 `fleetml version` prints the release, for example `✓ fleetml v0.5.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'`; then `fleetml project list`
 prints the same projects as in WSL (`No results.` before the tour). Pushing
 from Windows works too, because Docker Desktop also publishes the object
-store's port 19100 on Windows, for example
-`fleetml push C:\models\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`.
+store's port 19100 on Windows, for example with the sample model from the clone
+in the Ubuntu file system, which Windows sees under `\\wsl.localhost\Ubuntu`
+(`<user>` is the Ubuntu user):
+`fleetml push \\wsl.localhost\Ubuntu\home\<user>\fleetml\models\iris\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`
+(not verified on Windows by CI: the Windows run pushes from Windows only to a
+stand-in for the REST API).
 Windows PowerShell 5.1, the one built into Windows, drops the inner double
 quotes of an argument it passes to a program, so a JSON flag needs them
 escaped: `--target '{\"app\":\"tour\"}'`. PowerShell 7.3 and later pass

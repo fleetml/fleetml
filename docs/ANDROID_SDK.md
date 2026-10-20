@@ -423,6 +423,26 @@ Everything else is the same as on the emulator, including the debug network
 security config, which already allows cleartext to `localhost`. Without USB,
 use the laptop's LAN address instead, as in [Install](#install).
 
+### From Windows
+
+With the server in WSL 2 ([On Windows](QUICKSTART.md#on-windows)), the
+Android tools run on the Windows side, where Android Studio installs them:
+`adb` and the emulator are in `%LOCALAPPDATA%\Android\Sdk` (`adb` in its
+`platform-tools`), and an `adb` installed inside Ubuntu does not see the
+Windows emulator. The CLI steps of the runbook (step 3) run in the Ubuntu
+shell, and the enrollment key crosses by hand (`echo $EK` there). Steps 2, 4
+and 5 run in PowerShell: build the sample app with
+`.\gradlew.bat :sample-app:installDebug -PfleetmlEnrollmentKey=<key>` in the
+`android` folder of a clone on the Windows side (Gradle is slow on a
+`\\wsl.localhost` path), with `ANDROID_HOME` set to that SDK folder and
+`JAVA_HOME` to a JDK 17, or open the folder in Android Studio. The emulator's
+`10.0.2.2:19090` and `adb reverse tcp:19100 tcp:19100` reach the ports
+Docker Desktop publishes on Windows. A phone over Wi-Fi reaches the laptop's
+LAN address only if Windows Firewall lets in TCP 19090 and 19100, for example
+with
+`New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow`
+in an administrator PowerShell. None of this is verified on Windows by CI.
+
 ## For contributors
 
 ### Instrumented test

@@ -123,6 +123,13 @@ version's folder ([Where models go](#where-models-go)). A
 server without TLS; `registration failed` with `Unauthenticated` means the
 enrollment key is wrong or revoked.
 
+On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
+stack: Docker Desktop publishes 19090 and 19100 there too, so
+`server: localhost:19090` and the stack's default `S3_PUBLIC_ENDPOINT` work
+as they are. Current Ubuntu images for WSL run systemd; without it,
+`install.sh` takes the [Without systemd](#without-systemd) path (not verified
+on Windows by CI).
+
 ### Server on another machine
 
 The quickstart's compose stack signs model download URLs for
