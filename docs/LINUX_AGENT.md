@@ -76,16 +76,49 @@ as `Restart=always` does in the unit.
 
 ### Connect it to the server
 
-The agent registers into a project with one of the project's enrollment keys.
-Create one with the CLI, wherever the CLI talks to the server with the admin
-key (as in the [tour](QUICKSTART.md#2-a-fleet-and-a-rollout)); it prints the
-key once:
+> **First, on the server: the address models are downloaded from.** The
+> server hands out each model as a download URL for its object store's public
+> address, `S3_PUBLIC_ENDPOINT`, which is `localhost:19100` in the
+> quickstart's compose stack: only the server's own machine reaches it. For an
+> agent on another machine, whoever runs the server starts the stack with the
+> server's LAN address there, and the agent's machine must reach ports 19090
+> (gRPC) and 19100 (model files):
+>
+> ```bash
+> S3_PUBLIC_ENDPOINT=<server LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+> ```
+>
+> On the server's machine,
+> `docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`
+> shows the value in use. Without a reachable address the agent registers and
+> heartbeats normally, and the server reports the deployment `COMPLETE`, which
+> means assigned, not delivered; only the agent's log shows the failure, a
+> `download failed` line on every heartbeat. From the CLI,
+> `fleetml deploy get <deployment ID> | jq -c .devices` counts the devices
+> that report the model loaded (`{"targeted":1,"loaded":0}` while downloads
+> fail), and `fleetml device get <device ID> | jq .last_model_event` shows the
+> agent's `MODEL_LOAD_FAILED` with the error. A server in production sits
+> behind a TLS proxy with a real host name instead
+> ([CONFIG.md](CONFIG.md#docker-compose) has the compose settings).
+
+The agent registers into a project with one of the project's enrollment keys,
+and a deployment reaches it through its labels. From the root of a clone (for
+the sample model), wherever the CLI talks to the server with the admin key (as
+in the [tour](QUICKSTART.md#tour)), this creates a project, publishes a model,
+creates an enrollment key, which it prints once, and deploys the model to the
+labels the example config sets (`site: factory-1`):
 
 ```bash
-fleetml enrollment-key create --project <project ID> --name edge
+P=$(fleetml project create --name edge -o json | jq -r .id)
+fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+V=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
+fleetml enrollment-key create --project $P --name edge
+fleetml deploy start $(fleetml deploy create --project $P --version $V --target '{"site":"factory-1"}' -o json | jq -r .id)
 ```
 
-Then, on the machine, set the settings and start the service:
+The deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`): it
+waits for the machine. Then, on the machine, set the settings and start the
+service:
 
 ```bash
 sudoedit /etc/fleetml-agent/config.yaml
@@ -93,12 +126,13 @@ sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
 
-In `config.yaml`, set `server` (the server's host and gRPC port, `19090`),
-`enrollment_key`, and `tls`: `false` for the quickstart's compose server,
-which speaks plain gRPC on 19090, or `true` when the server is behind a TLS
-proxy. Set `labels` too: deployments and experiments reach the machine through
-them (a `target_selector` such as `{"site":"factory-1"}` matches every device
-whose labels include it; see [ROLLOUTS.md](ROLLOUTS.md#how-a-device-gets-a-model)).
+In `config.yaml`, set `server` (the server's host and gRPC port, `19090`;
+`<server LAN IP>:19090` for a server on another machine), `enrollment_key`,
+and `tls`: `false` for the quickstart's compose server, which speaks plain
+gRPC on 19090, or `true` when the server is behind a TLS proxy. Set `labels`
+too: deployments and experiments reach the machine through them (a
+`target_selector` such as `{"site":"factory-1"}` matches every device whose
+labels include it; see [ROLLOUTS.md](ROLLOUTS.md#how-a-device-gets-a-model)).
 
 The journal then shows the agent start and register (the time stamps left out
 here):
@@ -120,10 +154,26 @@ level=INFO msg="model active" model=iris version=1.0.0 path=/var/lib/fleetml-age
 ```
 
 `/var/lib/fleetml-agent/models/iris/current` then links to the active
-version's folder ([Where models go](#where-models-go)). A
-`transport: authentication handshake failed` error means `tls: true` against a
-server without TLS; `registration failed` with `Unauthenticated` means the
-enrollment key is wrong or revoked.
+version's folder ([Where models go](#where-models-go)). A second version
+deployed to the same labels usually arrives as a delta from the first:
+
+```text
+level=INFO msg="model built from a delta" model=iris version=2.0.0 delta_bytes=<size> model_bytes=<size>
+level=INFO msg="model active" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
+```
+
+After a restart, the agent keeps its registration and logs the model it has
+instead of registering again:
+
+```text
+level=INFO msg="active model (from the last run)" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
+```
+
+A `transport: authentication handshake failed` error means `tls: true` against
+a server without TLS; `registration failed` with `Unauthenticated` means the
+enrollment key is wrong or revoked; `download failed` with
+`connection refused` and `localhost:19100` in the URL means the server's
+`S3_PUBLIC_ENDPOINT` (above).
 
 On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
 stack: Docker Desktop publishes 19090 and 19100 there too, so
@@ -131,22 +181,6 @@ stack: Docker Desktop publishes 19090 and 19100 there too, so
 as they are. Current Ubuntu images for WSL run systemd; without it,
 `install.sh` takes the [Without systemd](#without-systemd) path (not verified
 on Windows by CI).
-
-### Server on another machine
-
-The quickstart's compose stack signs model download URLs for
-`localhost:19100`, which only the server's own machine can reach: an agent on
-another machine registers and heartbeats, and then every download fails. Start
-the stack with the server's LAN address as the object store's public endpoint,
-and let the agent's machine reach ports 19090 (gRPC) and 19100 (model files):
-
-```bash
-S3_PUBLIC_ENDPOINT=<server LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
-```
-
-and set `server: <server LAN IP>:19090` in the agent's config.
-[CONFIG.md](CONFIG.md#docker-compose) has the compose settings; a server in
-production sits behind a TLS proxy with a real host name instead.
 
 ## Configure
 
@@ -163,7 +197,7 @@ Settings come from the YAML file (`-config`), and flags override them
 | `labels` | `{}` | Labels deployments and experiments target |
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
 | `models_dir` | `<state_dir>/models` | Where models are placed (below). The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) |
-| `validator` | none | Shell command that checks a downloaded model; `{file}` is its path; exit code 0 means valid |
+| `validator` | none | Shell command that checks a downloaded model; exit code 0 means valid. `{file}` in the command is replaced by the model's path, and the `FLEETML_MODEL_FILE`, `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` environment variables are set too; use either |
 | `post_activate` | none | Shell command run after a version becomes active |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
 | `metered`, `on_battery` | `false` | Describe the machine's connection and power for the download policy |
