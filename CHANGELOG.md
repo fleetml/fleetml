@@ -49,6 +49,11 @@ change APIs).
   reported `connectionChanged(false)` before `true`, because the heartbeat loop
   was started twice and the second start cancelled the first heartbeat; it
   now starts once, and a cancelled heartbeat is not a failure.
+- iOS: when the device token cannot be stored in the Keychain (an app built
+  without code signing, on the simulator), the SDK now logs a warning instead
+  of silently registering again at every launch.
+- `fleetml push` showed a model under a kilobyte as `0KB`; small sizes are now
+  in bytes.
 
 ### Docs
 
