@@ -197,6 +197,10 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	assert.JSONEq(t, `{"accepted":1,"rejected":1}`, rec.Body.String())
 	last := a.queue.Peek(100)
 	assert.Equal(t, "ver-3.0.0", last[len(last)-1].ModelVersionId)
+	rec = httptest.NewRecorder()
+	a.handleModels(rec, httptest.NewRequest(http.MethodGet, "/v1/models", http.NoBody))
+	assert.JSONEq(t, `[{"model":"iris","version":"3.0.0","version_id":"ver-3.0.0","path":"`+current+`"}]`, rec.Body.String(),
+		"snake_case keys, like /v1/events")
 
 	// UNLOAD without a replacement removes the model.
 	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", VariantId: "var-3.0.0", Action: fleetmlv1.ModelAssignment_UNLOAD}})

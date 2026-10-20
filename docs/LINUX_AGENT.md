@@ -226,7 +226,11 @@ curl -s localhost:9601/v1/models
 ```
 
 The first call answers `{"accepted":1,"rejected":0}`; the second lists the
-active models and their paths.
+active models with the same `model` key and their `current` links:
+
+```json
+[{"model":"detector","version":"2.0.0","version_id":"<version ID>","path":"/var/lib/fleetml-agent/models/detector/current"}]
+```
 
 `POST /v1/events` takes one event or an array; set `"error"` to a message for
 a failed inference (it counts against the health gate), and `"features"` to

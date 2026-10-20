@@ -85,7 +85,7 @@ inference() {
   local ok='{"model":"iris","latency_ms":8,"confidence":0.97,"label":"setosa"}'
   local bad='{"model":"iris","latency_ms":9,"error":"output shape (1,4), expected (1,3)"}'
   while sleep 0.5; do
-    case "$(curl -s "localhost:$(port "$1")/v1/models" | jq -r '.[0].Version // empty' 2>/dev/null)" in
+    case "$(curl -s "localhost:$(port "$1")/v1/models" | jq -r '.[0].version // empty' 2>/dev/null)" in
       2.0.0) curl -s -X POST "localhost:$(port "$1")/v1/events" -d "[$bad,$bad,$bad,$bad]" >/dev/null || true ;;
       "") ;;
       *) curl -s -X POST "localhost:$(port "$1")/v1/events" -d "[$ok,$ok,$ok,$ok]" >/dev/null || true ;;
