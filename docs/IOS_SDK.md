@@ -153,13 +153,19 @@ func fleetML(connectionFailed error: Error) {
 A wrong host or port, or a server that is not running, reads like
 `deadlineExceeded (Connection errors: ... Connection refused)`; a wrong
 enrollment key is refused by the server as `unauthenticated`. The SDK also
-logs every step (registration, downloads, validation, heartbeats) to the
-unified log with subsystem `com.fleetml.sdk` and category `FleetML`. Xcode's
-console shows it while the app runs from Xcode; without a debugger, open
-Console.app on the Mac, select the phone (or the simulator) in the sidebar,
-press Start, and search for `subsystem:com.fleetml.sdk`. For the simulator,
-`xcrun simctl spawn booted log stream --predicate 'subsystem == "com.fleetml.sdk"'`
-prints it in a terminal.
+logs to the unified log with subsystem `com.fleetml.sdk` and category
+`FleetML`: at info level the registration, each download (model, version,
+bytes), each validation result and each activation, at warning level every
+failure, and at debug level every heartbeat. Xcode's console shows it while the
+app runs from Xcode; without a debugger, open Console.app on the Mac, select
+the phone (or the simulator) in the sidebar, press Start, and search for
+`subsystem:com.fleetml.sdk` (Action, Include Info Messages shows the info
+lines). For the simulator, this prints it in a terminal (`--level debug` adds
+the heartbeats; without `--level` only warnings appear):
+
+```bash
+xcrun simctl spawn booted log stream --level info --predicate 'subsystem == "com.fleetml.sdk"'
+```
 
 ## Enrollment and identity
 

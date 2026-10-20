@@ -25,7 +25,10 @@ let package = Package(
         ),
         .testTarget(
             name: "FleetMLSDKTests",
-            dependencies: ["FleetMLSDK"],
+            dependencies: [
+                "FleetMLSDK",
+                .product(name: "GRPC", package: "grpc-swift"),
+            ],
             path: "ios/FleetMLSDK/Tests/FleetMLSDKTests"
         ),
     ]

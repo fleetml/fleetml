@@ -1,3 +1,4 @@
+import GRPC
 import XCTest
 @testable import FleetMLSDK
 
@@ -26,12 +27,16 @@ final class HeartbeatManagerTests: XCTestCase {
         var response = Fleetml_Device_V1_HeartbeatResponse()
         var rejectToken = false
         var unreachable = false
+        var cancelled: Error?
+        var delayNanoseconds: UInt64 = 0
         var heartbeats: [(token: String, request: Fleetml_Device_V1_HeartbeatRequest)] = []
         var refreshes = 0
 
         func heartbeat(token: String, request: Fleetml_Device_V1_HeartbeatRequest) async throws -> Fleetml_Device_V1_HeartbeatResponse {
             if unreachable { throw URLError(.cannotConnectToHost) }
             if rejectToken { throw UnauthenticatedError() }
+            if let cancelled { throw cancelled }
+            if delayNanoseconds > 0 { try await Task.sleep(nanoseconds: delayNanoseconds) }
             heartbeats.append((token, request))
             return response
         }
@@ -127,6 +132,35 @@ final class HeartbeatManagerTests: XCTestCase {
         XCTAssertFalse(reached)
         XCTAssertEqual(reRegistered, 1)
         XCTAssertEqual(delegate.connection, [false])
+    }
+
+    /// A heartbeat cancelled by stop() (or a cancelled gRPC call) is not a
+    /// failure: the delegate does not hear connectionChanged(false).
+    func testACancelledHeartbeatIsNotAFailure() async {
+        let hb = manager()
+        for error: Error in [CancellationError(), GRPCStatus(code: .cancelled, message: nil)] {
+            api.cancelled = error
+            let reached = await hb.beatOnce()
+            XCTAssertFalse(reached)
+        }
+        XCTAssertEqual(delegate.connection, [])
+        api.cancelled = GRPCStatus(code: .unavailable, message: "connection refused")
+        await hb.beatOnce()
+        XCTAssertEqual(delegate.connection, [false], "a real failure still counts")
+    }
+
+    /// At launch start() is called twice (start task and foreground); the
+    /// second call must not cancel the first heartbeat in flight.
+    func testStartingTwiceKeepsTheHeartbeatInFlight() async throws {
+        api.delayNanoseconds = 200_000_000
+        let hb = manager()
+        hb.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        hb.start()
+        try await Task.sleep(nanoseconds: 400_000_000)
+        hb.stop()
+        XCTAssertEqual(api.heartbeats.count, 1)
+        XCTAssertEqual(delegate.connection, [true])
     }
 
     func testReportsConnectionChangesOnce() async {
