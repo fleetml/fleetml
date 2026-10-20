@@ -56,6 +56,24 @@ The script installs the binary to `/usr/local/bin`, creates a
 `/var/lib/fleetml-agent`. It starts nothing while the config still holds the
 placeholder key.
 
+### Without systemd
+
+On a machine without systemd (a container, a BusyBox or Yocto image, a kiosk
+with its own init), `install.sh` installs the binary, the user and the config
+the same way, skips the unit, creates `/var/lib/fleetml-agent` owned by
+`fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
+systemd) and says so. Once the config is set, run the agent as that user under
+the machine's own supervisor (runit, s6, OpenRC, supervisord, a container's
+entrypoint), with the same command the unit runs:
+
+```bash
+su -s /bin/sh fleetml-agent -c '/usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
+```
+
+It logs to standard error, which is where the supervisor's log picks it up;
+the journal lines below are the same. The supervisor restarts it if it exits,
+as `Restart=always` does in the unit.
+
 ### Connect it to the server
 
 The agent registers into a project with one of the project's enrollment keys.
@@ -231,7 +249,8 @@ server is back.
 
 `go test ./internal/agent` covers the queue, state, fingerprint, download
 resume, the validator command and the install path (symlink, last-known-good,
-hook, local endpoint). The runtime check ran two `linux/amd64` agents in
+hook, local endpoint, file modes). `./scripts/agent-install-test.sh` runs
+`install.sh` in Ubuntu containers with and without systemd. The runtime check ran two `linux/amd64` agents in
 Debian containers next to the dev stack: a 50% canary reached exactly one of
 them, a failing validator on that one kept the last-known-good version and
 reported `MODEL_LOAD_FAILED`, and completing the rollout moved both `current`
