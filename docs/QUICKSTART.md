@@ -193,7 +193,8 @@ V1=$(vid 1.0.0); V2=$(vid 2.0.0); V21=$(vid 2.1.0)
 ```
 
 Each push prints `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)`
-and the variant's ID. If an upload fails (the object store unreachable, say),
+and, under it, a `Variant ID:` line: the ID of the file just uploaded (one
+version can have several variants, for example INT8 and FP16). If an upload fails (the object store unreachable, say),
 run the same push again: a variant that was never verified is replaced.
 
 An upload that does not match its declared sha256 is refused and never
@@ -233,14 +234,21 @@ fleetml device list --project $P | head -5
 
 The deployment goes to all devices at once, so it starts as `COMPLETE`
 (`✓ Deployment start → COMPLETE`), the simulator's last line reads
-`iris 1.0.0 on 20`, and `fleetml device list` shows the devices (ID, OS,
-RAM, chipset).
+`simulator: iris 1.0.0 on 20`, and `fleetml device list` shows the devices (ID, OS,
+RAM, chipset). `COMPLETE` means assigned, not delivered: each device still
+downloads and verifies the model, and
+`fleetml deploy get $D1 | jq -c .devices` counts the targeted devices and those
+that report the version loaded, `{"targeted":20,"loaded":20}` once all of
+them do.
 
 ### 3. A canary that rolls itself back
 
 A canary of 2.0.0 for 25% of the fleet, with a health gate: more than 5% errors
-over at least 30 events from the canary cohort rolls it back. The deploy loop
-runs every 30 seconds:
+over at least 30 events from the canary cohort rolls it back. Each device is
+in the cohort or not by a hash of its ID and the deployment's ID, decided on
+its own and kept for the deployment's life, so the cohort is about 25%: of 20
+devices it can be 4 or 7 as well as 5. The deploy loop runs every 30 seconds,
+and the loop below gives up after 5 minutes:
 
 ```bash
 D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target '{"app":"tour"}' \
@@ -248,7 +256,7 @@ D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target
   --health-gate '{"max_error_rate":0.05,"min_events":30,"on_failure":"ROLLBACK"}' -o json | jq -r .id)
 fleetml deploy start $D2
 sleep 5; tail -1 /tmp/fleetml-sim.log
-until [ "$(fleetml deploy get $D2 | jq -r .status)" = ROLLED_BACK ]; do sleep 5; done
+for i in $(seq 60); do [ "$(fleetml deploy get $D2 | jq -r .status)" = ROLLED_BACK ] && break; sleep 5; done
 fleetml deploy get $D2 | jq -r .rollback_reason
 sleep 5; tail -1 /tmp/fleetml-sim.log
 ```
@@ -256,7 +264,7 @@ sleep 5; tail -1 /tmp/fleetml-sim.log
 The deployment starts as `ROLLING_OUT` (`✓ Deployment start → ROLLING_OUT`)
 and the simulator shows the cohort on 2.0.0. Once the gate trips, the rollback
 reason reads `error rate ... exceeds threshold 5.00% ...` and the simulator is
-back to `iris 1.0.0 on 20`.
+back to `simulator: iris 1.0.0 on 20`.
 
 The rollback also creates a deployment that returns the cohort to 1.0.0, and
 sends a rollback alert (NATS subject `fleetml.alerts.rollback`, the
@@ -268,18 +276,23 @@ use the same gate; see [ROLLOUTS.md](ROLLOUTS.md).
 ### 4. An A/B experiment
 
 Half the fleet runs 1.0.0, half 2.1.0. The test runs once both arms have 300
-inferences:
+inferences, and the loop gives up after 5 minutes:
 
 ```bash
 EXP=$(fleetml experiment create --project $P --name "iris 2.1.0 latency" --control $V1 --treatment $V21 --target '{"app":"tour"}' --min-sample-size 300 -o json | jq -r .id)
 fleetml experiment start $EXP
-until [ "$(fleetml experiment results $EXP | jq -r .final)" = true ]; do sleep 3; done
+for i in $(seq 100); do [ "$(fleetml experiment results $EXP | jq -r .final)" = true ] && break; sleep 3; done
 fleetml experiment results $EXP | jq '{control_ms: .control.avg_latency_ms, treatment_ms: .treatment.avg_latency_ms, p_value, recommendation}'
 fleetml experiment conclude $EXP --winner $V21
 ```
 
 The experiment is `RUNNING` once started (`✓ Experiment start → RUNNING`) and
-`CONCLUDED` at the end. A `p_value` of `0` means the p-value is below the
+`CONCLUDED` at the end. Concluding records the winner and ends the
+experiment; it does not deploy anything. On their next heartbeat the
+devices go back to what the deployments assign, here 1.0.0, which the drift
+step below relies on. To roll the winner out to the whole fleet, deploy it:
+`fleetml deploy create --project $P --version $V21 --target '{"app":"tour"}'`
+and `fleetml deploy start` with the new ID. A `p_value` of `0` means the p-value is below the
 precision of a double; read it as p < 0.0001, which is how the demo and the
 dashboard show it. Each device keeps its arm for the experiment's life, and its
 telemetry carries the arm ID, so results are per arm even when a device's arm
@@ -344,8 +357,8 @@ dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
 
 Run it in the same shell as the stack, since compose needs the same secrets.
-It runs the one-shot `migrate` service again and restarts the server once; the
-data stays.
+It runs the one-shot `migrate` service again, which finds nothing to do; the
+server keeps running and the data stays.
 
 With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;
