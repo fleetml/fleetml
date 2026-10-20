@@ -19,15 +19,27 @@ curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/pro
 echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
+**Save the three values now.** They exist only in this shell. The admin key
+is how you log in to the dashboard and how the CLI and the REST API reach the
+server, and the server stores it on the first start only: later starts
+ignore `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a
+new one (the way back is `down -v` and a fresh start, which deletes the data).
+Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command on this
+stack, `down` included. In bash or zsh, this writes them to a file only you
+can read, and `source ~/.fleetml.env` brings them back in a new shell:
+
+```bash
+(umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
+```
+
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. The first start
 builds the images and takes a few minutes; if nothing appears after about two
 minutes more, run `docker compose -f deploy/docker-compose.prod.yml ps -a` and
 `docker compose -f deploy/docker-compose.prod.yml logs server` to see which
-container stopped and why (a port already in use is the usual cause). The
-admin key is stored on the first start; later starts ignore
-`FLEETML_ADMIN_KEY` (more keys and their routes: [API keys](CONFIG.md#api-keys)).
+container stopped and why (a port already in use is the usual cause). More
+keys and their routes: [API keys](CONFIG.md#api-keys).
 
 ### On Windows
 
@@ -61,6 +73,10 @@ dashboard opens in a Windows browser at http://localhost, and PowerShell
 reaches the REST API at `localhost:18080` (for example
 `Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs in the
 same Ubuntu shell; the CLI for PowerShell is in [Get the CLI](#get-the-cli).
+PowerShell and the Windows browser need the admin key too: in the Ubuntu shell,
+`echo $FLEETML_ADMIN_KEY` prints it (after `source ~/.fleetml.env` in a new
+one), to paste into `$env:FLEETML_API_KEY = '<the admin key>'` or the
+dashboard's login.
 
 ## Get the CLI
 
@@ -344,7 +360,5 @@ docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
 
 `--profile observability` also removes Prometheus and Grafana from step 7;
 without it they keep running, and so do their network and Grafana's volume.
-Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command, `down`
-included. From a new shell where they are no longer exported, either export
-them again or pass placeholders: `JWT_SECRET=x SIGNING_MASTER_KEY=x docker
-compose -f deploy/docker-compose.prod.yml --profile observability down -v`.
+Compose needs the two secrets for `down` too: from a new shell,
+`source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
