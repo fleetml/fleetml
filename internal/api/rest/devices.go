@@ -71,7 +71,7 @@ func (h *DeviceHandler) getDevice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	d, err := h.service.GetDevice(c.Request.Context(), id)
+	d, err := h.service.GetDeviceDetail(c.Request.Context(), id)
 	if err != nil {
 		handleDeviceError(c, err)
 		return

@@ -27,6 +27,39 @@ type Device struct {
 	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
+// DeviceDetail is one device as GET /devices/:id shows it: the device plus
+// what it reported about its models, so a device-side developer can tell
+// whether a deployment's model actually arrived.
+type DeviceDetail struct {
+	Device
+	// LoadedModels are the model versions the device's last heartbeat
+	// reported loaded.
+	LoadedModels []LoadedModel `json:"loaded_models"`
+	// LastModelEvent is the newest MODEL_LOAD, MODEL_LOAD_FAILED or
+	// SIGNATURE_INVALID event the device reported, if any.
+	LastModelEvent *ModelEvent `json:"last_model_event"`
+}
+
+// LoadedModel is a model variant a device reports loaded.
+type LoadedModel struct {
+	Model        string    `json:"model"`
+	Version      string    `json:"version"`
+	VersionID    uuid.UUID `json:"version_id"`
+	VariantID    uuid.UUID `json:"variant_id"`
+	Quantization string    `json:"quantization"`
+	Runtime      string    `json:"runtime"`
+}
+
+// ModelEvent is a model lifecycle event a device reported.
+type ModelEvent struct {
+	Type      string    `json:"type"`
+	Model     string    `json:"model"`
+	Version   string    `json:"version"`
+	VersionID uuid.UUID `json:"version_id"`
+	Error     string    `json:"error,omitempty"`
+	At        time.Time `json:"at"`
+}
+
 // DeviceClass represents a category of devices with similar hardware.
 type DeviceClass struct {
 	ID            uuid.UUID `json:"id"`

@@ -352,3 +352,53 @@ func (r *DeviceClassRepo) Upsert(ctx context.Context, dc *DeviceClass) error {
 	}
 	return nil
 }
+
+// LoadedModels returns the model variants the device's last heartbeat
+// reported loaded, by model name.
+func (r *DeviceRepo) LoadedModels(ctx context.Context, id uuid.UUID) ([]LoadedModel, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT m.name, mv.version, mv.id, v.id, v.quantization, v.target_runtime
+		FROM devices d
+		JOIN model_variants v ON d.loaded_variant_ids ? v.id::text
+		JOIN model_versions mv ON mv.id = v.version_id
+		JOIN models m ON m.id = mv.model_id
+		WHERE d.id = $1
+		ORDER BY m.name, mv.version`, id)
+	if err != nil {
+		return nil, fmt.Errorf("device.LoadedModels: %w", err)
+	}
+	defer rows.Close()
+	out := []LoadedModel{}
+	for rows.Next() {
+		var lm LoadedModel
+		if err := rows.Scan(&lm.Model, &lm.Version, &lm.VersionID, &lm.VariantID, &lm.Quantization, &lm.Runtime); err != nil {
+			return nil, fmt.Errorf("device.LoadedModels: scanning: %w", err)
+		}
+		out = append(out, lm)
+	}
+	return out, rows.Err()
+}
+
+// LastModelEvent returns the newest MODEL_LOAD, MODEL_LOAD_FAILED or
+// SIGNATURE_INVALID event the device reported in the telemetry that is kept
+// (30 days), or nil.
+func (r *DeviceRepo) LastModelEvent(ctx context.Context, id uuid.UUID) (*ModelEvent, error) {
+	var e ModelEvent
+	err := r.pool.QueryRow(ctx, `
+		SELECT te.event_type, COALESCE(m.name, ''), COALESCE(mv.version, ''), te.model_version_id,
+		       COALESCE(te.error_message, ''), te.recorded_at
+		FROM telemetry_events te
+		LEFT JOIN model_versions mv ON mv.id = te.model_version_id
+		LEFT JOIN models m ON m.id = mv.model_id
+		WHERE te.device_id = $1 AND te.recorded_at > NOW() - INTERVAL '30 days'
+		  AND te.event_type IN ('MODEL_LOAD', 'MODEL_LOAD_FAILED', 'SIGNATURE_INVALID')
+		ORDER BY te.recorded_at DESC
+		LIMIT 1`, id).Scan(&e.Type, &e.Model, &e.Version, &e.VersionID, &e.Error, &e.At)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("device.LastModelEvent: %w", err)
+	}
+	return &e, nil
+}

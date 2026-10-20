@@ -645,3 +645,49 @@ func TestRegisterDevice_MovesProjectWithTokenAndKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, otherProjectID, *dev.ProjectID)
 }
+
+type fakeModelStatus struct {
+	loaded []LoadedModel
+	event  *ModelEvent
+	err    error
+}
+
+func (f fakeModelStatus) LoadedModels(context.Context, uuid.UUID) ([]LoadedModel, error) {
+	return f.loaded, f.err
+}
+
+func (f fakeModelStatus) LastModelEvent(context.Context, uuid.UUID) (*ModelEvent, error) {
+	return f.event, f.err
+}
+
+// A device's detail shows what it reported about its models; when that
+// cannot be read, the device itself is still returned.
+func TestGetDeviceDetail(t *testing.T) {
+	svc, _ := newTestService()
+	ctx := context.Background()
+	resp, err := svc.RegisterDevice(ctx, &RegisterRequest{EnrollmentKey: testEnrollKey, Fingerprint: validFingerprint(), OS: "LINUX", RAMMB: 4096})
+	require.NoError(t, err)
+	id := uuid.MustParse(resp.DeviceID)
+
+	d, err := svc.GetDeviceDetail(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, id, d.ID)
+	assert.NotNil(t, d.LoadedModels, "an empty list, not null")
+	assert.Nil(t, d.LastModelEvent)
+
+	failed := &ModelEvent{Type: "MODEL_LOAD_FAILED", Model: "iris", Version: "1.0.0", Error: "download failed: connection refused"}
+	svc.SetModelStatusReader(fakeModelStatus{loaded: []LoadedModel{{Model: "iris", Version: "0.9.0"}}, event: failed})
+	d, err = svc.GetDeviceDetail(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "0.9.0", d.LoadedModels[0].Version)
+	assert.Equal(t, failed, d.LastModelEvent)
+
+	svc.SetModelStatusReader(fakeModelStatus{err: errors.New("db down")})
+	d, err = svc.GetDeviceDetail(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, id, d.ID)
+	assert.Empty(t, d.LoadedModels)
+
+	_, err = svc.GetDeviceDetail(ctx, uuid.New())
+	assert.ErrorIs(t, err, ErrNotFound)
+}

@@ -133,3 +133,51 @@ func TestE2E_ListDevicesByProject(t *testing.T) {
 	assert.Subset(t, list("?limit=100"), []string{inA.id, inB.id}, "without project_id the list spans projects")
 	assert.Equal(t, 400, e.call(t, "GET", "/api/v1/devices?project_id=bogus", nil, nil))
 }
+
+// GET /devices/:id shows the models the device reports loaded and its last
+// model event, so a failing download is visible from the server.
+func TestE2E_DeviceShowsModelStatus(t *testing.T) {
+	e := newEnv(t)
+	f := e.newFixture(t)
+	v1, _, _ := e.newVersion(t, f, "1.0.0", "")
+	v2, _, _ := e.newVersion(t, f, "2.0.0", "")
+	labels := map[string]string{"suite": randHex(4)}
+	d := e.register(t, f.enrollKey, labels)
+	e.deploy(t, map[string]any{"project_id": f.project, "model_version_id": v1, "target_selector": labels})
+	e.heartbeat(t, d)
+	e.heartbeat(t, d) // reports 1.0.0 loaded
+
+	type detail struct {
+		LoadedModels []struct {
+			Version   string `json:"version"`
+			VersionID string `json:"version_id"`
+		} `json:"loaded_models"`
+		LastModelEvent *struct {
+			Type, Version, Error string
+		} `json:"last_model_event"`
+	}
+	get := func() detail {
+		t.Helper()
+		var out detail
+		require.Equal(t, 200, e.call(t, "GET", "/api/v1/devices/"+d.id, nil, &out))
+		return out
+	}
+	got := get()
+	require.Len(t, got.LoadedModels, 1)
+	assert.Equal(t, v1, got.LoadedModels[0].VersionID)
+	assert.Equal(t, "1.0.0", got.LoadedModels[0].Version)
+
+	// 2.0.0 is deployed but its download fails on the device.
+	e.deploy(t, map[string]any{"project_id": f.project, "model_version_id": v2, "target_selector": labels})
+	_, err := e.tel.ReportBatch(d.ctx(), &fleetmlv1.TelemetryBatch{DeviceId: d.id, Events: []*fleetmlv1.TelemetryEvent{{
+		ModelVersionId: v2, Type: fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, ErrorMessage: "download failed: connection refused",
+	}}})
+	require.NoError(t, err)
+	waitFor(t, 20*time.Second, "the failure on the device", func() bool {
+		got = get()
+		return got.LastModelEvent != nil && got.LastModelEvent.Type == "MODEL_LOAD_FAILED"
+	})
+	assert.Equal(t, "2.0.0", got.LastModelEvent.Version)
+	assert.Equal(t, "download failed: connection refused", got.LastModelEvent.Error)
+	assert.Equal(t, "1.0.0", got.LoadedModels[0].Version, "still on 1.0.0")
+}
