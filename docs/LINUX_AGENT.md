@@ -190,7 +190,10 @@ For each assignment the agent:
 2. downloads to `state_dir/downloads/<variant>.part`, resuming with an HTTP
    `Range` request after an interruption, and checks the sha256; when the
    server offers a delta from the version the agent has, only the delta is
-   downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates));
+   downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates)); a
+   download that fails is retried on every heartbeat and reported once as
+   `MODEL_LOAD_FAILED` with the error, which `fleetml device get` shows as the
+   device's `last_model_event`;
 3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,
    `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` in its environment;
 4. if it passes, switches the `current` symlink, keeps the previous version as

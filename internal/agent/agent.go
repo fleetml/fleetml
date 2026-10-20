@@ -65,6 +65,9 @@ type Agent struct {
 	reconfigured chan struct{}
 	// featureBins are the bin edges of each model's features (model ID -> feature -> edges).
 	featureBins map[string]map[string][]float64
+	// downloadFailed holds the variants whose failed download was reported,
+	// so a download failing on every heartbeat is reported once.
+	downloadFailed map[string]bool
 }
 
 // New opens the agent's state and connects to the server (lazily).
@@ -102,6 +105,7 @@ func New(cfg *Config, log *slog.Logger) (*Agent, error) {
 		cfg: cfg, store: store, queue: queue, log: log, http: &http.Client{Timeout: 30 * time.Minute},
 		conn: conn, devices: fleetmlv1.NewDeviceServiceClient(conn), tel: fleetmlv1.NewTelemetryServiceClient(conn),
 		now: time.Now, interval: cfg.HeartbeatInterval, batchSize: 100, flushEvery: 30 * time.Second, arms: map[string]string{}, reconfigured: make(chan struct{}, 1),
+		downloadFailed: map[string]bool{},
 	}, nil
 }
 
@@ -405,6 +409,13 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		if !a.fromDelta(ctx, as, part) {
 			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256); err != nil {
 				a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
+				a.mu.Lock()
+				first := !a.downloadFailed[as.VariantId]
+				a.downloadFailed[as.VariantId] = true
+				a.mu.Unlock()
+				if first { // the server shows it as the device's last model event
+					a.report(as.VersionId, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, 0, 0, "", "download failed: "+err.Error())
+				}
 				return // retried on the next heartbeat
 			}
 			a.log.Info("model downloaded", "model", as.ModelName, "version", as.Version, "bytes", as.BlobSizeBytes)
@@ -456,6 +467,9 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		}
 		m.Active = next
 		delete(s.Failed, as.VariantId)
+		a.mu.Lock()
+		delete(a.downloadFailed, as.VariantId)
+		a.mu.Unlock()
 		keep = []string{m.Active.Dir}
 		if m.LastKnownGood != nil {
 			keep = append(keep, m.LastKnownGood.Dir)
