@@ -289,7 +289,7 @@ func (e *Engine) rollingThreshold(ctx context.Context, dep *Deployment, stage in
 	if e.devices == nil {
 		return 0, fmt.Errorf("no device directory configured")
 	}
-	targeted, err := e.devices.ListMatchingDevices(ctx, dep.TargetSelector)
+	targeted, err := e.devices.ListMatchingDevices(ctx, dep.ProjectID, dep.TargetSelector)
 	if err != nil {
 		return 0, err
 	}
@@ -471,7 +471,7 @@ func (e *Engine) cohort(ctx context.Context, dep *Deployment) ([]uuid.UUID, erro
 	if e.devices == nil {
 		return nil, fmt.Errorf("no device directory configured")
 	}
-	targeted, err := e.devices.ListMatchingDevices(ctx, dep.TargetSelector)
+	targeted, err := e.devices.ListMatchingDevices(ctx, dep.ProjectID, dep.TargetSelector)
 	if err != nil {
 		return nil, err
 	}

@@ -128,7 +128,7 @@ func (f *mockFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID, ti
 	return f.unavailable, nil
 }
 
-func (f *mockFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
+func (f *mockFleet) ListMatchingDevices(context.Context, uuid.UUID, map[string]string) ([]uuid.UUID, error) {
 	return f.ids, nil
 }
 

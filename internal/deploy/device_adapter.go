@@ -12,8 +12,10 @@ import (
 
 // DeviceDirectory finds the devices a deployment targets.
 type DeviceDirectory interface {
-	// ListMatchingDevices returns the IDs of devices whose labels contain the selector.
-	ListMatchingDevices(ctx context.Context, selector map[string]string) ([]uuid.UUID, error)
+	// ListMatchingDevices returns the IDs of the project's devices whose
+	// labels contain the selector: the devices a deployment of the project
+	// targets (a device only ever gets its own project's deployments).
+	ListMatchingDevices(ctx context.Context, projectID uuid.UUID, selector map[string]string) ([]uuid.UUID, error)
 	// CountUnavailable counts devices among ids that were seen since a time
 	// but did not report any variant of the version loaded.
 	CountUnavailable(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID, seenSince time.Time) (int, error)
@@ -29,7 +31,7 @@ func NewDeviceCountAdapter(pool *pgxpool.Pool) *DeviceCountAdapter {
 	return &DeviceCountAdapter{pool: pool}
 }
 
-func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, selector map[string]string) ([]uuid.UUID, error) {
+func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, projectID uuid.UUID, selector map[string]string) ([]uuid.UUID, error) {
 	if selector == nil {
 		selector = map[string]string{}
 	}
@@ -37,7 +39,7 @@ func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, selector m
 	if err != nil {
 		return nil, fmt.Errorf("deviceList: marshalling: %w", err)
 	}
-	rows, err := a.pool.Query(ctx, `SELECT id FROM devices WHERE labels_json @> $1::jsonb`, selectorJSON)
+	rows, err := a.pool.Query(ctx, `SELECT id FROM devices WHERE project_id = $1 AND labels_json @> $2::jsonb`, projectID, selectorJSON)
 	if err != nil {
 		return nil, fmt.Errorf("deviceList: %w", err)
 	}

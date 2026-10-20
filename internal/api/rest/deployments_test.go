@@ -107,7 +107,7 @@ func (mockDeployFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID,
 	return 0, nil
 }
 
-func (mockDeployFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
+func (mockDeployFleet) ListMatchingDevices(context.Context, uuid.UUID, map[string]string) ([]uuid.UUID, error) {
 	return []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}, nil
 }
 

@@ -92,13 +92,17 @@ func TestAdapters_Integration(t *testing.T) {
 	assert.Equal(t, fx.VersionID, *cur)
 
 	devices := NewDeviceCountAdapter(pool)
-	a := dbtest.NewDevice(t, pool, `{"fleet":"x","region":"eu"}`)
-	b := dbtest.NewDevice(t, pool, `{"fleet":"x","region":"us"}`)
-	dbtest.NewDevice(t, pool, `{"fleet":"y"}`)
-	ids, err := devices.ListMatchingDevices(ctx, map[string]string{"fleet": "x"})
+	a := dbtest.NewProjectDevice(t, pool, fx.ProjectID, `{"fleet":"x","region":"eu"}`)
+	b := dbtest.NewProjectDevice(t, pool, fx.ProjectID, `{"fleet":"x","region":"us"}`)
+	dbtest.NewProjectDevice(t, pool, fx.ProjectID, `{"fleet":"y"}`)
+	// Matching labels in another project, or without a project, do not count:
+	// those devices never get this project's deployments.
+	dbtest.NewProjectDevice(t, pool, dbtest.NewVersion(t, pool).ProjectID, `{"fleet":"x"}`)
+	dbtest.NewDevice(t, pool, `{"fleet":"x"}`)
+	ids, err := devices.ListMatchingDevices(ctx, fx.ProjectID, map[string]string{"fleet": "x"})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []uuid.UUID{a, b}, ids)
-	all, err := devices.ListMatchingDevices(ctx, nil)
+	all, err := devices.ListMatchingDevices(ctx, fx.ProjectID, nil)
 	require.NoError(t, err)
 	assert.Len(t, all, 3)
 
