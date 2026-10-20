@@ -27,6 +27,28 @@ presigned download URL (valid 1 hour), the blob's sha256 and its signature
 what they have loaded in the next heartbeat; the server answers with `LOAD`,
 `UPDATE` (same model, other version) or `UNLOAD`.
 
+### Did the model arrive?
+
+A deployment's status says what was assigned: an all-at-once deployment is
+`COMPLETE` as soon as it starts, before any device has downloaded anything.
+What the devices report is on two other objects:
+
+- `GET /api/v1/deployments/{id}` (`fleetml deploy get`) has
+  `devices: {"targeted": N, "loaded": M}`: the project's devices whose labels
+  match the target selector, and how many of them reported a variant of the
+  deployment's version loaded in their last heartbeat. Lists of deployments
+  leave it out.
+- `GET /api/v1/devices/{id}` (`fleetml device get`) has `loaded_models`, the
+  versions the device's last heartbeat reported (model, version, version and
+  variant IDs, quantization, runtime), and `last_model_event`, its newest
+  `MODEL_LOAD`, `MODEL_LOAD_FAILED` or `SIGNATURE_INVALID` event (type, model,
+  version, error, time), or `null`. The Linux agent reports a failed download
+  as `MODEL_LOAD_FAILED` with the error, once per version; the SDKs report
+  validation failures that way.
+
+`GET /api/v1/deployments` and `GET /api/v1/devices` take `project_id`
+(`fleetml deploy list --project`, `fleetml device list --project`).
+
 ### Artifact integrity
 
 A variant is created as `UPLOADING`. `POST /variants/{id}/finalize` streams the
