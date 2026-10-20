@@ -172,7 +172,7 @@ unreachable host or a refused enrollment key.
 | `enrollmentKey` | `""` | Per-project key for the first registration (`fleetml enrollment-key create`) |
 | `useTls` | `false` | TLS for gRPC (put the server behind a TLS proxy in production) |
 | `labels` | `{}` | Labels deployments and experiments target (`target_selector`) |
-| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own |
+| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own (server default 60) |
 | `backgroundHeartbeatIntervalSeconds` | `3600` | Background check interval, until the server sends its own (at least 15 minutes) |
 | `telemetryBatchSize`, `telemetryFlushIntervalSeconds` | `50`, `30` | Until the server's `DeviceConfig` overrides them (server default 100; the SDK uses 50 until the first response) |
 | `maxCacheSizeMb` | `500` | Disk budget for models; the active and last-known-good models are never evicted |
@@ -386,7 +386,8 @@ Contributors on the dev stack (`make dev`) use the key from `.env` and port
    registration and `Model iris 1.0.0 is active`. **Classify sample flower**
    runs it and reports inference telemetry. `fleetml deploy create --project $P
    --version $V2 --target '{"app":"sample"}'` and `deploy start` update the app
-   to 2.0.0 (1.0.0 is kept as last-known-good).
+   to 2.0.0 on its next heartbeat, 60 seconds by default (1.0.0 is kept as
+   last-known-good).
 
 5. Offline start: enable airplane mode
    (`adb shell cmd connectivity airplane-mode enable`, on API 30 and later;

@@ -405,8 +405,8 @@ key from `.env` instead.
    flower with it, reporting inference telemetry; the console prints the same
    steps (`FleetMLSample: Registered as ...`, `Model ready: iris 1.0.0`).
    `fleetml deploy create --project $P --version $V2 --target '{"app":"sample"}'`
-   and `deploy start` update the app to 2.0.0 (1.0.0 is kept as
-   last-known-good).
+   and `deploy start` update the app to 2.0.0 on its next heartbeat, 60 seconds
+   by default (1.0.0 is kept as last-known-good).
 
 4. Offline start: stop the server
    (`docker compose -f deploy/docker-compose.prod.yml stop server`), then
@@ -490,8 +490,8 @@ before it can use a server on the Mac:
    connection error, and any `URLSession` request to the Mac's LAN address
    fails with -1009 ("The Internet connection appears to be offline"). Once
    allowed, no relaunch is needed: the SDK registers on its next retry (within
-   10 seconds) and the first model arrives with the next heartbeat, up to a
-   minute later.
+   10 seconds) and the first model arrives with the next heartbeat, 60 seconds
+   later at most with the server's default.
 
 3. **The server's object store on the Mac's LAN address:**
    `S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100` as in step 2 of

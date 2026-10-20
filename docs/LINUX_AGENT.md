@@ -109,8 +109,10 @@ level=INFO msg=registered device_id=<device ID>
 ```
 
 and the machine appears in `fleetml device list --project <project ID>` with
-OS `LINUX`. Once a deployment targets its labels, the next heartbeat (every
-30 seconds) brings the model:
+OS `LINUX`. A deployment that already targets its labels arrives right after
+registration; one created later arrives with the next heartbeat (60 seconds
+with the server's default `DEVICE_HEARTBEAT_INTERVAL`; the agent's own `30s`
+applies only until the server answers):
 
 ```text
 level=INFO msg="model downloaded" model=iris version=1.0.0 bytes=<size>
@@ -165,7 +167,7 @@ Settings come from the YAML file (`-config`), and flags override them
 | `post_activate` | none | Shell command run after a version becomes active |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
 | `metered`, `on_battery` | `false` | Describe the machine's connection and power for the download policy |
-| `heartbeat_interval` | `30s` | Until the server sends its own (`DEVICE_HEARTBEAT_INTERVAL`) |
+| `heartbeat_interval` | `30s` | Until the server sends its own (`DEVICE_HEARTBEAT_INTERVAL`, default 60 s) |
 
 The server's device settings apply as for the SDKs
 ([CONFIG.md](CONFIG.md#devices)); the agent runs continuously, so it always
