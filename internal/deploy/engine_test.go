@@ -40,10 +40,12 @@ func (m *mockRepo) GetByID(_ context.Context, id uuid.UUID) (*Deployment, error)
 	return d, nil
 }
 
-func (m *mockRepo) List(_ context.Context, limit, offset int) ([]Deployment, int, error) {
+func (m *mockRepo) List(_ context.Context, projectID *uuid.UUID, limit, offset int) ([]Deployment, int, error) {
 	var all []Deployment
 	for _, d := range m.deployments {
-		all = append(all, *d)
+		if projectID == nil || d.ProjectID == *projectID {
+			all = append(all, *d)
+		}
 	}
 	total := len(all)
 	if offset >= total {

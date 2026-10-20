@@ -158,6 +158,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.createDeployment(w, body)
 	case r.Method == http.MethodPost && len(p) == 3 && p[0] == "deployments" && p[2] == "start":
 		s.startDeployment(w, p[1])
+	case r.Method == http.MethodGet && path == "deployments":
+		s.listDeployments(w, r.URL.Query().Get("project_id"))
 	case r.Method == http.MethodGet && len(p) == 2 && p[0] == "deployments":
 		if d, ok := s.deployments[p[1]]; ok {
 			respondData(w, http.StatusOK, d)
@@ -382,6 +384,22 @@ func (s *Server) listDevices(w http.ResponseWriter, projectID string) {
 	out := []map[string]any{}
 	if len(s.projects) > 0 && s.projects[0]["id"] == projectID {
 		out = s.devices
+	}
+	respondData(w, http.StatusOK, out)
+}
+
+func (s *Server) listDeployments(w http.ResponseWriter, projectID string) {
+	if projectID != "" {
+		if _, err := uuid.Parse(projectID); err != nil {
+			respondError(w, http.StatusBadRequest, "VALIDATION_ERROR", "project_id must be a UUID")
+			return
+		}
+	}
+	out := []map[string]any{}
+	for _, d := range s.deployments {
+		if projectID == "" || d["project_id"] == projectID {
+			out = append(out, d)
+		}
 	}
 	respondData(w, http.StatusOK, out)
 }

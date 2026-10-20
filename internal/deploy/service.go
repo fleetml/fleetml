@@ -208,8 +208,8 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Deployment, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-// List returns paginated deployments.
-func (s *Service) List(ctx context.Context, limit, offset int) ([]Deployment, int, error) {
+// List returns paginated deployments, only projectID's when it is not nil.
+func (s *Service) List(ctx context.Context, projectID *uuid.UUID, limit, offset int) ([]Deployment, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -219,7 +219,7 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]Deployment, in
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.List(ctx, limit, offset)
+	return s.repo.List(ctx, projectID, limit, offset)
 }
 
 // UpdateStatus moves a deployment to a new status through the state machine,

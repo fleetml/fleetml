@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/spf13/cobra"
 )
@@ -89,11 +90,16 @@ func newDeployCreateCmd() *cobra.Command {
 }
 
 func newDeployListCmd() *cobra.Command {
-	return &cobra.Command{
+	var projectID string
+	cmd := &cobra.Command{
 		Use: "list", Short: "List deployments",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			path := "/api/v1/deployments"
+			if projectID != "" {
+				path += "?project_id=" + url.QueryEscape(projectID)
+			}
 			var result []map[string]interface{}
-			if err := client.Get("/api/v1/deployments", &result); err != nil {
+			if err := client.Get(path, &result); err != nil {
 				return err
 			}
 			if outputFmt == "json" {
@@ -111,6 +117,8 @@ func newDeployListCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&projectID, "project", "", "Only this project's deployments")
+	return cmd
 }
 
 func newDeployGetCmd() *cobra.Command {
