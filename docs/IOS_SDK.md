@@ -52,19 +52,22 @@ and tools.
 
 Initialize once, for example in your `App` or app delegate. The enrollment
 key comes from `fleetml enrollment-key create --project <project ID>`, which
-prints it once:
+prints it once ([Your own app](#your-own-app) keeps it out of the source).
+This object starts the SDK and loads each model it delivers with Core ML:
 
 ```swift
+import CoreML
 import FleetMLSDK
 
 final class AppModel: FleetMLDelegate {
     static let enrollmentKey = "<enrollment key>"
+    private(set) var mlModel: MLModel?
 
     init() {
         do {
             try FleetML.initialize(
-                config: FleetMLConfig(serverHost: "fleetml.example.com", enrollmentKey: Self.enrollmentKey,
-                                      labels: ["region": "eu", "tier": "beta"]),
+                config: FleetMLConfig(serverHost: "localhost", enrollmentKey: Self.enrollmentKey,
+                                      labels: ["app": "myapp", "tier": "beta"]),
                 delegate: self)
         } catch {
             print("FleetML did not start: \(error)")
@@ -72,10 +75,24 @@ final class AppModel: FleetMLDelegate {
     }
 
     func fleetML(modelReady model: ActiveModel) {
-        // model.fileURL is verified and validated: load it (Core ML: below).
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mlmodel")
+        do {
+            try FileManager.default.copyItem(at: model.fileURL, to: source)
+            defer { try? FileManager.default.removeItem(at: source) }
+            mlModel = try MLModel(contentsOf: try MLModel.compileModel(at: source))
+        } catch {
+            print("Core ML could not load \(model.modelName) \(model.version): \(error)")
+        }
     }
 }
 ```
+
+`localhost` is the quickstart's server on the Mac, which the simulator
+shares; a phone needs the Mac's LAN address ([Own app on a real
+iPhone](#own-app-on-a-real-iphone)). Delivered files keep the server's name
+(`{variant}.bin`), and Core ML compiles only from a path ending in `.mlmodel`,
+which is why `fleetML(modelReady:)` copies the file to one first (the sample
+app's `IrisClassifier` does the same).
 
 The SDK holds the delegate weakly: keep the object alive for as long as the
 app runs, for example as a property of your `App` or app delegate, or its
@@ -86,35 +103,23 @@ HTTP/2 (gRPC needs HTTP/2 end to end):
 `FleetMLConfig(serverHost: "fleetml.example.com", serverPort: 443, enrollmentKey: Self.enrollmentKey, useTLS: true)`.
 
 The delegate's methods all have empty default implementations, so implement
-only what the app needs. They are called on a background queue: switch to the
-main queue before touching the UI.
+only what the app needs, with exactly these signatures: a method whose
+parameter types differ still compiles, as a method of your own, and the SDK
+never calls it. They are called on a background queue: switch to the main
+queue before touching the UI.
 
 | Method | When |
 |---|---|
-| `fleetML(modelReady:)` | A model was downloaded, verified and validated and is now active; also at start for models cached from an earlier run |
-| `fleetML(modelUnloaded:modelName:variantID:)` | The server no longer assigns the model |
-| `fleetML(modelLoadFailed:version:reason:)` | A new version could not be downloaded or failed validation; the last-known-good one stays |
-| `fleetML(registered:)` | The device registered (or re-registered) |
-| `fleetML(connectionChanged:)` | The server became reachable or unreachable |
-| `fleetML(connectionFailed:)` | Registration failed, with the error ([When it does not connect](#when-it-does-not-connect)) |
+| `func fleetML(modelReady model: ActiveModel)` | A model was downloaded, verified and validated and is now active; also at start for models cached from an earlier run |
+| `func fleetML(modelUnloaded modelID: String, modelName: String, variantID: String)` | The server no longer assigns the model |
+| `func fleetML(modelLoadFailed modelName: String, version: String, reason: String)` | A new version could not be downloaded or failed validation; the last-known-good one stays |
+| `func fleetML(registered deviceID: String)` | The device registered (or re-registered) |
+| `func fleetML(connectionChanged connected: Bool)` | The server became reachable or unreachable |
+| `func fleetML(connectionFailed error: Error)` | Registration failed, with the error ([When it does not connect](#when-it-does-not-connect)) |
 
-Delivered files keep the server's name (`{variant}.bin`), and Core ML compiles
-only from a path ending in `.mlmodel`, so copy the file to one first (the
-sample app's `IrisClassifier` does the same):
-
-```swift
-func fleetML(modelReady model: ActiveModel) {
-    let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mlmodel")
-    do {
-        try FileManager.default.copyItem(at: model.fileURL, to: source)
-        defer { try? FileManager.default.removeItem(at: source) }
-        let mlModel = try MLModel(contentsOf: try MLModel.compileModel(at: source))
-        // use mlModel
-    } catch {
-        print("Core ML could not load \(model.modelName) \(model.version): \(error)")
-    }
-}
-```
+`ActiveModel` has `modelName` and `version` (for example `iris` and `1.0.0`),
+`fileURL` (the verified and validated file), `modelID`, `versionID` (telemetry
+is attributed to it), `variantID` and `sha256`.
 
 The intervals and the batch size below are what the SDK uses until it first
 hears from the server; from the first registration on, the server's values
@@ -153,13 +158,74 @@ func fleetML(connectionFailed error: Error) {
 A wrong host or port, or a server that is not running, reads like
 `deadlineExceeded (Connection errors: ... Connection refused)`; a wrong
 enrollment key is refused by the server as `unauthenticated`. The SDK also
-logs every step (registration, downloads, validation, heartbeats) to the
-unified log with subsystem `com.fleetml.sdk` and category `FleetML`. Xcode's
-console shows it while the app runs from Xcode; without a debugger, open
-Console.app on the Mac, select the phone (or the simulator) in the sidebar,
-press Start, and search for `subsystem:com.fleetml.sdk`. For the simulator,
-`xcrun simctl spawn booted log stream --predicate 'subsystem == "com.fleetml.sdk"'`
-prints it in a terminal.
+logs to the unified log with subsystem `com.fleetml.sdk` and category
+`FleetML`: at info level the registration, each download (model, version,
+bytes), each validation result and each activation, at warning level every
+failure, and at debug level every heartbeat. Xcode's console shows it while the
+app runs from Xcode; without a debugger, open Console.app on the Mac, select
+the phone (or the simulator) in the sidebar, press Start, and search for
+`subsystem:com.fleetml.sdk` (Action, Include Info Messages shows the info
+lines). For the simulator, this prints it in a terminal (`--level debug` adds
+the heartbeats; without `--level` only warnings appear):
+
+```bash
+xcrun simctl spawn booted log stream --level info --predicate 'subsystem == "com.fleetml.sdk"'
+```
+
+A first launch that registers and receives iris 1.0.0 prints these lines
+(time stamps and the process column left out):
+
+```text
+[com.fleetml.sdk:FleetML] Registered as device <device ID>
+[com.fleetml.sdk:FleetML] Downloading iris 1.0.0 (555 bytes)
+[com.fleetml.sdk:FleetML] Downloaded iris 1.0.0 (555 bytes, sha256 verified)
+[com.fleetml.sdk:FleetML] Model iris 1.0.0 passed validation
+[com.fleetml.sdk:FleetML] Model iris 1.0.0 is active
+```
+
+At launch the delegate hears `fleetML(connectionChanged: true)` once the
+first heartbeat is answered. SDK 0.5.0 also reported a `false` right before
+it and logged `Heartbeat failed ... GRPCStatus error 1` at every launch; that
+meant nothing (a heartbeat cancelled by the SDK itself) and is gone from
+0.6.0.
+
+### Your own app
+
+What an own app needs, in one place:
+
+1. **Labels that match the deployment.** A deployment reaches the app only if
+   the app's `labels` contain its `--target`: `--target '{"app":"myapp"}'`
+   reaches `labels: ["app": "myapp", "tier": "beta"]`.
+2. **A Core ML version it can get.** Push the `.mlmodel` with
+   `--framework COREML` and the requirements override in
+   [Which variant a device gets](#which-variant-a-device-gets).
+3. **On the simulator, nothing more.** It shares the Mac's `localhost`, so
+   `serverHost: "localhost"` reaches the quickstart's server, and the
+   downloads from `localhost:19100` need no App Transport Security keys.
+4. **On a phone, two `Info.plist` keys and the server's object store on the
+   Mac's LAN address**, as in [Own app on a real iPhone](#own-app-on-a-real-iphone).
+   `S3_PUBLIC_ENDPOINT` is set by whoever starts the server: if that is not
+   you, ask them to start the stack with it set to an address the phone
+   reaches.
+5. **The enrollment key out of the source.** Keep it in a build setting
+   instead: a line `FLEETML_ENROLLMENT_KEY = <enrollment key>` in an
+   `.xcconfig` file that is not committed, set as the target's configuration
+   file, and an entry `FleetMLEnrollmentKey` with the value
+   `$(FLEETML_ENROLLMENT_KEY)` on the target's Info tab (Custom iOS Target
+   Properties), which keeps it in the app's `Info.plist` file; the
+   `INFOPLIST_KEY_` build settings of a generated `Info.plist` take only
+   Apple's keys. The app reads it with:
+
+   ```swift
+   static let enrollmentKey = Bundle.main.object(forInfoDictionaryKey: "FleetMLEnrollmentKey") as? String ?? ""
+   ```
+
+   The key is needed only to register. Revoking it stops new installs from
+   registering; devices that already registered keep their token.
+6. **An offline test without stopping a shared server.** Point the app at a
+   port nothing listens on (`serverPort: 19999`) and launch it again: the
+   cached model is ready at once, and `fleetML(connectionChanged: false)`
+   follows within about ten seconds. On a phone, airplane mode does the same.
 
 ## Enrollment and identity
 
@@ -172,7 +238,11 @@ advertising identifier), so two FleetML apps on one phone are separate
 devices. A device only ever receives deployments and experiments of its own
 project. After registering, the SDK:
 
-- re-registers only when it is new or its labels or SDK version changed;
+- re-registers only when it is new or its labels or SDK version changed (an
+  app built without code signing, `CODE_SIGNING_ALLOWED=NO`, cannot keep the
+  token in the simulator's Keychain and registers again, with the same device
+  ID, at every launch; the SDK logs a warning then, and Xcode's default
+  simulator builds are signed);
 - refreshes the token before it expires (6 days before, or at half its lifetime
   for short-lived tokens);
 - re-registers with the enrollment key if the server rejects the token.
@@ -394,20 +464,26 @@ key from `.env` instead.
    ```
 
    `simctl boot` reports an error if that simulator is already booted, which
-   does no harm. The app registers, downloads iris 1.0.0, validates it with
+   does no harm. On a simulator where the sample app ran before, its saved
+   settings stay, the port included, and the launch arguments replace only
+   the host and the key: `xcrun simctl uninstall $SIM com.fleetml.sample`
+   before the install starts it clean. The app registers, downloads iris 1.0.0, validates it with
    Core ML, shows **Active model: iris 1.0.0** and classifies the sample
    flower with it, reporting inference telemetry; the console prints the same
    steps (`FleetMLSample: Registered as ...`, `Model ready: iris 1.0.0`).
    `fleetml deploy create --project $P --version $V2 --target '{"app":"sample"}'`
-   and `deploy start` update the app to 2.0.0 (1.0.0 is kept as
-   last-known-good).
+   and `deploy start` update the app to 2.0.0 on its next heartbeat, 60 seconds
+   by default (1.0.0 is kept as last-known-good).
 
 4. Offline start: stop the server
    (`docker compose -f deploy/docker-compose.prod.yml stop server`), then
    `xcrun simctl terminate $SIM com.fleetml.sample` and launch the app again.
    The cached model is active immediately and inference works; events are
    queued and sent once the server is back
-   (`docker compose -f deploy/docker-compose.prod.yml start server`).
+   (`docker compose -f deploy/docker-compose.prod.yml start server`). On a
+   server that others use, launch the app with a closed port instead
+   (`-fleetmlPort 19999` as one more launch argument), as in
+   [Your own app](#your-own-app).
 
 ### Physical device
 
@@ -484,8 +560,8 @@ before it can use a server on the Mac:
    connection error, and any `URLSession` request to the Mac's LAN address
    fails with -1009 ("The Internet connection appears to be offline"). Once
    allowed, no relaunch is needed: the SDK registers on its next retry (within
-   10 seconds) and the first model arrives with the next heartbeat, up to a
-   minute later.
+   10 seconds) and the first model arrives with the next heartbeat, 60 seconds
+   later at most with the server's default.
 
 3. **The server's object store on the Mac's LAN address:**
    `S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100` as in step 2 of

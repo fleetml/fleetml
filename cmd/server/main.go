@@ -171,6 +171,7 @@ func run() error {
 	deviceClassRepo := device.NewDeviceClassRepo(pool)
 	deviceSvc := device.NewService(deviceRepo, deviceClassRepo, cfg.JWTSecret, logger)
 	deviceSvc.SetTokenTTL(cfg.DeviceTokenTTL)
+	deviceSvc.SetModelStatusReader(deviceRepo)
 	deviceSvc.SetConfig(device.Config{
 		HeartbeatSecs:           uint32(cfg.DeviceHeartbeatInterval.Seconds()),
 		BackgroundHeartbeatSecs: uint32(cfg.DeviceBackgroundHeartbeatInterval.Seconds()),

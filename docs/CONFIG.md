@@ -144,8 +144,9 @@ devices are not on this machine) from the shell.
 
 ## CLI
 
-`fleetml` reads `~/.fleetml/config.yaml` (written by `fleetml config set-key`
-and friends); these override it:
+`fleetml` reads `~/.fleetml/config.yaml` (`%USERPROFILE%\.fleetml\config.yaml`
+on Windows), written by `fleetml config set-key` and friends; these override
+it:
 
 | Variable | Default | Description |
 |---|---|---|

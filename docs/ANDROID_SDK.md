@@ -11,8 +11,9 @@ Runtime or anything else.
 
 ## Install
 
-The SDK is on Maven Central as `dev.fleetml:fleetml-sdk`. Add it to the app
-with TensorFlow Lite next to it:
+The SDK is on Maven Central as `dev.fleetml:fleetml-sdk`; its latest version
+is 0.4.0, because FleetML 0.5.0 changed nothing in it. Add it to the app with
+TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
@@ -113,19 +114,24 @@ JDK, set in its Gradle settings.
 ## Configure and start
 
 Initialize once per process, in `Application.onCreate()`, so screen rotation
-never re-initializes the SDK:
+never re-initializes the SDK. The SDK's classes are in the package
+`com.fleetml.sdk`; the Maven group, `dev.fleetml`, is a different name, so
+`import dev.fleetml...` finds nothing:
 
 ```kotlin
+import android.app.Application
+import com.fleetml.sdk.*
+
 class MyApp : Application(), FleetMLCallback {
     override fun onCreate() {
         super.onCreate()
         FleetML.init(
             context = this,
             config = FleetMLConfig(
-                serverHost = "fleetml.example.com",
+                serverHost = "10.0.2.2",
                 serverPort = 19090,
                 enrollmentKey = "<enrollment key>",
-                labels = mapOf("region" to "eu", "tier" to "beta"),
+                labels = mapOf("app" to "myapp", "tier" to "beta"),
             ),
             callback = this,
         )
@@ -136,6 +142,13 @@ class MyApp : Application(), FleetMLCallback {
     }
 }
 ```
+
+Register the class in `AndroidManifest.xml` with
+`<application android:name=".MyApp" ...>`. `10.0.2.2` is how the emulator
+reaches a server on the laptop it runs on. On a phone, `serverHost` is
+`localhost` with the `adb reverse` forwards, or the laptop's LAN address over
+Wi-Fi ([Install](#install)), and in production the server's host name with
+`serverPort = 443` and `useTls = true`.
 
 The enrollment key comes from `fleetml enrollment-key create --project <project ID>`,
 which prints it once. To keep it out of the source, put it in the build
@@ -150,21 +163,86 @@ thread before touching views.
 
 | Callback | When |
 |---|---|
-| `onModelReady(model)` | A model was downloaded, verified and validated and is now active; also at start for models cached from an earlier run |
-| `onModelUnload(modelId, modelName, variantId)` | The server no longer assigns the model |
-| `onModelLoadFailed(modelName, version, reason)` | A new version could not be downloaded or failed validation; the last-known-good one stays |
-| `onRegistered(deviceId)` | The device registered (or re-registered) |
-| `onConnectionStatusChanged(connected)` | The server became reachable or unreachable |
+| `onModelReady(model: ActiveModel)` | A model was downloaded, verified and validated and is now active; also at start for models cached from an earlier run |
+| `onModelUnload(modelId: String, modelName: String, variantId: String)` | The server no longer assigns the model |
+| `onModelLoadFailed(modelName: String, version: String, reason: String)` | A new version could not be downloaded or failed validation; the last-known-good one stays |
+| `onRegistered(deviceId: String)` | The device registered (or re-registered) |
+| `onConnectionStatusChanged(connected: Boolean)` | The server became reachable or unreachable |
+
+`onModelReady` hands over an `ActiveModel`, which `FleetML.activeModel(name)`
+and `FleetML.activeModels()` also return:
+
+| `ActiveModel` field | Type | What it is |
+|---|---|---|
+| `modelName` | `String` | The model's name, for example `iris` |
+| `version` | `String` | The version, for example `1.0.0` |
+| `file` | `java.io.File` | The model file on disk, sha256-verified and validated: load this |
+| `modelId` | `String` | The model's ID, the same for every version |
+| `versionId` | `String` | The version's ID; telemetry is attributed to it |
+| `variantId` | `String` | The variant (one file of the version) the server chose for this device |
+| `sha256` | `String` | The file's sha256 |
+
+`FleetML.syncNow()` runs one heartbeat and one telemetry flush now, and
+returns whether the server was reached. It is a `suspend` function, so call
+it from a coroutine, for example from an activity with
+`androidx.lifecycle:lifecycle-runtime-ktx` in the app's dependencies and
+`import androidx.lifecycle.lifecycleScope` and `import kotlinx.coroutines.launch`
+in the file:
+
+```kotlin
+lifecycleScope.launch { val reached = FleetML.syncNow() }
+```
 
 **What to expect on the first run.** Within seconds of `FleetML.init`,
 `onRegistered(deviceId)` fires and the device appears in
 `fleetml device list --project <project ID>` and on the dashboard's Devices
-page. `onModelReady` fires only once a deployment targets the app's labels
-(`fleetml deploy create --target '{"region":"eu"}'` and `deploy start`), on
-the next heartbeat. The SDK logs every step to logcat with the tag `FleetML`
+page. If a deployment already targets the app's labels, the model arrives
+right after registration and `onModelReady` fires; a deployment created later
+arrives with the next heartbeat, 60 seconds with the server's default. The
+SDK logs every step to logcat with the tag `FleetML`
 (`adb logcat -s FleetML`): registration, downloads, validation, and at
 warning level or above why registration or a heartbeat failed, such as an
 unreachable host or a refused enrollment key.
+
+### Own app: publish and deploy
+
+The CLI side for an own app, from the root of a clone (for the sample models)
+with the quickstart's server: a project, two versions, an enrollment key, and
+a deployment to the labels the app sets (`app=myapp` above):
+
+```bash
+export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+P=$(fleetml project create --name myapp -o json | jq -r .id)
+fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
+M=$(fleetml model list --project $P -o json | jq -r '.[0].id')
+V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
+V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
+fleetml enrollment-key create --project $P --name myapp
+D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"myapp"}' -o json | jq -r .id)
+fleetml deploy start $D1
+```
+
+`enrollment-key create` prints the key once: put it in the app's config. The
+deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`), which
+means assigned; once the app runs, logcat shows `Model iris 1.0.0 is active`.
+`fleetml deploy get $D1 | jq -c .devices` counts what the devices reported in
+their last heartbeat, so it prints `{"loaded":0,"targeted":1}` until the app's
+next heartbeat and `{"loaded":1,"targeted":1}` after it. Then roll out 2.0.0:
+
+```bash
+D2=$(fleetml deploy create --project $P --version $V2 --target '{"app":"myapp"}' -o json | jq -r .id)
+fleetml deploy start $D2
+```
+
+The app gets it with its next heartbeat, 60 seconds by default; logcat shows
+`Model iris 2.0.0 built from a 603-byte delta instead of 2492 bytes` and
+`Model iris 2.0.0 is active`. After that,
+`fleetml telemetry events --model-version $V2` prints a table of the
+version's events (type, latency, confidence, error): a `MODEL_LOAD` when the
+version became active, and an `INFERENCE` for each
+[inference the app reports](#telemetry). Before the app has the version it
+prints `No results.`.
 
 | `FleetMLConfig` field | Default | Purpose |
 |---|---|---|
@@ -172,7 +250,7 @@ unreachable host or a refused enrollment key.
 | `enrollmentKey` | `""` | Per-project key for the first registration (`fleetml enrollment-key create`) |
 | `useTls` | `false` | TLS for gRPC (put the server behind a TLS proxy in production) |
 | `labels` | `{}` | Labels deployments and experiments target (`target_selector`) |
-| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own |
+| `heartbeatIntervalSeconds` | `30` | Foreground heartbeat interval, until the server sends its own (server default 60) |
 | `backgroundHeartbeatIntervalSeconds` | `3600` | Background check interval, until the server sends its own (at least 15 minutes) |
 | `telemetryBatchSize`, `telemetryFlushIntervalSeconds` | `50`, `30` | Until the server's `DeviceConfig` overrides them (server default 100; the SDK uses 50 until the first response) |
 | `maxCacheSizeMb` | `500` | Disk budget for models; the active and last-known-good models are never evicted |
@@ -181,7 +259,8 @@ unreachable host or a refused enrollment key.
 
 `FleetML.stop()` stops background work and clears the singleton, so `init` can
 be called again (for example with a new server address). `FleetML.reset()` also
-deletes cached models and the registration.
+deletes cached models and the registration; `FleetML.reset(context)` does the
+same before `init`.
 
 ## Enrollment and identity
 
@@ -304,6 +383,9 @@ FleetML.getTelemetryReporter().reportInference(model, latencyMs = 3, confidence 
 FleetML.getTelemetryReporter().reportInference(model, latencyMs = 3, features = mapOf("petal_length" to floatArrayOf(5.1f)))
 ```
 
+On the server, `fleetml telemetry events --model-version <version ID>` lists
+the events of a version (`--device <device ID>` narrows them to one device).
+
 `reportInference(modelVersionId, latencyMs, ...)` reports for a version ID
 instead of an `ActiveModel` (for a model the app loaded itself), and
 `reportModelStatus(modelVersionId, type, ...)` reports a lifecycle event
@@ -368,7 +450,11 @@ Contributors on the dev stack (`make dev`) use the key from `.env` and port
    `$HOME/Android/Sdk` on Linux, where Android Studio puts it), and it needs JDK
    17 ([From a clone](#from-a-clone)). Android Studio writes `local.properties`
    when it opens the project, which makes the `ANDROID_HOME` export
-   unnecessary there:
+   unnecessary there. With more than one device attached (the emulator and a
+   phone, say), Gradle installs on every one of them and `adb` asks which one
+   to use: `export ANDROID_SERIAL=emulator-5554` (the name `adb devices`
+   lists) pins both to the emulator in this shell; set it before step 2's
+   `adb reverse` too.
 
    ```bash
    export ANDROID_HOME=$HOME/Library/Android/sdk JAVA_HOME=/opt/homebrew/opt/openjdk@17
@@ -386,15 +472,17 @@ Contributors on the dev stack (`make dev`) use the key from `.env` and port
    registration and `Model iris 1.0.0 is active`. **Classify sample flower**
    runs it and reports inference telemetry. `fleetml deploy create --project $P
    --version $V2 --target '{"app":"sample"}'` and `deploy start` update the app
-   to 2.0.0 (1.0.0 is kept as last-known-good).
+   to 2.0.0 on its next heartbeat, 60 seconds by default (1.0.0 is kept as
+   last-known-good).
 
 5. Offline start: enable airplane mode
    (`adb shell cmd connectivity airplane-mode enable`, on API 30 and later;
    on API 26 to 29 use the quick settings tile), force-stop and reopen the
    app. The cached model is active immediately and inference works; events
    are queued and sent after `adb shell cmd connectivity airplane-mode disable`.
-   On a phone connected over USB, airplane mode does not cut the ports
-   forwarded with `adb reverse`: remove them with `adb reverse --remove-all`
+   The emulator loses `10.0.2.2` in airplane mode, so this works there as
+   written. On a phone connected over USB, though, airplane mode does not cut
+   the ports forwarded with `adb reverse`: remove them with `adb reverse --remove-all`
    instead, force-stop and reopen the app, and set the reverses again
    afterwards ([Physical device](#physical-device)).
 
@@ -405,6 +493,8 @@ server:
 
 1. Turn on USB debugging in the phone's developer options, connect it and
    accept the authorisation prompt; `adb devices` then lists it as `device`.
+   If an emulator runs as well, `export ANDROID_SERIAL=<serial>` with the
+   phone's serial from `adb devices`, so `adb` and Gradle use only the phone.
 2. Forward the REST, gRPC and model-file ports, so the phone reaches the
    laptop as `localhost`:
 
@@ -422,6 +512,26 @@ server:
 Everything else is the same as on the emulator, including the debug network
 security config, which already allows cleartext to `localhost`. Without USB,
 use the laptop's LAN address instead, as in [Install](#install).
+
+### From Windows
+
+With the server in WSL 2 ([On Windows](QUICKSTART.md#on-windows)), the
+Android tools run on the Windows side, where Android Studio installs them:
+`adb` and the emulator are in `%LOCALAPPDATA%\Android\Sdk` (`adb` in its
+`platform-tools`), and an `adb` installed inside Ubuntu does not see the
+Windows emulator. The CLI steps of the runbook (step 3) run in the Ubuntu
+shell, and the enrollment key crosses by hand (`echo $EK` there). Steps 2, 4
+and 5 run in PowerShell: build the sample app with
+`.\gradlew.bat :sample-app:installDebug -PfleetmlEnrollmentKey=<key>` in the
+`android` folder of a clone on the Windows side (Gradle is slow on a
+`\\wsl.localhost` path), with `ANDROID_HOME` set to that SDK folder and
+`JAVA_HOME` to a JDK 17, or open the folder in Android Studio. The emulator's
+`10.0.2.2:19090` and `adb reverse tcp:19100 tcp:19100` reach the ports
+Docker Desktop publishes on Windows. A phone over Wi-Fi reaches the laptop's
+LAN address only if Windows Firewall lets in TCP 19090 and 19100, for example
+with
+`New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow`
+in an administrator PowerShell. None of this is verified on Windows by CI.
 
 ## For contributors
 

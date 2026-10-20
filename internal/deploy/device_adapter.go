@@ -12,11 +12,16 @@ import (
 
 // DeviceDirectory finds the devices a deployment targets.
 type DeviceDirectory interface {
-	// ListMatchingDevices returns the IDs of devices whose labels contain the selector.
-	ListMatchingDevices(ctx context.Context, selector map[string]string) ([]uuid.UUID, error)
+	// ListMatchingDevices returns the IDs of the project's devices whose
+	// labels contain the selector: the devices a deployment of the project
+	// targets (a device only ever gets its own project's deployments).
+	ListMatchingDevices(ctx context.Context, projectID uuid.UUID, selector map[string]string) ([]uuid.UUID, error)
 	// CountUnavailable counts devices among ids that were seen since a time
 	// but did not report any variant of the version loaded.
 	CountUnavailable(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID, seenSince time.Time) (int, error)
+	// CountLoaded counts devices among ids whose last heartbeat reported a
+	// variant of the version loaded.
+	CountLoaded(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID) (int, error)
 }
 
 // DeviceCountAdapter implements DeviceCounter using pgxpool.
@@ -29,7 +34,7 @@ func NewDeviceCountAdapter(pool *pgxpool.Pool) *DeviceCountAdapter {
 	return &DeviceCountAdapter{pool: pool}
 }
 
-func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, selector map[string]string) ([]uuid.UUID, error) {
+func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, projectID uuid.UUID, selector map[string]string) ([]uuid.UUID, error) {
 	if selector == nil {
 		selector = map[string]string{}
 	}
@@ -37,7 +42,7 @@ func (a *DeviceCountAdapter) ListMatchingDevices(ctx context.Context, selector m
 	if err != nil {
 		return nil, fmt.Errorf("deviceList: marshalling: %w", err)
 	}
-	rows, err := a.pool.Query(ctx, `SELECT id FROM devices WHERE labels_json @> $1::jsonb`, selectorJSON)
+	rows, err := a.pool.Query(ctx, `SELECT id FROM devices WHERE project_id = $1 AND labels_json @> $2::jsonb`, projectID, selectorJSON)
 	if err != nil {
 		return nil, fmt.Errorf("deviceList: %w", err)
 	}
@@ -65,6 +70,22 @@ func (a *DeviceCountAdapter) CountUnavailable(ctx context.Context, ids []uuid.UU
 		ids, versionID, seenSince).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("deviceCount.CountUnavailable: %w", err)
+	}
+	return n, nil
+}
+
+func (a *DeviceCountAdapter) CountLoaded(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := a.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM devices d
+		WHERE d.id = ANY($1)
+		  AND d.loaded_variant_ids ?| ARRAY(SELECT id::text FROM model_variants WHERE version_id = $2)`,
+		ids, versionID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("deviceCount.CountLoaded: %w", err)
 	}
 	return n, nil
 }

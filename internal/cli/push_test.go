@@ -73,3 +73,10 @@ func TestPush_Metadata(t *testing.T) {
 	err := runCLI(t, fake.URL, "k", "push", file, "--project", projectID, "--model", "iris", "--version", "2.0.0", "--metadata", "{")
 	assert.ErrorContains(t, err, "invalid --metadata JSON")
 }
+
+// A small model was shown as "0KB" before.
+func TestSizeString(t *testing.T) {
+	assert.Equal(t, "642 bytes", sizeString(642))
+	assert.Equal(t, "2.4 KB", sizeString(2460))
+	assert.Equal(t, "3.0 MB", sizeString(3*1024*1024))
+}

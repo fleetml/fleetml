@@ -276,6 +276,10 @@ func TestGetDevice(t *testing.T) {
 
 	w := doJSON(r, "GET", "/api/v1/devices/"+resp.DeviceID, nil)
 	assert.Equal(t, http.StatusOK, w.Code)
+	data := parseBody(t, w)["data"].(map[string]interface{})
+	assert.Equal(t, resp.DeviceID, data["id"])
+	assert.Equal(t, []interface{}{}, data["loaded_models"], "what the device reported loaded")
+	assert.Contains(t, data, "last_model_event")
 }
 
 func TestGetDeviceNotFound(t *testing.T) {

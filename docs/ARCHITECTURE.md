@@ -133,6 +133,9 @@ Planning rules:
 - Per model, the newest active deployment that targets the device and exposes
   it wins; a version replaced by another arrives as UPDATE (new) plus UNLOAD
   (old), and the SDK keeps the old one until the new one validates.
+- The variants a heartbeat reports loaded are stored on the device; a
+  deployment's `devices` counts and a device's `loaded_models` are read from
+  them ([Did the model arrive?](ROLLOUTS.md#did-the-model-arrive)).
 - Cohorts come from a consistent-hash ring (`internal/rollout`): a device's
   position is the first four bytes of `sha256(device ID + deployment ID)`.
   Canary stages expose positions below a percentage, rolling batches below a

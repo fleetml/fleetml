@@ -84,7 +84,11 @@ final class KeychainTokenStore: TokenStore {
             var q = query()
             q[kSecValueData as String] = data
             q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            SecItemAdd(q as CFDictionary, nil)
+            let status = SecItemAdd(q as CFDictionary, nil)
+            if status != errSecSuccess {
+                // e.g. -34018 for an app built without code signing: it registers again at every launch.
+                Log.sdk.warning("The device token could not be stored in the Keychain (OSStatus \(status, privacy: .public)); the app registers again at its next launch. Build the app with code signing.")
+            }
         }
     }
 }

@@ -40,6 +40,9 @@ var AgentVersion = version.String()
 // modelFile is the name of the model inside each version directory.
 const modelFile = "model.bin"
 
+// modelFileMode lets an inference process running as any user read the model.
+const modelFileMode = 0o644
+
 // Agent keeps one machine's models in line with what the server assigns.
 type Agent struct {
 	cfg     *Config
@@ -62,12 +65,18 @@ type Agent struct {
 	reconfigured chan struct{}
 	// featureBins are the bin edges of each model's features (model ID -> feature -> edges).
 	featureBins map[string]map[string][]float64
+	// downloadFailed holds the variants whose failed download was reported,
+	// so a download failing on every heartbeat is reported once.
+	downloadFailed map[string]bool
 }
 
 // New opens the agent's state and connects to the server (lazily).
 func New(cfg *Config, log *slog.Logger) (*Agent, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
+	}
+	if err := mkdirAllReadable(cfg.StateDir); err != nil {
+		return nil, fmt.Errorf("creating state_dir: %w", err)
 	}
 	store, err := OpenStore(filepath.Join(cfg.StateDir, "state.json"))
 	if err != nil {
@@ -96,6 +105,7 @@ func New(cfg *Config, log *slog.Logger) (*Agent, error) {
 		cfg: cfg, store: store, queue: queue, log: log, http: &http.Client{Timeout: 30 * time.Minute},
 		conn: conn, devices: fleetmlv1.NewDeviceServiceClient(conn), tel: fleetmlv1.NewTelemetryServiceClient(conn),
 		now: time.Now, interval: cfg.HeartbeatInterval, batchSize: 100, flushEvery: 30 * time.Second, arms: map[string]string{}, reconfigured: make(chan struct{}, 1),
+		downloadFailed: map[string]bool{},
 	}, nil
 }
 
@@ -107,6 +117,7 @@ func (a *Agent) Close() error { return a.conn.Close() }
 // unreachable.
 func (a *Agent) Run(ctx context.Context) error {
 	for _, m := range a.ActiveModels() {
+		_ = os.Chmod(filepath.Join(m.Active.Dir, modelFile), modelFileMode) // written 0600 before 0.6.0
 		a.log.Info("active model (from the last run)", "model", m.Name, "version", m.Active.Version, "path", a.currentLink(m.Name))
 	}
 	if a.cfg.TelemetryListen != "" {
@@ -398,11 +409,18 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		if !a.fromDelta(ctx, as, part) {
 			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256); err != nil {
 				a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
+				a.mu.Lock()
+				first := !a.downloadFailed[as.VariantId]
+				a.downloadFailed[as.VariantId] = true
+				a.mu.Unlock()
+				if first { // the server shows it as the device's last model event
+					a.report(as.VersionId, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, 0, 0, "", "download failed: "+err.Error())
+				}
 				return // retried on the next heartbeat
 			}
 			a.log.Info("model downloaded", "model", as.ModelName, "version", as.Version, "bytes", as.BlobSizeBytes)
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := mkdirAllReadable(dir); err != nil {
 			a.log.Error("creating model directory failed", "error", err)
 			return
 		}
@@ -410,6 +428,12 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 			a.log.Error("moving model into place failed", "error", err)
 			return
 		}
+	}
+	// The inference process usually runs as another user: the model and the
+	// directories above it are readable by everyone, whatever the umask.
+	if err := errors.Join(os.Chmod(file, modelFileMode), os.Chmod(dir, 0o755), os.Chmod(filepath.Dir(dir), 0o755)); err != nil {
+		a.log.Error("making the model readable failed", "error", err)
+		return
 	}
 
 	started := a.now()
@@ -443,6 +467,9 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		}
 		m.Active = next
 		delete(s.Failed, as.VariantId)
+		a.mu.Lock()
+		delete(a.downloadFailed, as.VariantId)
+		a.mu.Unlock()
 		keep = []string{m.Active.Dir}
 		if m.LastKnownGood != nil {
 			keep = append(keep, m.LastKnownGood.Dir)
@@ -485,7 +512,7 @@ func shortID(id string) string {
 
 // swapSymlink points link at target atomically (rename over the old link).
 func swapSymlink(link, target string) error {
-	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+	if err := mkdirAllReadable(filepath.Dir(link)); err != nil {
 		return err
 	}
 	tmp := link + ".tmp"
@@ -494,6 +521,27 @@ func swapSymlink(link, target string) error {
 		return err
 	}
 	return os.Rename(tmp, link)
+}
+
+// mkdirAllReadable is os.MkdirAll with every directory it creates set to
+// 0755 whatever the umask, so that other users can reach the models inside.
+// Directories that already exist keep their mode.
+func mkdirAllReadable(dir string) error {
+	if fi, err := os.Stat(dir); err == nil {
+		if !fi.IsDir() {
+			return fmt.Errorf("%s is not a directory", dir)
+		}
+		return nil
+	}
+	if parent := filepath.Dir(dir); parent != dir {
+		if err := mkdirAllReadable(parent); err != nil {
+			return err
+		}
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	return os.Chmod(dir, 0o755)
 }
 
 // pruneVersions deletes version directories of a model other than keep.
@@ -645,7 +693,7 @@ func (a *Agent) fromDelta(ctx context.Context, as *fleetmlv1.ModelAssignment, pa
 	if sum := sha256.Sum256(out); !strings.EqualFold(hex.EncodeToString(sum[:]), as.BlobSha256) {
 		return fail(errors.New("the patched model does not match its sha256"))
 	}
-	if err := os.WriteFile(part, out, 0o644); err != nil {
+	if err := os.WriteFile(part, out, 0o600); err != nil {
 		return fail(err)
 	}
 	a.log.Info("model built from a delta", "model", as.ModelName, "version", as.Version,

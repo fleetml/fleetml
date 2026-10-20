@@ -358,3 +358,33 @@ func TestE2E_DeviceMovesProjectWithItsToken(t *testing.T) {
 	require.Len(t, resp.Assignments, 1, "the device now gets project B's deployment")
 	assert.Equal(t, vb, resp.Assignments[0].VersionId)
 }
+
+// A deployment is COMPLETE as soon as it is assigned; GET /deployments/:id
+// tells how many targeted devices report its version loaded. A device of
+// another project with the same labels is not targeted.
+func TestE2E_DeploymentDeviceCounts(t *testing.T) {
+	e := newEnv(t)
+	f := e.newFixture(t)
+	v1, _, _ := e.newVersion(t, f, "1.0.0", "")
+	labels := map[string]string{"suite": randHex(4)}
+	a := e.register(t, f.enrollKey, labels)
+	b := e.register(t, f.enrollKey, labels)
+	e.register(t, e.newFixture(t).enrollKey, labels)
+	id := e.deploy(t, map[string]any{"project_id": f.project, "model_version_id": v1, "target_selector": labels})
+	require.Equal(t, "COMPLETE", e.deploymentStatus(t, id))
+
+	counts := func() map[string]int {
+		t.Helper()
+		var d struct {
+			Devices map[string]int `json:"devices"`
+		}
+		require.Equal(t, 200, e.call(t, "GET", "/api/v1/deployments/"+id, nil, &d))
+		return d.Devices
+	}
+	assert.Equal(t, map[string]int{"targeted": 2, "loaded": 0}, counts(), "assigned, nothing loaded yet")
+	e.heartbeat(t, a)
+	e.heartbeat(t, b)
+	assert.Equal(t, map[string]int{"targeted": 2, "loaded": 0}, counts(), "both got the assignment")
+	e.heartbeat(t, a) // a reports the model loaded; b's download keeps failing
+	assert.Equal(t, map[string]int{"targeted": 2, "loaded": 1}, counts())
+}

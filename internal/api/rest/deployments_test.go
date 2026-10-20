@@ -43,10 +43,12 @@ func (m *mockDeployRepo) GetByID(_ context.Context, id uuid.UUID) (*deploy.Deplo
 	return d, nil
 }
 
-func (m *mockDeployRepo) List(_ context.Context, limit, offset int) ([]deploy.Deployment, int, error) {
+func (m *mockDeployRepo) List(_ context.Context, projectID *uuid.UUID, limit, offset int) ([]deploy.Deployment, int, error) {
 	var all []deploy.Deployment
 	for _, d := range m.deployments {
-		all = append(all, *d)
+		if projectID == nil || d.ProjectID == *projectID {
+			all = append(all, *d)
+		}
 	}
 	total := len(all)
 	if offset >= total {
@@ -105,7 +107,11 @@ func (mockDeployFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID,
 	return 0, nil
 }
 
-func (mockDeployFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
+func (mockDeployFleet) CountLoaded(context.Context, []uuid.UUID, uuid.UUID) (int, error) {
+	return 1, nil
+}
+
+func (mockDeployFleet) ListMatchingDevices(context.Context, uuid.UUID, map[string]string) ([]uuid.UUID, error) {
 	return []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}, nil
 }
 
@@ -212,4 +218,28 @@ func TestDeployPauseResume(t *testing.T) {
 
 	w = doJSON(r, "POST", fmt.Sprintf("/api/v1/deployments/%s/resume", dep.ID), nil)
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// project_id lists only that project's deployments, like the device list;
+// a value that is not a UUID is refused rather than ignored.
+func TestDeployListByProject(t *testing.T) {
+	r, svc := setupDeployTestRouter()
+	ctx := context.Background()
+	p1, p2 := uuid.New(), uuid.New()
+	for _, p := range []uuid.UUID{p1, p1, p2} {
+		_, err := svc.Create(ctx, deploy.CreateInput{ProjectID: p, ModelVersionID: uuid.New(), Strategy: "ALL_AT_ONCE"})
+		require.NoError(t, err)
+	}
+	total := func(query string) float64 {
+		t.Helper()
+		w := doJSON(r, "GET", "/api/v1/deployments"+query, nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		return parseBody(t, w)["pagination"].(map[string]interface{})["total"].(float64)
+	}
+	assert.Equal(t, float64(3), total(""))
+	assert.Equal(t, float64(2), total("?project_id="+p1.String()))
+	assert.Equal(t, float64(1), total("?project_id="+p2.String()))
+	assert.Equal(t, float64(0), total("?project_id="+uuid.New().String()))
+	w := doJSON(r, "GET", "/api/v1/deployments?project_id=not-a-uuid", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

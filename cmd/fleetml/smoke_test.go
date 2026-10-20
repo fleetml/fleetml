@@ -101,6 +101,12 @@ func TestQuickstartCalls(t *testing.T) {
 	runJSON(&dep, "deploy", "create", "--project", projectID, "--version", fmt.Sprint(versions[0]["id"]), "--target", `{"app":"smoke"}`)
 	assert.Equal(t, "PENDING", dep["status"])
 	assert.Contains(t, run("deploy", "start", fmt.Sprint(dep["id"])), "Deployment start → COMPLETE")
+	var deps []map[string]any
+	runJSON(&deps, "deploy", "list", "--project", projectID)
+	require.Len(t, deps, 1, "the project's deployment")
+	assert.Equal(t, dep["id"], deps[0]["id"])
+	runJSON(&deps, "deploy", "list", "--project", "00000000-0000-0000-0000-000000000000")
+	assert.Empty(t, deps, "a project without deployments lists none")
 
 	out = run("device", "list")
 	assert.Regexp(t, `ID\s+OS\s+RAM\(MB\)\s+Chipset|No results\.`, out)

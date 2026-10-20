@@ -43,7 +43,7 @@ func newPushCmd() *cobra.Command {
 			sha := hex.EncodeToString(h.Sum(nil))
 
 			// Step 1: Ensure model exists
-			fmt.Printf("Preparing %s (%dKB, sha256:%s)...\n", filePath, fileSize/1024, sha[:12])
+			fmt.Printf("Preparing %s (%s, sha256:%s)...\n", filePath, sizeString(fileSize), sha[:12])
 			var model map[string]interface{}
 			err = client.Post("/api/v1/projects/"+projectID+"/models", map[string]string{
 				"name": modelName, "framework": framework, "task_type": task,
@@ -165,4 +165,16 @@ func newPushCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("model")
 	_ = cmd.MarkFlagRequired("version")
 	return cmd
+}
+
+// sizeString is a file size for people: bytes below 1 KB, then KB and MB.
+func sizeString(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d bytes", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	}
 }

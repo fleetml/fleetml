@@ -76,9 +76,19 @@ func (h *DeploymentHandler) create(c *gin.Context) {
 	respondData(c, http.StatusCreated, d)
 }
 
+// list filters on the project_id query parameter.
 func (h *DeploymentHandler) list(c *gin.Context) {
 	limit, offset := parsePagination(c)
-	deployments, total, err := h.service.List(c.Request.Context(), limit, offset)
+	var projectID *uuid.UUID
+	if v := c.Query("project_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id must be a UUID")
+			return
+		}
+		projectID = &id
+	}
+	deployments, total, err := h.service.List(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		handleDeployError(c, err)
 		return

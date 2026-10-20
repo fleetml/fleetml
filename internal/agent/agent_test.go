@@ -197,6 +197,10 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	assert.JSONEq(t, `{"accepted":1,"rejected":1}`, rec.Body.String())
 	last := a.queue.Peek(100)
 	assert.Equal(t, "ver-3.0.0", last[len(last)-1].ModelVersionId)
+	rec = httptest.NewRecorder()
+	a.handleModels(rec, httptest.NewRequest(http.MethodGet, "/v1/models", http.NoBody))
+	assert.JSONEq(t, `[{"model":"iris","version":"3.0.0","version_id":"ver-3.0.0","path":"`+current+`"}]`, rec.Body.String(),
+		"snake_case keys, like /v1/events")
 
 	// UNLOAD without a replacement removes the model.
 	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", VariantId: "var-3.0.0", Action: fleetmlv1.ModelAssignment_UNLOAD}})
@@ -306,4 +310,43 @@ func TestInstallFromDelta(t *testing.T) {
 	got, _ = os.ReadFile(filepath.Join(a.currentLink("iris"), "model.bin"))
 	assert.Equal(t, v3, got)
 	assert.Equal(t, 1, served["/v3"])
+}
+
+// A failing download is reported once per variant as MODEL_LOAD_FAILED with
+// the error (without the presigned query string), however many heartbeats
+// retry it; after the model arrives a later failure is reported again.
+func TestDownloadFailureIsReportedOnce(t *testing.T) {
+	body := []byte("model")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close() // connection refused
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: t.TempDir()}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	as := &fleetmlv1.ModelAssignment{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1", VariantId: "var-1",
+		DownloadUrl: closed.URL + "/model.bin?X-Amz-Signature=secret", BlobSha256: shaHex(body), Action: fleetmlv1.ModelAssignment_LOAD}
+	failures := func() []*fleetmlv1.TelemetryEvent {
+		var out []*fleetmlv1.TelemetryEvent
+		for _, e := range a.queue.Peek(100) {
+			if e.Type == fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+
+	for i := 0; i < 3; i++ {
+		a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as})
+	}
+	require.Len(t, failures(), 1, "three heartbeats, one event")
+	ev := failures()[0]
+	assert.Equal(t, "ver-1", ev.ModelVersionId)
+	assert.Contains(t, ev.ErrorMessage, "download failed: downloading: Get \""+closed.URL+"/model.bin\"")
+	assert.NotContains(t, ev.ErrorMessage, "Signature")
+	assert.Empty(t, a.ActiveModels())
+
+	as.DownloadUrl = srv.URL
+	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as})
+	require.Len(t, a.ActiveModels(), 1)
+	assert.Len(t, failures(), 1)
 }

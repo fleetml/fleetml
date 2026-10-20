@@ -123,6 +123,16 @@ func NewDevice(t *testing.T, pool *pgxpool.Pool, labels string) uuid.UUID {
 	return id
 }
 
+// NewProjectDevice inserts a device enrolled into projectID with the given
+// labels and returns its ID.
+func NewProjectDevice(t *testing.T, pool *pgxpool.Pool, projectID uuid.UUID, labels string) uuid.UUID {
+	t.Helper()
+	id := NewDevice(t, pool, labels)
+	_, err := pool.Exec(context.Background(), `UPDATE devices SET project_id = $2 WHERE id = $1`, id, projectID)
+	must(t, err)
+	return id
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {

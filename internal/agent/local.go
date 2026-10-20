@@ -35,15 +35,7 @@ type InferenceEvent struct {
 func (a *Agent) serveLocal(addr string) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/events", a.handleEvents)
-	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, _ *http.Request) {
-		type model struct{ Name, Version, VersionID, Path string }
-		var out []model
-		for _, m := range a.ActiveModels() {
-			out = append(out, model{m.Name, m.Active.Version, m.Active.VersionID, a.currentLink(m.Name)})
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(out)
-	})
+	mux.HandleFunc("GET /v1/models", a.handleModels)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("telemetry_listen %s: %w", addr, err)
@@ -56,6 +48,25 @@ func (a *Agent) serveLocal(addr string) (*http.Server, error) {
 	}()
 	a.log.Info("local telemetry endpoint listening", "addr", ln.Addr().String())
 	return srv, nil
+}
+
+// LocalModel is one entry of GET /v1/models; the keys match /v1/events.
+type LocalModel struct {
+	// Model is the model name, as posted to /v1/events.
+	Model     string `json:"model"`
+	Version   string `json:"version"`
+	VersionID string `json:"version_id"`
+	// Path is the model's `current` link: read Path/model.bin.
+	Path string `json:"path"`
+}
+
+func (a *Agent) handleModels(w http.ResponseWriter, _ *http.Request) {
+	out := []LocalModel{}
+	for _, m := range a.ActiveModels() {
+		out = append(out, LocalModel{Model: m.Name, Version: m.Active.Version, VersionID: m.Active.VersionID, Path: a.currentLink(m.Name)})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func (a *Agent) handleEvents(w http.ResponseWriter, r *http.Request) {

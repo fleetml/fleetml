@@ -155,7 +155,17 @@ type Service struct {
 	tokenTTL       time.Duration
 	config         Config
 	logger         *slog.Logger
+	modelStatus    ModelStatusReader
 }
+
+// ModelStatusReader reads what a device reported about its models.
+type ModelStatusReader interface {
+	LoadedModels(ctx context.Context, deviceID uuid.UUID) ([]LoadedModel, error)
+	LastModelEvent(ctx context.Context, deviceID uuid.UUID) (*ModelEvent, error)
+}
+
+// SetModelStatusReader makes GetDeviceDetail include the device's models.
+func (s *Service) SetModelStatusReader(r ModelStatusReader) { s.modelStatus = r }
 
 // NewService creates a new device service.
 func NewService(
@@ -552,6 +562,29 @@ func (s *Service) parseToken(tokenString string) (tokenClaims, error) {
 // GetDevice returns a device by ID.
 func (s *Service) GetDevice(ctx context.Context, id uuid.UUID) (*Device, error) {
 	return s.devices.GetByID(ctx, id)
+}
+
+// GetDeviceDetail returns a device with the models its last heartbeat
+// reported loaded and its newest model event. If those cannot be read, the
+// device is returned without them.
+func (s *Service) GetDeviceDetail(ctx context.Context, id uuid.UUID) (*DeviceDetail, error) {
+	d, err := s.devices.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := &DeviceDetail{Device: *d, LoadedModels: []LoadedModel{}}
+	if s.modelStatus == nil {
+		return out, nil
+	}
+	if loaded, err := s.modelStatus.LoadedModels(ctx, id); err != nil {
+		s.logger.Warn("reading the device's loaded models failed", "device_id", id, "error", err)
+	} else if loaded != nil {
+		out.LoadedModels = loaded
+	}
+	if out.LastModelEvent, err = s.modelStatus.LastModelEvent(ctx, id); err != nil {
+		s.logger.Warn("reading the device's last model event failed", "device_id", id, "error", err)
+	}
+	return out, nil
 }
 
 // ListDevices returns the devices that match f.

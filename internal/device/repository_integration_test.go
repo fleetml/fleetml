@@ -157,3 +157,42 @@ func TestService_Integration(t *testing.T) {
 	_, _, err = svc.ValidateToken(ctx, second.AuthToken)
 	assert.ErrorIs(t, err, ErrUnauthenticated)
 }
+
+// What a device reported about its models: the variants of its last
+// heartbeat, and its newest model event (inference events do not count).
+func TestDeviceRepo_ModelStatus_Integration(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx := context.Background()
+	repo := NewDeviceRepo(pool)
+	fx := dbtest.NewVersion(t, pool)
+	v2, _ := dbtest.NewVersionOf(t, pool, fx.ModelID, "2.0.0")
+	id := dbtest.NewProjectDevice(t, pool, fx.ProjectID, "")
+
+	loaded, err := repo.LoadedModels(ctx, id)
+	require.NoError(t, err)
+	assert.Empty(t, loaded)
+	ev, err := repo.LastModelEvent(ctx, id)
+	require.NoError(t, err)
+	assert.Nil(t, ev)
+
+	require.NoError(t, repo.RecordHeartbeat(ctx, id, []string{fx.VariantID.String()}))
+	loaded, err = repo.LoadedModels(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, LoadedModel{Model: "m", Version: "1.0.0", VersionID: fx.VersionID, VariantID: fx.VariantID,
+		Quantization: "INT8", Runtime: "TFLITE"}, loaded[0])
+
+	_, err = pool.Exec(ctx, `INSERT INTO telemetry_events (device_id, model_version_id, event_type, error_message, recorded_at) VALUES
+		($1, $2, 'MODEL_LOAD', NULL, NOW() - INTERVAL '2 minutes'),
+		($1, $3, 'MODEL_LOAD_FAILED', 'download failed: connection refused', NOW() - INTERVAL '1 minute'),
+		($1, $2, 'INFERENCE', NULL, NOW())`, id, fx.VersionID, v2)
+	require.NoError(t, err)
+	ev, err = repo.LastModelEvent(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, ev)
+	assert.Equal(t, "MODEL_LOAD_FAILED", ev.Type)
+	assert.Equal(t, "m", ev.Model)
+	assert.Equal(t, "2.0.0", ev.Version)
+	assert.Equal(t, v2, ev.VersionID)
+	assert.Equal(t, "download failed: connection refused", ev.Error)
+}

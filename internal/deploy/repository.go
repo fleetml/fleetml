@@ -17,7 +17,9 @@ import (
 type Repository interface {
 	Create(ctx context.Context, d *Deployment) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Deployment, error)
-	List(ctx context.Context, limit, offset int) ([]Deployment, int, error)
+	// List returns deployments newest first, within the projects the context
+	// may see; a non-nil projectID narrows it to that project.
+	List(ctx context.Context, projectID *uuid.UUID, limit, offset int) ([]Deployment, int, error)
 	ListByStatus(ctx context.Context, statuses []string) ([]Deployment, error)
 	Update(ctx context.Context, d *Deployment) error
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -107,10 +109,11 @@ func (r *Repo) GetByID(ctx context.Context, id uuid.UUID) (*Deployment, error) {
 	return d, nil
 }
 
-func (r *Repo) List(ctx context.Context, limit, offset int) ([]Deployment, int, error) {
+func (r *Repo) List(ctx context.Context, projectID *uuid.UUID, limit, offset int) ([]Deployment, int, error) {
 	query := `SELECT ` + deployColumns + `, COUNT(*) OVER() AS total
-		FROM deployments WHERE ($3::uuid[] IS NULL OR project_id = ANY($3)) ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-	rows, err := r.pool.Query(ctx, query, limit, offset, scope.Projects(ctx))
+		FROM deployments WHERE ($3::uuid[] IS NULL OR project_id = ANY($3)) AND ($4::uuid IS NULL OR project_id = $4)
+		ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	rows, err := r.pool.Query(ctx, query, limit, offset, scope.Projects(ctx), projectID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("deployment.List: %w", err)
 	}

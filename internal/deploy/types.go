@@ -44,6 +44,20 @@ type Deployment struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// Devices is filled in when one deployment is read (GET
+	// /deployments/:id), not in lists.
+	Devices *DeviceProgress `json:"devices,omitempty"`
+}
+
+// DeviceProgress tells whether the model reached the devices: a COMPLETE
+// deployment is assigned to its devices, but each device still has to
+// download, verify and load it.
+type DeviceProgress struct {
+	// Targeted is the project's devices whose labels match the target selector.
+	Targeted int `json:"targeted"`
+	// Loaded is how many of them reported a variant of the deployment's
+	// version loaded in their last heartbeat.
+	Loaded int `json:"loaded"`
 }
 
 // CanaryStage defines a stage in a canary rollout.

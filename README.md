@@ -113,6 +113,16 @@ curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/pro
 echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
+Save the three values now: the server stores the admin key on its first start
+only (later starts ignore `FLEETML_ADMIN_KEY`), and compose needs
+`JWT_SECRET` and `SIGNING_MASTER_KEY` for every later command on the stack,
+`down` included. In bash or zsh, this writes them to a file only you can read,
+and `source ~/.fleetml.env` brings them back in a new shell:
+
+```bash
+(umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
+```
+
 Measured on an Apple-silicon laptop, cold: **1 min 39 s** from `git clone` to
 the dashboard's login answering, with no FleetML images or build cache present
 (most of it is pulling the base images and building the server and dashboard
@@ -140,7 +150,7 @@ Next:
   see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 To stop: `docker compose -f deploy/docker-compose.prod.yml down` (add `-v` to
-delete the data).
+delete the data), in a shell with the saved values.
 
 ### Get the CLI
 

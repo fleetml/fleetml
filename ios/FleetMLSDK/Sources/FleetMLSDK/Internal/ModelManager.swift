@@ -83,10 +83,17 @@ final class ModelManager {
         if let built = await fromDelta(a) {
             file = built
         } else {
+            Log.sdk.info("Downloading \(a.modelName, privacy: .public) \(a.version, privacy: .public) (\(a.blobSizeBytes, privacy: .public) bytes)")
             switch await downloader.download(variant: a.variantID, url: url, sha256: a.blobSha256,
                                              expectedSize: Int64(a.blobSizeBytes), protected: store.protectedVariants) {
-            case .downloaded(let f), .cached(let f): file = f
+            case .downloaded(let f):
+                Log.sdk.info("Downloaded \(a.modelName, privacy: .public) \(a.version, privacy: .public) (\(a.blobSizeBytes, privacy: .public) bytes, sha256 verified)")
+                file = f
+            case .cached(let f):
+                Log.sdk.info("\(a.modelName, privacy: .public) \(a.version, privacy: .public) is already downloaded")
+                file = f
             case .failed(let reason):
+                Log.sdk.warning("Download of \(a.modelName, privacy: .public) \(a.version, privacy: .public) failed: \(reason, privacy: .public); retried on the next heartbeat")
                 delegate()?.fleetML(modelLoadFailed: a.modelName, version: a.version, reason: reason)
                 return
             }
@@ -104,6 +111,7 @@ final class ModelManager {
             telemetry?.reportModelEvent(versionID: a.versionID, .loadFailed, error: reason)
             delegate()?.fleetML(modelLoadFailed: a.modelName, version: a.version, reason: reason)
         case .valid:
+            Log.sdk.info("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) passed validation")
             store.activate(record)
             telemetry?.reportModelEvent(versionID: a.versionID, .load, latencyMs: Int(now().timeIntervalSince(started) * 1000))
             Log.sdk.info("Model \(a.modelName, privacy: .public) \(a.version, privacy: .public) is active")

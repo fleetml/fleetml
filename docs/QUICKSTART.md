@@ -19,15 +19,36 @@ curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/pro
 echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
 ```
 
+**Save the three values now.** They exist only in this shell. The admin key
+is how you log in to the dashboard and how the CLI and the REST API reach the
+server, and the server stores it on the first start only: later starts
+ignore `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a
+new one (the way back is `down -v` and a fresh start, which deletes the data).
+Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command on this
+stack, `down` included. In bash or zsh, this writes them to a file only you
+can read, and `source ~/.fleetml.env` brings them back in a new shell:
+
+```bash
+(umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
+```
+
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. The first start
 builds the images and takes a few minutes; if nothing appears after about two
 minutes more, run `docker compose -f deploy/docker-compose.prod.yml ps -a` and
 `docker compose -f deploy/docker-compose.prod.yml logs server` to see which
-container stopped and why (a port already in use is the usual cause). The
-admin key is stored on the first start; later starts ignore
-`FLEETML_ADMIN_KEY` (more keys and their routes: [API keys](CONFIG.md#api-keys)).
+container stopped and why (a port already in use is the usual cause). More
+keys and their routes: [API keys](CONFIG.md#api-keys).
+
+If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
+dashboard to any free port with an override file (Compose 2.24 or later for
+`!override`) and open it on that port, here http://localhost:8081:
+
+```bash
+printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
+docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
+```
 
 ### On Windows
 
@@ -43,10 +64,18 @@ are not a tested path.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
    and keep **Use the WSL 2 based engine** on (Settings → General).
-2. In PowerShell, `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu; open
-   the **Ubuntu** shell from the Start menu and create its user.
-3. In Docker Desktop, Settings → Resources → WSL integration, turn on
-   integration for Ubuntu, so `docker` works in the Ubuntu shell.
+2. In PowerShell opened as administrator (right-click, **Run as
+   administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu.
+   Restart Windows if it asks to; WSL 2 also needs virtualization turned on
+   in the firmware (BIOS or UEFI), which most laptops have on, and an error
+   that mentions virtualization or "Virtual Machine Platform" means it is
+   off. Then open the **Ubuntu** shell from the Start menu and create its
+   user.
+3. Start Docker Desktop, and in its Settings → Resources → WSL integration,
+   turn on integration for Ubuntu. `docker` in the Ubuntu shell works only
+   while Docker Desktop is running; "Cannot connect to the Docker daemon"
+   there means it is not, or that the integration was turned on after the
+   shell opened (open a new Ubuntu shell).
 4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
    (`curl` and `openssl` are already there), then `cd ~` and run the block
    above as it is. Keep the clone in the Linux file system (`~`), not under
@@ -59,8 +88,14 @@ are not a tested path.
 Docker Desktop publishes the containers' ports on Windows too, so the
 dashboard opens in a Windows browser at http://localhost, and PowerShell
 reaches the REST API at `localhost:18080` (for example
-`Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs in the
-same Ubuntu shell; the CLI for PowerShell is in [Get the CLI](#get-the-cli).
+`Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs only
+in the Ubuntu shell, since its blocks are bash and use `jq`; single CLI
+commands, such as `fleetml project list` or a push, work from PowerShell too
+with the CLI from [Get the CLI](#get-the-cli).
+PowerShell and the Windows browser need the admin key too: in the Ubuntu shell,
+`echo $FLEETML_ADMIN_KEY` prints it (after `source ~/.fleetml.env` in a new
+one), to paste into `$env:FLEETML_API_KEY = '<the admin key>'` or the
+dashboard's login.
 
 ## Get the CLI
 
@@ -111,13 +146,24 @@ GitHub's Windows runner by the
 [Windows run](../.github/workflows/windows-run.yml) workflow; the arm64
 binary is cross-compiled and not yet run on Windows on Arm.
 
+`fleetml.exe` is not code-signed. Started from a terminal as above, it runs
+like any console program; a copy downloaded with a browser and started from
+Explorer may get SmartScreen's "Windows protected your PC" prompt (More info,
+Run anyway), and antivirus or a company policy may scan or block an unsigned
+program. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
+([CONFIG.md](CONFIG.md#cli)).
+
 `fleetml version` prints the release, for example `✓ fleetml v0.5.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'`; then `fleetml project list`
 prints the same projects as in WSL (`No results.` before the tour). Pushing
 from Windows works too, because Docker Desktop also publishes the object
-store's port 19100 on Windows, for example
-`fleetml push C:\models\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`.
+store's port 19100 on Windows, for example with the sample model from the clone
+in the Ubuntu file system, which Windows sees under `\\wsl.localhost\Ubuntu`
+(`<user>` is the Ubuntu user):
+`fleetml push \\wsl.localhost\Ubuntu\home\<user>\fleetml\models\iris\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`
+(not verified on Windows by CI: the Windows run pushes from Windows only to a
+stand-in for the REST API).
 Windows PowerShell 5.1, the one built into Windows, drops the inner double
 quotes of an argument it passes to a program, so a JSON flag needs them
 escaped: `--target '{\"app\":\"tour\"}'`. PowerShell 7.3 and later pass
@@ -177,7 +223,8 @@ V1=$(vid 1.0.0); V2=$(vid 2.0.0); V21=$(vid 2.1.0)
 ```
 
 Each push prints `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)`
-and the variant's ID. If an upload fails (the object store unreachable, say),
+and, under it, a `Variant ID:` line: the ID of the file just uploaded (one
+version can have several variants, for example INT8 and FP16). If an upload fails (the object store unreachable, say),
 run the same push again: a variant that was never verified is replaced.
 
 An upload that does not match its declared sha256 is refused and never
@@ -217,14 +264,21 @@ fleetml device list --project $P | head -5
 
 The deployment goes to all devices at once, so it starts as `COMPLETE`
 (`✓ Deployment start → COMPLETE`), the simulator's last line reads
-`iris 1.0.0 on 20`, and `fleetml device list` shows the devices (ID, OS,
-RAM, chipset).
+`simulator: iris 1.0.0 on 20`, and `fleetml device list` shows the devices (ID, OS,
+RAM, chipset). `COMPLETE` means assigned, not delivered: each device still
+downloads and verifies the model, and
+`fleetml deploy get $D1 | jq -c .devices` counts the targeted devices and those
+that report the version loaded in their last heartbeat,
+`{"loaded":20,"targeted":20}` once all of them have.
 
 ### 3. A canary that rolls itself back
 
 A canary of 2.0.0 for 25% of the fleet, with a health gate: more than 5% errors
-over at least 30 events from the canary cohort rolls it back. The deploy loop
-runs every 30 seconds:
+over at least 30 events from the canary cohort rolls it back. Each device is
+in the cohort or not by a hash of its ID and the deployment's ID, decided on
+its own and kept for the deployment's life, so the cohort is about 25%: of 20
+devices it can be 4 or 7 as well as 5. The deploy loop runs every 30 seconds,
+and the loop below gives up after 5 minutes:
 
 ```bash
 D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target '{"app":"tour"}' \
@@ -232,7 +286,7 @@ D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target
   --health-gate '{"max_error_rate":0.05,"min_events":30,"on_failure":"ROLLBACK"}' -o json | jq -r .id)
 fleetml deploy start $D2
 sleep 5; tail -1 /tmp/fleetml-sim.log
-until [ "$(fleetml deploy get $D2 | jq -r .status)" = ROLLED_BACK ]; do sleep 5; done
+for i in $(seq 60); do [ "$(fleetml deploy get $D2 | jq -r .status)" = ROLLED_BACK ] && break; sleep 5; done
 fleetml deploy get $D2 | jq -r .rollback_reason
 sleep 5; tail -1 /tmp/fleetml-sim.log
 ```
@@ -240,7 +294,7 @@ sleep 5; tail -1 /tmp/fleetml-sim.log
 The deployment starts as `ROLLING_OUT` (`✓ Deployment start → ROLLING_OUT`)
 and the simulator shows the cohort on 2.0.0. Once the gate trips, the rollback
 reason reads `error rate ... exceeds threshold 5.00% ...` and the simulator is
-back to `iris 1.0.0 on 20`.
+back to `simulator: iris 1.0.0 on 20`.
 
 The rollback also creates a deployment that returns the cohort to 1.0.0, and
 sends a rollback alert (NATS subject `fleetml.alerts.rollback`, the
@@ -252,18 +306,23 @@ use the same gate; see [ROLLOUTS.md](ROLLOUTS.md).
 ### 4. An A/B experiment
 
 Half the fleet runs 1.0.0, half 2.1.0. The test runs once both arms have 300
-inferences:
+inferences, and the loop gives up after 5 minutes:
 
 ```bash
 EXP=$(fleetml experiment create --project $P --name "iris 2.1.0 latency" --control $V1 --treatment $V21 --target '{"app":"tour"}' --min-sample-size 300 -o json | jq -r .id)
 fleetml experiment start $EXP
-until [ "$(fleetml experiment results $EXP | jq -r .final)" = true ]; do sleep 3; done
+for i in $(seq 100); do [ "$(fleetml experiment results $EXP | jq -r .final)" = true ] && break; sleep 3; done
 fleetml experiment results $EXP | jq '{control_ms: .control.avg_latency_ms, treatment_ms: .treatment.avg_latency_ms, p_value, recommendation}'
 fleetml experiment conclude $EXP --winner $V21
 ```
 
 The experiment is `RUNNING` once started (`✓ Experiment start → RUNNING`) and
-`CONCLUDED` at the end. A `p_value` of `0` means the p-value is below the
+`CONCLUDED` at the end. Concluding records the winner and ends the
+experiment; it does not deploy anything. On their next heartbeat the
+devices go back to what the deployments assign, here 1.0.0, which the drift
+step below relies on. To roll the winner out to the whole fleet, deploy it:
+`fleetml deploy create --project $P --version $V21 --target '{"app":"tour"}'`
+and `fleetml deploy start` with the new ID. A `p_value` of `0` means the p-value is below the
 precision of a double; read it as p < 0.0001, which is how the demo and the
 dashboard show it. Each device keeps its arm for the experiment's life, and its
 telemetry carries the arm ID, so results are per arm even when a device's arm
@@ -328,8 +387,8 @@ dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
 
 Run it in the same shell as the stack, since compose needs the same secrets.
-It runs the one-shot `migrate` service again and restarts the server once; the
-data stays.
+It runs the one-shot `migrate` service again, which finds nothing to do; the
+server keeps running and the data stays.
 
 With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;
@@ -344,7 +403,5 @@ docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
 
 `--profile observability` also removes Prometheus and Grafana from step 7;
 without it they keep running, and so do their network and Grafana's volume.
-Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command, `down`
-included. From a new shell where they are no longer exported, either export
-them again or pass placeholders: `JWT_SECRET=x SIGNING_MASTER_KEY=x docker
-compose -f deploy/docker-compose.prod.yml --profile observability down -v`.
+Compose needs the two secrets for `down` too: from a new shell,
+`source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).

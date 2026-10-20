@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // download fetches url into part, resuming a partial file with an HTTP Range
@@ -32,6 +34,12 @@ func download(ctx context.Context, client *http.Client, url, part, wantSHA strin
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		// The presigned query string (signature, expiry) is noise in a log
+		// line and in the failure event sent to the server.
+		var ue *neturl.Error
+		if errors.As(err, &ue) {
+			ue.URL, _, _ = strings.Cut(ue.URL, "?")
+		}
 		return fmt.Errorf("downloading: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()

@@ -41,20 +41,27 @@ final class HeartbeatManager {
         self.now = now
     }
 
+    /// Starts the loop unless it is running: at launch both the start task and
+    /// the foreground notification start it, and restarting would cancel the
+    /// first heartbeat in flight.
     func start() {
-        loop?.cancel()
-        loop = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                _ = await self.beatOnce()
-                try? await Task.sleep(nanoseconds: UInt64(self.lock.withLock { self.interval } * 1_000_000_000))
+        lock.withLock {
+            guard loop == nil else { return }
+            loop = Task { [weak self] in
+                while !Task.isCancelled {
+                    guard let self else { return }
+                    _ = await self.beatOnce()
+                    try? await Task.sleep(nanoseconds: UInt64(self.lock.withLock { self.interval } * 1_000_000_000))
+                }
             }
         }
     }
 
     func stop() {
-        loop?.cancel()
-        loop = nil
+        lock.withLock {
+            loop?.cancel()
+            loop = nil
+        }
     }
 
     func setInterval(_ seconds: TimeInterval) {
@@ -82,6 +89,7 @@ final class HeartbeatManager {
             request.deviceID = deviceID
             request.loadedModels = models.loadedStatuses
             let response = try await api.heartbeat(token: token, request: request)
+            Log.sdk.debug("Heartbeat: \(response.assignments.count, privacy: .public) assignment(s), next in \(response.nextHeartbeatSeconds, privacy: .public)s")
             setConnected(true)
             setInterval(TimeInterval(response.nextHeartbeatSeconds))
             if response.hasConfig { onConfig(response.config) }
@@ -95,11 +103,22 @@ final class HeartbeatManager {
             await reRegister()
             setConnected(false)
             return false
+        } catch where Self.isCancellation(error) {
+            // stop() (the app went to the background) cancelled the call:
+            // nothing failed, and the connection state is unknown, not lost.
+            Log.sdk.debug("Heartbeat cancelled")
+            return false
         } catch {
             Log.sdk.warning("Heartbeat failed: \(error.localizedDescription, privacy: .public)")
             setConnected(false)
             return false
         }
+    }
+
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let status = error as? GRPCStatus { return status.code == .cancelled }
+        return false
     }
 
     private func setConnected(_ value: Bool) {

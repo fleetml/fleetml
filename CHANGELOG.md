@@ -7,6 +7,76 @@ change APIs).
 
 ## [0.6.0] - Unreleased
 
+### Added
+
+- `GET /api/v1/deployments/{id}` (and `fleetml deploy get`) has
+  `devices: {targeted, loaded}`: the project's devices the deployment targets
+  and how many report its version loaded, since `COMPLETE` only means
+  assigned.
+- `GET /api/v1/devices/{id}` (and `fleetml device get`) has `loaded_models`,
+  what the device's last heartbeat reported, and `last_model_event`, its
+  newest model load, load failure or signature failure with the error.
+- The Linux agent reports a failed model download as `MODEL_LOAD_FAILED` with
+  the error, once per version, so the server shows it.
+- `fleetml deploy list --project`, and `GET /api/v1/deployments` takes
+  `project_id` (400 for a value that is not a UUID).
+- `scripts/agent-install-test.sh` runs the agent's `install.sh` in Ubuntu
+  containers with and without systemd.
+
+### Changed
+
+- The Linux agent's `GET /v1/models` answers with `model`, `version`,
+  `version_id` and `path`, the same snake_case as `POST /v1/events`, instead
+  of `Name`, `Version`, `VersionID` and `Path`, and with `[]` instead of
+  `null` when no model is active.
+- The iOS SDK logs each download (model, version, bytes) and validation
+  result at info level and every heartbeat at debug level.
+
+### Fixed
+
+- Linux agent: a fully downloaded model was readable only by the
+  `fleetml-agent` user (mode 0600) while a model built from a delta was 0644;
+  every active model is now 0644 in 0755 folders whatever the umask, and
+  models written by an earlier agent are fixed at startup.
+- Linux agent: `install.sh` exited 127 at `systemctl` on a machine without
+  systemd after installing everything, and nothing created
+  `/var/lib/fleetml-agent` there; it now skips the unit, creates the folder for
+  the `fleetml-agent` user and prints how to run the agent.
+- A deployment's device lists (rolling batch sizes, `max_unavailable`, the
+  health gate's cohort) counted devices of other projects with matching
+  labels; they stay in the deployment's project now.
+- iOS: every launch logged `Heartbeat failed ... GRPCStatus error 1` and
+  reported `connectionChanged(false)` before `true`, because the heartbeat loop
+  was started twice and the second start cancelled the first heartbeat; it
+  now starts once, and a cancelled heartbeat is not a failure.
+- iOS: when the device token cannot be stored in the Keychain (an app built
+  without code signing, on the simulator), the SDK now logs a warning instead
+  of silently registering again at every launch.
+- `fleetml push` showed a model under a kilobyte as `0KB`; small sizes are now
+  in bytes.
+
+### Docs
+
+- Quickstart: save the three secrets right after starting the stack (the
+  admin key is honoured on the first start only, and compose needs the two
+  secrets for every command), the port-80 override, how the canary cohort is
+  chosen, what `experiment conclude --winner` does to devices, what
+  `COMPLETE` means, bounded waiting loops; On Windows: administrator
+  PowerShell, restart and firmware virtualization for `wsl --install`, Docker
+  Desktop running, the tour only in Ubuntu, the clone's models under
+  `\\wsl.localhost`, the unsigned exe, the admin key in PowerShell.
+- Android: the `com.fleetml.sdk` package and imports, `10.0.2.2` in the init
+  snippet, an `ActiveModel` table, `syncNow()` as a suspend function, an own-app
+  CLI block, `ANDROID_SERIAL` with a phone attached, and "From Windows".
+- iOS: full delegate signatures, `import CoreML`, `log stream --level info`,
+  and a "Your own app" checklist.
+- Linux agent: `S3_PUBLIC_ENDPOINT` as a prerequisite before the connect
+  steps, a self-contained publish and deploy block, "Without systemd", file
+  modes, the delta and restart log lines, and the agent in WSL.
+- The next heartbeat is 60 seconds with the quickstart's server; the SDKs' and
+  agent's 30 s applies only until the server answers.
+- `docs/ROLLOUTS.md` "Did the model arrive?" describes the new fields.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

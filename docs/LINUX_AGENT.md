@@ -56,18 +56,69 @@ The script installs the binary to `/usr/local/bin`, creates a
 `/var/lib/fleetml-agent`. It starts nothing while the config still holds the
 placeholder key.
 
-### Connect it to the server
+### Without systemd
 
-The agent registers into a project with one of the project's enrollment keys.
-Create one with the CLI, wherever the CLI talks to the server with the admin
-key (as in the [tour](QUICKSTART.md#2-a-fleet-and-a-rollout)); it prints the
-key once:
+On a machine without systemd (a container, a BusyBox or Yocto image, a kiosk
+with its own init), `install.sh` installs the binary, the user and the config
+the same way, skips the unit, creates `/var/lib/fleetml-agent` owned by
+`fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
+systemd) and says so. Once the config is set, run the agent as that user under
+the machine's own supervisor (runit, s6, OpenRC, supervisord, a container's
+entrypoint), with the same command the unit runs:
 
 ```bash
-fleetml enrollment-key create --project <project ID> --name edge
+su -s /bin/sh fleetml-agent -c '/usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
 ```
 
-Then, on the machine, set the settings and start the service:
+It logs to standard error, which is where the supervisor's log picks it up;
+the journal lines below are the same. The supervisor restarts it if it exits,
+as `Restart=always` does in the unit.
+
+### Connect it to the server
+
+> **First, on the server: the address models are downloaded from.** The
+> server hands out each model as a download URL for its object store's public
+> address, `S3_PUBLIC_ENDPOINT`, which is `localhost:19100` in the
+> quickstart's compose stack: only the server's own machine reaches it. For an
+> agent on another machine, whoever runs the server starts the stack with the
+> server's LAN address there, and the agent's machine must reach ports 19090
+> (gRPC) and 19100 (model files):
+>
+> ```bash
+> S3_PUBLIC_ENDPOINT=<server LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+> ```
+>
+> On the server's machine,
+> `docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`
+> shows the value in use. Without a reachable address the agent registers and
+> heartbeats normally, and the server reports the deployment `COMPLETE`, which
+> means assigned, not delivered; only the agent's log shows the failure, a
+> `download failed` line on every heartbeat. From the CLI,
+> `fleetml deploy get <deployment ID> | jq -c .devices` counts the devices
+> that report the model loaded (`{"loaded":0,"targeted":1}` while downloads
+> fail), and `fleetml device get <device ID> | jq .last_model_event` shows the
+> agent's `MODEL_LOAD_FAILED` with the error. A server in production sits
+> behind a TLS proxy with a real host name instead
+> ([CONFIG.md](CONFIG.md#docker-compose) has the compose settings).
+
+The agent registers into a project with one of the project's enrollment keys,
+and a deployment reaches it through its labels. From the root of a clone (for
+the sample model), wherever the CLI talks to the server with the admin key (as
+in the [tour](QUICKSTART.md#tour)), this creates a project, publishes a model,
+creates an enrollment key, which it prints once, and deploys the model to the
+labels the example config sets (`site: factory-1`):
+
+```bash
+P=$(fleetml project create --name edge -o json | jq -r .id)
+fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+V=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
+fleetml enrollment-key create --project $P --name edge
+fleetml deploy start $(fleetml deploy create --project $P --version $V --target '{"site":"factory-1"}' -o json | jq -r .id)
+```
+
+The deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`): it
+waits for the machine. Then, on the machine, set the settings and start the
+service:
 
 ```bash
 sudoedit /etc/fleetml-agent/config.yaml
@@ -75,12 +126,13 @@ sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
 
-In `config.yaml`, set `server` (the server's host and gRPC port, `19090`),
-`enrollment_key`, and `tls`: `false` for the quickstart's compose server,
-which speaks plain gRPC on 19090, or `true` when the server is behind a TLS
-proxy. Set `labels` too: deployments and experiments reach the machine through
-them (a `target_selector` such as `{"site":"factory-1"}` matches every device
-whose labels include it; see [ROLLOUTS.md](ROLLOUTS.md#how-a-device-gets-a-model)).
+In `config.yaml`, set `server` (the server's host and gRPC port, `19090`;
+`<server LAN IP>:19090` for a server on another machine), `enrollment_key`,
+and `tls`: `false` for the quickstart's compose server, which speaks plain
+gRPC on 19090, or `true` when the server is behind a TLS proxy. Set `labels`
+too: deployments and experiments reach the machine through them (a
+`target_selector` such as `{"site":"factory-1"}` matches every device whose
+labels include it; see [ROLLOUTS.md](ROLLOUTS.md#how-a-device-gets-a-model)).
 
 The journal then shows the agent start and register (the time stamps left out
 here):
@@ -91,8 +143,10 @@ level=INFO msg=registered device_id=<device ID>
 ```
 
 and the machine appears in `fleetml device list --project <project ID>` with
-OS `LINUX`. Once a deployment targets its labels, the next heartbeat (every
-30 seconds) brings the model:
+OS `LINUX`. A deployment that already targets its labels arrives right after
+registration; one created later arrives with the next heartbeat (60 seconds
+with the server's default `DEVICE_HEARTBEAT_INTERVAL`; the agent's own `30s`
+applies only until the server answers):
 
 ```text
 level=INFO msg="model downloaded" model=iris version=1.0.0 bytes=<size>
@@ -100,26 +154,33 @@ level=INFO msg="model active" model=iris version=1.0.0 path=/var/lib/fleetml-age
 ```
 
 `/var/lib/fleetml-agent/models/iris/current` then links to the active
-version's folder ([Where models go](#where-models-go)). A
-`transport: authentication handshake failed` error means `tls: true` against a
-server without TLS; `registration failed` with `Unauthenticated` means the
-enrollment key is wrong or revoked.
+version's folder ([Where models go](#where-models-go)). A second version
+deployed to the same labels usually arrives as a delta from the first:
 
-### Server on another machine
-
-The quickstart's compose stack signs model download URLs for
-`localhost:19100`, which only the server's own machine can reach: an agent on
-another machine registers and heartbeats, and then every download fails. Start
-the stack with the server's LAN address as the object store's public endpoint,
-and let the agent's machine reach ports 19090 (gRPC) and 19100 (model files):
-
-```bash
-S3_PUBLIC_ENDPOINT=<server LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+```text
+level=INFO msg="model built from a delta" model=iris version=2.0.0 delta_bytes=<size> model_bytes=<size>
+level=INFO msg="model active" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
 ```
 
-and set `server: <server LAN IP>:19090` in the agent's config.
-[CONFIG.md](CONFIG.md#docker-compose) has the compose settings; a server in
-production sits behind a TLS proxy with a real host name instead.
+After a restart, the agent keeps its registration and logs the model it has
+instead of registering again:
+
+```text
+level=INFO msg="active model (from the last run)" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
+```
+
+A `transport: authentication handshake failed` error means `tls: true` against
+a server without TLS; `registration failed` with `Unauthenticated` means the
+enrollment key is wrong or revoked; `download failed` with
+`connection refused` and `localhost:19100` in the URL means the server's
+`S3_PUBLIC_ENDPOINT` (above).
+
+On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
+stack: Docker Desktop publishes 19090 and 19100 there too, so
+`server: localhost:19090` and the stack's default `S3_PUBLIC_ENDPOINT` work
+as they are. Current Ubuntu images for WSL run systemd; without it,
+`install.sh` takes the [Without systemd](#without-systemd) path (not verified
+on Windows by CI).
 
 ## Configure
 
@@ -136,11 +197,11 @@ Settings come from the YAML file (`-config`), and flags override them
 | `labels` | `{}` | Labels deployments and experiments target |
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
 | `models_dir` | `<state_dir>/models` | Where models are placed (below). The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) |
-| `validator` | none | Shell command that checks a downloaded model; `{file}` is its path; exit code 0 means valid |
+| `validator` | none | Shell command that checks a downloaded model; exit code 0 means valid. `{file}` in the command is replaced by the model's path, and the `FLEETML_MODEL_FILE`, `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` environment variables are set too; use either |
 | `post_activate` | none | Shell command run after a version becomes active |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
 | `metered`, `on_battery` | `false` | Describe the machine's connection and power for the download policy |
-| `heartbeat_interval` | `30s` | Until the server sends its own (`DEVICE_HEARTBEAT_INTERVAL`) |
+| `heartbeat_interval` | `30s` | Until the server sends its own (`DEVICE_HEARTBEAT_INTERVAL`, default 60 s) |
 
 The server's device settings apply as for the SDKs
 ([CONFIG.md](CONFIG.md#devices)); the agent runs continuously, so it always
@@ -157,7 +218,12 @@ uses the foreground heartbeat interval.
 ```
 
 Point your inference process at `models/<model>/current/model.bin`. Only the
-active and last-known-good versions are kept.
+active and last-known-good versions are kept. Each `model.bin` is mode `0644`
+and the folders above it `0755`, owned by `fleetml-agent`, the same for a full
+download and a version built from a delta, so an inference process running as
+any user reads the model without joining the `fleetml-agent` group. Partial
+downloads in `state_dir/downloads` stay private (`0700`) until they are
+complete and verified.
 
 For each assignment the agent:
 
@@ -167,7 +233,10 @@ For each assignment the agent:
 2. downloads to `state_dir/downloads/<variant>.part`, resuming with an HTTP
    `Range` request after an interruption, and checks the sha256; when the
    server offers a delta from the version the agent has, only the delta is
-   downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates));
+   downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates)); a
+   download that fails is retried on every heartbeat and reported once as
+   `MODEL_LOAD_FAILED` with the error, which `fleetml device get` shows as the
+   device's `last_model_event`;
 3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,
    `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` in its environment;
 4. if it passes, switches the `current` symlink, keeps the previous version as
@@ -200,7 +269,11 @@ curl -s localhost:9601/v1/models
 ```
 
 The first call answers `{"accepted":1,"rejected":0}`; the second lists the
-active models and their paths.
+active models with the same `model` key and their `current` links:
+
+```json
+[{"model":"detector","version":"2.0.0","version_id":"<version ID>","path":"/var/lib/fleetml-agent/models/detector/current"}]
+```
 
 `POST /v1/events` takes one event or an array; set `"error"` to a message for
 a failed inference (it counts against the health gate), and `"features"` to
@@ -226,7 +299,8 @@ server is back.
 
 `go test ./internal/agent` covers the queue, state, fingerprint, download
 resume, the validator command and the install path (symlink, last-known-good,
-hook, local endpoint). The runtime check ran two `linux/amd64` agents in
+hook, local endpoint, file modes). `./scripts/agent-install-test.sh` runs
+`install.sh` in Ubuntu containers with and without systemd. The runtime check ran two `linux/amd64` agents in
 Debian containers next to the dev stack: a 50% canary reached exactly one of
 them, a failing validator on that one kept the last-known-good version and
 reported `MODEL_LOAD_FAILED`, and completing the rollout moved both `current`

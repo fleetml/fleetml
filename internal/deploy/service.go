@@ -203,13 +203,23 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 	return d, nil
 }
 
-// Get returns a deployment by ID.
+// Get returns a deployment by ID, with its device progress when an engine
+// is configured.
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Deployment, error) {
-	return s.repo.GetByID(ctx, id)
+	d, err := s.repo.GetByID(ctx, id)
+	if err != nil || s.engine == nil {
+		return d, err
+	}
+	if p, err := s.engine.DeviceProgress(ctx, d); err == nil {
+		d.Devices = p
+	} else if s.logger != nil {
+		s.logger.Warn("counting the deployment's devices failed", "deployment_id", id, "error", err)
+	}
+	return d, nil
 }
 
-// List returns paginated deployments.
-func (s *Service) List(ctx context.Context, limit, offset int) ([]Deployment, int, error) {
+// List returns paginated deployments, only projectID's when it is not nil.
+func (s *Service) List(ctx context.Context, projectID *uuid.UUID, limit, offset int) ([]Deployment, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -219,7 +229,7 @@ func (s *Service) List(ctx context.Context, limit, offset int) ([]Deployment, in
 	if offset < 0 {
 		offset = 0
 	}
-	return s.repo.List(ctx, limit, offset)
+	return s.repo.List(ctx, projectID, limit, offset)
 }
 
 // UpdateStatus moves a deployment to a new status through the state machine,

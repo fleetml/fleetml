@@ -40,10 +40,12 @@ func (m *mockRepo) GetByID(_ context.Context, id uuid.UUID) (*Deployment, error)
 	return d, nil
 }
 
-func (m *mockRepo) List(_ context.Context, limit, offset int) ([]Deployment, int, error) {
+func (m *mockRepo) List(_ context.Context, projectID *uuid.UUID, limit, offset int) ([]Deployment, int, error) {
 	var all []Deployment
 	for _, d := range m.deployments {
-		all = append(all, *d)
+		if projectID == nil || d.ProjectID == *projectID {
+			all = append(all, *d)
+		}
 	}
 	total := len(all)
 	if offset >= total {
@@ -112,6 +114,7 @@ func (m *mockTelemetry) VersionP95(context.Context, uuid.UUID, time.Time) (p95 f
 type mockFleet struct {
 	ids         []uuid.UUID
 	unavailable int
+	loaded      int
 }
 
 func newMockFleet(n int) *mockFleet {
@@ -126,7 +129,11 @@ func (f *mockFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID, ti
 	return f.unavailable, nil
 }
 
-func (f *mockFleet) ListMatchingDevices(context.Context, map[string]string) ([]uuid.UUID, error) {
+func (f *mockFleet) CountLoaded(context.Context, []uuid.UUID, uuid.UUID) (int, error) {
+	return f.loaded, nil
+}
+
+func (f *mockFleet) ListMatchingDevices(context.Context, uuid.UUID, map[string]string) ([]uuid.UUID, error) {
 	return f.ids, nil
 }
 
