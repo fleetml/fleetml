@@ -254,3 +254,25 @@ func TestCreate_RequiresReadyVariant(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "PENDING", d.Status)
 }
+
+// Reading one deployment tells how many targeted devices report its version
+// loaded: COMPLETE alone does not mean the model reached them.
+func TestGet_DeviceProgress(t *testing.T) {
+	repo := newMockRepo()
+	svc := NewService(repo, nil)
+	ctx := context.Background()
+	d, err := svc.Create(ctx, CreateInput{ProjectID: uuid.New(), ModelVersionID: uuid.New()})
+	require.NoError(t, err)
+
+	got, err := svc.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got.Devices, "no engine, no counts")
+
+	fleet := newMockFleet(3)
+	fleet.loaded = 1
+	svc.SetEngine(NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{}}, fleet, nil))
+	got, err = svc.Get(ctx, d.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.Devices)
+	assert.Equal(t, DeviceProgress{Targeted: 3, Loaded: 1}, *got.Devices)
+}

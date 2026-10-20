@@ -19,6 +19,9 @@ type DeviceDirectory interface {
 	// CountUnavailable counts devices among ids that were seen since a time
 	// but did not report any variant of the version loaded.
 	CountUnavailable(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID, seenSince time.Time) (int, error)
+	// CountLoaded counts devices among ids whose last heartbeat reported a
+	// variant of the version loaded.
+	CountLoaded(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID) (int, error)
 }
 
 // DeviceCountAdapter implements DeviceCounter using pgxpool.
@@ -67,6 +70,22 @@ func (a *DeviceCountAdapter) CountUnavailable(ctx context.Context, ids []uuid.UU
 		ids, versionID, seenSince).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("deviceCount.CountUnavailable: %w", err)
+	}
+	return n, nil
+}
+
+func (a *DeviceCountAdapter) CountLoaded(ctx context.Context, ids []uuid.UUID, versionID uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := a.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM devices d
+		WHERE d.id = ANY($1)
+		  AND d.loaded_variant_ids ?| ARRAY(SELECT id::text FROM model_variants WHERE version_id = $2)`,
+		ids, versionID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("deviceCount.CountLoaded: %w", err)
 	}
 	return n, nil
 }

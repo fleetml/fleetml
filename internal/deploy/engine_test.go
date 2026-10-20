@@ -114,6 +114,7 @@ func (m *mockTelemetry) VersionP95(context.Context, uuid.UUID, time.Time) (p95 f
 type mockFleet struct {
 	ids         []uuid.UUID
 	unavailable int
+	loaded      int
 }
 
 func newMockFleet(n int) *mockFleet {
@@ -126,6 +127,10 @@ func newMockFleet(n int) *mockFleet {
 
 func (f *mockFleet) CountUnavailable(context.Context, []uuid.UUID, uuid.UUID, time.Time) (int, error) {
 	return f.unavailable, nil
+}
+
+func (f *mockFleet) CountLoaded(context.Context, []uuid.UUID, uuid.UUID) (int, error) {
+	return f.loaded, nil
 }
 
 func (f *mockFleet) ListMatchingDevices(context.Context, uuid.UUID, map[string]string) ([]uuid.UUID, error) {

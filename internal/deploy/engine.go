@@ -466,6 +466,23 @@ func effectiveGate(dep *Deployment) *HealthGate {
 	return DefaultHealthGate()
 }
 
+// DeviceProgress counts the deployment's targeted devices and how many of
+// them report its version loaded.
+func (e *Engine) DeviceProgress(ctx context.Context, dep *Deployment) (*DeviceProgress, error) {
+	if e.devices == nil {
+		return nil, fmt.Errorf("no device directory configured")
+	}
+	targeted, err := e.devices.ListMatchingDevices(ctx, dep.ProjectID, dep.TargetSelector)
+	if err != nil {
+		return nil, err
+	}
+	loaded, err := e.devices.CountLoaded(ctx, targeted, dep.ModelVersionID)
+	if err != nil {
+		return nil, err
+	}
+	return &DeviceProgress{Targeted: len(targeted), Loaded: loaded}, nil
+}
+
 // cohort returns the targeted devices the deployment currently exposes.
 func (e *Engine) cohort(ctx context.Context, dep *Deployment) ([]uuid.UUID, error) {
 	if e.devices == nil {

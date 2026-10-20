@@ -116,6 +116,12 @@ func TestAdapters_Integration(t *testing.T) {
 	un, err = devices.CountUnavailable(ctx, []uuid.UUID{a, b}, v2, time.Now().Add(time.Minute))
 	require.NoError(t, err)
 	assert.Equal(t, 0, un, "devices not seen recently are not counted")
+	loaded, err := devices.CountLoaded(ctx, []uuid.UUID{a, b}, v2)
+	require.NoError(t, err)
+	assert.Equal(t, 1, loaded, "a reports v2 loaded")
+	loaded, err = devices.CountLoaded(ctx, []uuid.UUID{a, b}, fx.VersionID)
+	require.NoError(t, err)
+	assert.Zero(t, loaded, "nobody reports 1.0.0")
 
 	// Cohort stats count only the given devices and all error event types.
 	tel := NewTelemetryAdapter(pool)
