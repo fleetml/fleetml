@@ -172,6 +172,23 @@ the heartbeats; without `--level` only warnings appear):
 xcrun simctl spawn booted log stream --level info --predicate 'subsystem == "com.fleetml.sdk"'
 ```
 
+A first launch that registers and receives iris 1.0.0 prints these lines
+(time stamps and the process column left out):
+
+```text
+[com.fleetml.sdk:FleetML] Registered as device <device ID>
+[com.fleetml.sdk:FleetML] Downloading iris 1.0.0 (555 bytes)
+[com.fleetml.sdk:FleetML] Downloaded iris 1.0.0 (555 bytes, sha256 verified)
+[com.fleetml.sdk:FleetML] Model iris 1.0.0 passed validation
+[com.fleetml.sdk:FleetML] Model iris 1.0.0 is active
+```
+
+At launch the delegate hears `fleetML(connectionChanged: true)` once the
+first heartbeat is answered. SDK 0.5.0 also reported a `false` right before
+it and logged `Heartbeat failed ... GRPCStatus error 1` at every launch; that
+meant nothing (a heartbeat cancelled by the SDK itself) and is gone from
+0.6.0.
+
 ### Your own app
 
 What an own app needs, in one place:
@@ -193,8 +210,11 @@ What an own app needs, in one place:
 5. **The enrollment key out of the source.** Keep it in a build setting
    instead: a line `FLEETML_ENROLLMENT_KEY = <enrollment key>` in an
    `.xcconfig` file that is not committed, set as the target's configuration
-   file, and an `Info.plist` entry `FleetMLEnrollmentKey` with the value
-   `$(FLEETML_ENROLLMENT_KEY)`. The app reads it with:
+   file, and an entry `FleetMLEnrollmentKey` with the value
+   `$(FLEETML_ENROLLMENT_KEY)` on the target's Info tab (Custom iOS Target
+   Properties), which keeps it in the app's `Info.plist` file; the
+   `INFOPLIST_KEY_` build settings of a generated `Info.plist` take only
+   Apple's keys. The app reads it with:
 
    ```swift
    static let enrollmentKey = Bundle.main.object(forInfoDictionaryKey: "FleetMLEnrollmentKey") as? String ?? ""
@@ -218,7 +238,11 @@ advertising identifier), so two FleetML apps on one phone are separate
 devices. A device only ever receives deployments and experiments of its own
 project. After registering, the SDK:
 
-- re-registers only when it is new or its labels or SDK version changed;
+- re-registers only when it is new or its labels or SDK version changed (an
+  app built without code signing, `CODE_SIGNING_ALLOWED=NO`, cannot keep the
+  token in the simulator's Keychain and registers again, with the same device
+  ID, at every launch; the SDK logs a warning then, and Xcode's default
+  simulator builds are signed);
 - refreshes the token before it expires (6 days before, or at half its lifetime
   for short-lived tokens);
 - re-registers with the enrollment key if the server rejects the token.
@@ -440,7 +464,10 @@ key from `.env` instead.
    ```
 
    `simctl boot` reports an error if that simulator is already booted, which
-   does no harm. The app registers, downloads iris 1.0.0, validates it with
+   does no harm. On a simulator where the sample app ran before, its saved
+   settings stay, the port included, and the launch arguments replace only
+   the host and the key: `xcrun simctl uninstall $SIM com.fleetml.sample`
+   before the install starts it clean. The app registers, downloads iris 1.0.0, validates it with
    Core ML, shows **Active model: iris 1.0.0** and classifies the sample
    flower with it, reporting inference telemetry; the console prints the same
    steps (`FleetMLSample: Registered as ...`, `Model ready: iris 1.0.0`).
