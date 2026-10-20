@@ -157,7 +157,12 @@ uses the foreground heartbeat interval.
 ```
 
 Point your inference process at `models/<model>/current/model.bin`. Only the
-active and last-known-good versions are kept.
+active and last-known-good versions are kept. Each `model.bin` is mode `0644`
+and the folders above it `0755`, owned by `fleetml-agent`, the same for a full
+download and a version built from a delta, so an inference process running as
+any user reads the model without joining the `fleetml-agent` group. Partial
+downloads in `state_dir/downloads` stay private (`0700`) until they are
+complete and verified.
 
 For each assignment the agent:
 
