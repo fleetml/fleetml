@@ -268,8 +268,8 @@ The deployment goes to all devices at once, so it starts as `COMPLETE`
 RAM, chipset). `COMPLETE` means assigned, not delivered: each device still
 downloads and verifies the model, and
 `fleetml deploy get $D1 | jq -c .devices` counts the targeted devices and those
-that report the version loaded, `{"targeted":20,"loaded":20}` once all of
-them do.
+that report the version loaded in their last heartbeat,
+`{"loaded":20,"targeted":20}` once all of them have.
 
 ### 3. A canary that rolls itself back
 

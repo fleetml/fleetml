@@ -185,7 +185,9 @@ and `FleetML.activeModels()` also return:
 `FleetML.syncNow()` runs one heartbeat and one telemetry flush now, and
 returns whether the server was reached. It is a `suspend` function, so call
 it from a coroutine, for example from an activity with
-`androidx.lifecycle:lifecycle-runtime-ktx` in the app's dependencies:
+`androidx.lifecycle:lifecycle-runtime-ktx` in the app's dependencies and
+`import androidx.lifecycle.lifecycleScope` and `import kotlinx.coroutines.launch`
+in the file:
 
 ```kotlin
 lifecycleScope.launch { val reached = FleetML.syncNow() }
@@ -223,20 +225,24 @@ fleetml deploy start $D1
 
 `enrollment-key create` prints the key once: put it in the app's config. The
 deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`), which
-means assigned; once the app runs, logcat shows `Model iris 1.0.0 is active`
-and `fleetml deploy get $D1 | jq -c .devices` prints
-`{"targeted":1,"loaded":1}`. Then roll out 2.0.0, which the app gets with its
-next heartbeat, and list the events the app reported for it:
+means assigned; once the app runs, logcat shows `Model iris 1.0.0 is active`.
+`fleetml deploy get $D1 | jq -c .devices` counts what the devices reported in
+their last heartbeat, so it prints `{"loaded":0,"targeted":1}` until the app's
+next heartbeat and `{"loaded":1,"targeted":1}` after it. Then roll out 2.0.0:
 
 ```bash
 D2=$(fleetml deploy create --project $P --version $V2 --target '{"app":"myapp"}' -o json | jq -r .id)
 fleetml deploy start $D2
-fleetml telemetry events --model-version $V2
 ```
 
-`fleetml telemetry events` prints a table of the version's events (type,
-latency, confidence, error): a `MODEL_LOAD` when the version became active,
-and an `INFERENCE` for each [inference the app reports](#telemetry).
+The app gets it with its next heartbeat, 60 seconds by default; logcat shows
+`Model iris 2.0.0 built from a 603-byte delta instead of 2492 bytes` and
+`Model iris 2.0.0 is active`. After that,
+`fleetml telemetry events --model-version $V2` prints a table of the
+version's events (type, latency, confidence, error): a `MODEL_LOAD` when the
+version became active, and an `INFERENCE` for each
+[inference the app reports](#telemetry). Before the app has the version it
+prints `No results.`.
 
 | `FleetMLConfig` field | Default | Purpose |
 |---|---|---|

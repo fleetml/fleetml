@@ -95,7 +95,7 @@ as `Restart=always` does in the unit.
 > means assigned, not delivered; only the agent's log shows the failure, a
 > `download failed` line on every heartbeat. From the CLI,
 > `fleetml deploy get <deployment ID> | jq -c .devices` counts the devices
-> that report the model loaded (`{"targeted":1,"loaded":0}` while downloads
+> that report the model loaded (`{"loaded":0,"targeted":1}` while downloads
 > fail), and `fleetml device get <device ID> | jq .last_model_event` shows the
 > agent's `MODEL_LOAD_FAILED` with the error. A server in production sits
 > behind a TLS proxy with a real host name instead
