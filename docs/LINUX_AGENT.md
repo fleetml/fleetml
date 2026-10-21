@@ -249,7 +249,7 @@ hour's wait ([Where models go](#where-models-go), step 5).
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
 | `models_dir` | `<state_dir>/models` | Where models are placed (below). The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) |
 | `validator` | none | Shell command that checks a downloaded model; exit code 0 means valid. `{file}` in the command is replaced by the model's path, and the `FLEETML_MODEL_FILE`, `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` environment variables are set too; use either |
-| `post_activate` | none | Shell command run after a version becomes active |
+| `post_activate` | none | Shell command run after a version becomes active, as `fleetml-agent`; under the shipped unit it can write only to `/var/lib/fleetml-agent` ([reloading the inference process](#reloading-the-inference-process-after-an-update)) |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
 | `metered`, `on_battery` | `false` | Describe the machine's connection and power for the download policy |
 | `heartbeat_interval` | `30s` | Until the server sends its own (`DEVICE_HEARTBEAT_INTERVAL`, default 60 s) |
@@ -337,10 +337,61 @@ input. There is no built-in ONNX or TFLite validator: the agent is a static Go
 binary without those runtimes, and the command validator lets you use exactly
 the runtime and version your inference process uses.
 
-To reload the inference process after an update, either use `post_activate`
-(e.g. `touch /run/inference/reload`) or a systemd path unit that watches the
-`current` link. The agent runs unprivileged, so restarting another service
-from `post_activate` needs a sudo or polkit rule.
+### Reloading the inference process after an update
+
+`post_activate` runs as the unprivileged `fleetml-agent` user under a unit
+with `NoNewPrivileges=true` and `ProtectSystem=strict`, so it can neither use
+`sudo` nor write outside `/var/lib/fleetml-agent`. A `post_activate` of
+`sudo systemctl restart inference` fails with
+`sudo: The "no new privileges" flag is set, which prevents sudo from running as root.`,
+sudoers rule or not; keep the hardening and let systemd do the restart. The
+hook touches a file in the state folder, and a path unit that watches the file
+restarts your service. In `/etc/fleetml-agent/config.yaml`:
+
+```yaml
+post_activate: "touch /var/lib/fleetml-agent/model-switched"
+```
+
+`/etc/systemd/system/inference-reload.path`:
+
+```ini
+[Unit]
+Description=Restart the inference service when FleetML switches a model
+
+[Path]
+PathChanged=/var/lib/fleetml-agent/model-switched
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/inference-reload.service` (`inference.service` is your
+inference process's unit):
+
+```ini
+[Unit]
+Description=Restart the inference service after a model switch
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart inference.service
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now inference-reload.path
+sudo systemctl restart fleetml-agent
+```
+
+After each `model active` line the journal shows
+`Finished inference-reload.service - Restart the inference service after a model switch.`,
+and the inference service starts again on the new `current`. Do not point
+`PathChanged=` at the `current` link itself: inotify follows the link to the
+version folder, so the path unit fires when the link is first created and
+misses every later switch. An inference process that reloads itself can watch
+the same file instead. A polkit rule that lets `fleetml-agent` restart that
+one unit also works under `NoNewPrivileges=true`, since systemd checks it, not
+a setuid binary; it is not shown here.
 
 ## Telemetry from the inference process
 
