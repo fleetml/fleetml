@@ -176,7 +176,14 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	events := a.queue.Peek(10)
 	assert.Equal(t, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, events[len(events)-1].Type)
 	_, statErr := os.Stat(filepath.Join(dir, "models", "iris", "2.0.0-var-2.0."))
-	assert.True(t, os.IsNotExist(statErr), "the rejected version is deleted")
+	assert.True(t, os.IsNotExist(statErr), "the rejected version leaves models_dir")
+	rejected := filepath.Join(dir, "rejected", "iris", "2.0.0-var-2.0.", "model.bin")
+	got, err = os.ReadFile(rejected)
+	require.NoError(t, err, "the rejected file is kept for validating it by hand")
+	assert.Equal(t, bad, got)
+	fi, err := os.Stat(rejected)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
 
 	// A good 3.0.0 replaces it; 1.0.0 becomes last-known-good and stays on disk.
 	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign(fleetmlv1.ModelAssignment_UPDATE, "3.0.0", "/v2", v2)})
@@ -392,4 +399,51 @@ func TestDownloadHostOverride(t *testing.T) {
 		c := &Config{Server: "127.0.0.1:1", StateDir: t.TempDir(), DownloadHostOverride: bad}
 		assert.ErrorContains(t, c.Validate(), "download_host_override must be host:port", bad)
 	}
+}
+
+// -retry-failed: a version that failed validation waits an hour, across
+// restarts; RetryFailed clears that so the next heartbeat tries it again.
+// Only the last rejected version of a model is kept on disk.
+func TestRetryFailed(t *testing.T) {
+	files := map[string][]byte{"/a": []byte("broken a"), "/b": []byte("broken b")}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(files[r.URL.Path]) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	runs := filepath.Join(dir, "runs")
+	cfg := &Config{Server: "127.0.0.1:1", StateDir: dir, Validator: `echo run >> ` + runs + `; ! grep -q broken {file}`}
+	a, err := New(cfg, quiet())
+	require.NoError(t, err)
+	assign := func(version, path string) *fleetmlv1.ModelAssignment {
+		return &fleetmlv1.ModelAssignment{ModelId: "m1", ModelName: "iris", Version: version, VersionId: "ver-" + version,
+			VariantId: "var-" + version, DownloadUrl: srv.URL + path, BlobSha256: shaHex(files[path]), Action: fleetmlv1.ModelAssignment_LOAD}
+	}
+	validations := func() int { b, _ := os.ReadFile(runs); return strings.Count(string(b), "run") }
+	ctx := context.Background()
+
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	assert.Equal(t, 1, validations(), "the failed version waits out the cooldown")
+	require.NoError(t, a.Close())
+
+	// A restart alone does not retry: the cooldown is in state.json.
+	a, err = New(cfg, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	assert.Equal(t, 1, validations())
+
+	n, err := a.RetryFailed()
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	assert.Equal(t, 2, validations(), "retried after RetryFailed")
+	st, err := OpenStore(filepath.Join(dir, "state.json"))
+	require.NoError(t, err)
+	st.Read(func(s *State) { assert.Len(t, s.Failed, 1, "and failed again") })
+
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.1.0", "/b")})
+	entries, err := os.ReadDir(filepath.Join(dir, "rejected", "iris"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the last rejected version is kept")
+	assert.Equal(t, "2.1.0-var-2.1.", entries[0].Name())
 }

@@ -45,6 +45,7 @@ func run() error {
 	listen := flag.String("telemetry-listen", "", "local telemetry endpoint, e.g. 127.0.0.1:9601 (overrides the config)")
 	labels := labelFlags{}
 	flag.Var(labels, "label", "device label key=value (repeatable; added to the config's labels)")
+	retryFailed := flag.Bool("retry-failed", false, "retry the versions that failed validation now instead of after the hour's wait")
 	version := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *version {
@@ -81,5 +82,12 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	log.Info("fleetml-agent starting", "version", agent.AgentVersion, "server", cfg.Server, "models_dir", cfg.ModelsDir)
+	if *retryFailed {
+		n, err := a.RetryFailed()
+		if err != nil {
+			return fmt.Errorf("clearing the failed versions: %w", err)
+		}
+		log.Info("cleared the failed versions; they are retried on the next heartbeat", "count", n)
+	}
 	return a.Run(ctx)
 }
