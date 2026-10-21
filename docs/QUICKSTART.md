@@ -54,8 +54,11 @@ reserved ranges; move the port out of them (below for port 80,
 [API keys](CONFIG.md#api-keys).
 
 If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
-dashboard to any free port with an override file (Compose 2.24 or later for
-`!override`) and open it on that port, here http://localhost:8081:
+dashboard to any free port with an override file and open it on that port,
+here http://localhost:8081. `!override` needs Compose 2.24 or later:
+`docker compose version` prints the version (for example
+`Docker Compose version v2.39.4-desktop.1`); older versions do not know the
+tag. This override is not exercised by CI:
 
 ```bash
 printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
@@ -63,6 +66,19 @@ docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --b
 ```
 
 ### On Windows
+
+How it fits together:
+
+- **Ubuntu (WSL 2) shell:** the stack, the Run FleetML block, the tour and
+  the scripts, in a clone under `~` in the Linux file system.
+- **PowerShell:** the Windows `fleetml.exe` for single commands, the
+  dashboard in a Windows browser, and the Android tools (`adb`, Gradle).
+- **The admin key** is created in the Ubuntu shell and saved in
+  `~/.fleetml.env` there; PowerShell reads it with the `wsl` line below, or
+  you paste it once into `fleetml config set-key`.
+- **Two clones** when you build the Android sample app: the one in Ubuntu
+  for the stack, and one on the Windows side for Gradle, which is slow on a
+  `\\wsl.localhost` path.
 
 The server, Postgres, NATS and the object store are Linux containers, and the
 quickstart, the tour and the scripts are bash, so on Windows they run in a
@@ -85,7 +101,10 @@ are not a tested path.
    in the firmware (BIOS or UEFI), which most laptops have on, and an error
    that mentions virtualization or "Virtual Machine Platform" means it is
    off. Then open the **Ubuntu** shell from the Start menu and create its
-   user.
+   user. WSL 2 gives Linux half of the machine's memory by default, which
+   on an 8 GB laptop is about the 2 GB the stack and its two image builds
+   need plus little else; a `%UserProfile%\.wslconfig` with `[wsl2]` and
+   `memory=6GB`, then `wsl --shutdown`, gives it more.
 3. Start Docker Desktop, and in its Settings → Resources → WSL integration,
    turn on integration for Ubuntu. `docker` in the Ubuntu shell works only
    while Docker Desktop is running; "Cannot connect to the Docker daemon"
@@ -119,7 +138,8 @@ $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf 
 
 (`--exec` runs bash directly; without it, Ubuntu's login shell reads the line
 first and can replace `$FLEETML_ADMIN_KEY` with nothing. The Windows run
-reads the key this way.)
+uses the same `wsl ... --exec bash -c` line, on the file its own script
+writes, `~/.fleetml-run.env`, rather than this one.)
 
 `$env:` lasts for that PowerShell window; `fleetml config set-key <the admin key>`
 saves it for every window instead, in `%USERPROFILE%\.fleetml\config.yaml`
@@ -130,9 +150,10 @@ on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in
 WSL 2 Ubuntu, with Docker Engine installed inside the distribution (Docker
 Desktop cannot be installed on the runner) and WSL's own `localhost`
 forwarding; `/readyz` and `fleetml project list` from PowerShell against that
-server; and the PowerShell block of [Get the CLI](#get-the-cli). Docker
-Desktop itself (steps 1 and 3, the ports it publishes) and the port-80
-override are not exercised by CI.
+server; and the PowerShell block of [Get the CLI](#get-the-cli). In WSL it
+builds the CLI from source (the tour's first block) rather than installing
+the Linux release as step 5 does. Docker Desktop itself (steps 1 and 3, the
+ports it publishes) and the port-80 override are not exercised by CI.
 
 ## Get the CLI
 
@@ -146,17 +167,24 @@ with a `SHA256SUMS` file:
 | macOS | `fleetml-darwin-amd64.tar.gz`, `fleetml-darwin-arm64.tar.gz` | `fleetml` |
 | Windows | `fleetml-windows-amd64.zip`, `fleetml-windows-arm64.zip` | `fleetml.exe` |
 
-On macOS and Linux (and in WSL), the latest release, checked and put on the
-`PATH` (on Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`):
+On macOS and Linux (and in WSL), the latest release, checked and put in
+`~/.local/bin` on the `PATH`, without `sudo` (on Linux without Perl,
+`sha256sum -c` replaces `shasum -a 256 -c`):
 
 ```bash
 OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
 curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
 grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && sudo mv fleetml /usr/local/bin/
+tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"
 fleetml version
 ```
+
+The `export` lasts for this shell; put it in `~/.bashrc` or `~/.zshrc` to
+keep it (many Linux distributions already have `~/.local/bin` on the
+`PATH`). For every user of the machine instead, `sudo mv fleetml /usr/local/bin/`
+in place of the `mkdir` and `mv`.
 
 On Windows, in PowerShell, into `%LOCALAPPDATA%\fleetml`, added to the user's
 `PATH`:
@@ -174,13 +202,14 @@ $env:Path += ";$env:LOCALAPPDATA\fleetml"
 fleetml version
 ```
 
-Without `sudo`, put it in a folder of your own instead of the last-but-one
-line's `sudo mv`: `mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/`, and
-`export PATH="$HOME/.local/bin:$PATH"` (in `~/.bashrc` or `~/.zshrc` to keep
-it; many Linux distributions already have that folder on the `PATH`).
-
 The PowerShell block leaves `fleetml.zip` and `SHA256SUMS` in the folder it
-ran in; delete them once `fleetml version` answers. Its `PATH` line writes
+ran in; delete them once `fleetml version` answers. Running it again adds
+`%LOCALAPPDATA%\fleetml` to the user `Path` a second time, which does no
+harm (Settings, System, About, Advanced system settings, Environment
+Variables removes the copy). A zip downloaded with a browser instead carries
+the mark of the web, which is what brings SmartScreen's prompt (below);
+`Unblock-File` on the zip before `Expand-Archive`, or on `fleetml.exe`
+after, removes it. Its `PATH` line writes
 the user `Path` back as a plain string (`REG_SZ`): a `Path` that was
 `REG_EXPAND_SZ`, with entries such as `%USERPROFILE%\bin`, keeps working,
 but those entries are stored expanded from then on.
@@ -221,6 +250,14 @@ Windows PowerShell 5.1, the one built into Windows, drops the inner double
 quotes of an argument it passes to a program, so a JSON flag needs them
 escaped: `--target '{\"app\":\"tour\"}'`. PowerShell 7.3 and later pass
 `--target '{"app":"tour"}'` as written; there, do not escape.
+`$PSVersionTable.PSVersion` prints which one a window runs (Windows Terminal
+may open either). The wrong form for the version is refused before anything
+is created: unescaped in 5.1 with
+`Error: invalid --target JSON: invalid character 'a' looking for beginning of object key string`,
+escaped in 7.3 with
+`Error: invalid --target JSON: invalid character '\\' looking for beginning of object key string`.
+In Windows PowerShell 5.1 with a console code page other than UTF-8, the
+`✓` of `fleetml version` may show as `?`; the program is the same.
 
 From source, with Go 1.24 or later: `go build -o bin/fleetml ./cmd/fleetml`
 in the repository (it reports its version as `dev`).
@@ -256,9 +293,10 @@ fleetml project list
 Every variable the tour sets (`P`, `V1`, `EK`, `SIM` and the others) lives in
 this shell only, and the simulator that section 2 starts in the background
 stops when this shell closes. So keep the shell open from section 2 to the
-end. The blocks of sections 1, 2 and 5 end with a line that adds their
+end. The blocks of sections 1 to 5 end with a line that adds their
 variables to `~/.fleetml.env` (readable only by you: the enrollment key is
-among them), so a second shell (another terminal tab, say)
+among them; section 5 replaces the simulator's `SIM` line rather than adding
+a second one), so a second shell (another terminal tab, say)
 picks the tour up from the repository root with
 
 ```bash
@@ -268,8 +306,9 @@ export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
 
 (and the `export PATH` line above again if you built the CLI from source).
 If the simulator's shell was closed, start the simulator again there with the
-`fleetml simulate` line of section 2 (the same 20 devices register again) and
-`SIM=$!`; `pgrep -f 'fleetml simulate'` shows whether one runs.
+`fleetml simulate` line of section 2 (the same 20 devices register again),
+`SIM=$!` and that section's last line; `pgrep -f 'fleetml simulate'` shows
+whether one runs.
 
 From Python, the same steps run with the Python client (`pip install fleetml`
 from 0.6.0; until then `pip install ./python` from a clone); sections 1 to 3
@@ -335,7 +374,7 @@ D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' 
 fleetml deploy start $D1
 sleep 5; tail -1 /tmp/fleetml-sim.log
 fleetml device list --project $P | head -5
-(umask 077; echo "export EK=$EK D1=$D1 SIM=$SIM" >> ~/.fleetml.env)
+(umask 077; echo "export EK=$EK D1=$D1" >> ~/.fleetml.env; echo "export SIM=$SIM" >> ~/.fleetml.env)
 ```
 
 The deployment goes to all devices at once, so it starts as `COMPLETE`
@@ -368,24 +407,29 @@ over at least 30 events from the canary cohort rolls it back. Each device is
 in the cohort or not by a hash of its ID and the deployment's ID, decided on
 its own and kept for the deployment's life, so the cohort is about 25%: of 20
 devices it can be 4 or 7 as well as 5. The deploy loop runs every 30 seconds,
-so the rollback usually comes within a minute; the loop below gives up after
-5 minutes:
+so the rollback comes within a minute, often within seconds, since the
+simulator's devices report quickly; the loop below gives up after 5 minutes:
 
 ```bash
 D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target '{"app":"tour"}' \
   --canary-stages '[{"percentage":25,"min_duration":"10m"},{"percentage":100,"min_duration":"0s"}]' \
   --health-gate '{"max_error_rate":0.05,"min_events":30,"on_failure":"ROLLBACK"}' -o json | jq -r .id)
 fleetml deploy start $D2
-sleep 5; tail -1 /tmp/fleetml-sim.log
+for i in $(seq 30); do grep -q 'iris 2.0.0' /tmp/fleetml-sim.log && break; sleep 1; done
+grep 'iris 2.0.0' /tmp/fleetml-sim.log | tail -1
 for i in $(seq 60); do [ "$(fleetml deploy get $D2 | jq -r .status)" = ROLLED_BACK ] && break; sleep 5; done
 fleetml deploy get $D2 | jq -r .rollback_reason
-sleep 5; tail -1 /tmp/fleetml-sim.log
+for i in $(seq 60); do tail -1 /tmp/fleetml-sim.log | grep -q 'iris 1.0.0 on 20$' && break; sleep 2; done
+tail -1 /tmp/fleetml-sim.log
+(umask 077; echo "export D2=$D2" >> ~/.fleetml.env)
 ```
 
-The deployment starts as `ROLLING_OUT` (`✓ Deployment start → ROLLING_OUT`)
-and the simulator shows the cohort on 2.0.0. Once the gate trips, the rollback
-reason reads `error rate ... exceeds threshold 5.00% ...` and the simulator is
-back to `simulator: iris 1.0.0 on 20`.
+The deployment starts as `ROLLING_OUT` (`✓ Deployment start → ROLLING_OUT`),
+and the first `grep` shows the simulator line with the cohort on 2.0.0, such
+as `simulator: iris 1.0.0 on 15, iris 2.0.0 on 5`, even when the rollback
+has already come by then. Once the gate trips, the rollback reason reads
+`error rate ... exceeds threshold 5.00% ...` and the simulator is back to
+`simulator: iris 1.0.0 on 20`.
 
 The rollback also creates a deployment that returns the cohort to 1.0.0, and
 sends a rollback alert (NATS subject `fleetml.alerts.rollback`, the
@@ -407,6 +451,7 @@ fleetml experiment results $EXP | jq '{control_ms: .control.avg_latency_ms, trea
 fleetml experiment conclude $EXP --winner $V21
 for i in $(seq 60); do tail -1 /tmp/fleetml-sim.log | grep -q 'iris 1.0.0 on 20$' && break; sleep 2; done
 tail -1 /tmp/fleetml-sim.log
+(umask 077; echo "export EXP=$EXP" >> ~/.fleetml.env)
 ```
 
 The experiment is `RUNNING` once started (`✓ Experiment start → RUNNING`) and
@@ -439,7 +484,7 @@ Now the devices get slower:
 kill $SIM; sleep 1
 fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
-(umask 077; echo "export SIM=$SIM" >> ~/.fleetml.env)
+(umask 077; grep -v '^export SIM=' ~/.fleetml.env > ~/.fleetml.env.new; echo "export SIM=$SIM" >> ~/.fleetml.env.new; mv ~/.fleetml.env.new ~/.fleetml.env)
 sleep 20
 fleetml drift check $V1
 fleetml drift status $V1

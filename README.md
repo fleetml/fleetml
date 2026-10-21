@@ -97,8 +97,9 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 ## Quickstart
 
 **Requirements:** macOS, Linux or Windows, with Docker with Compose v2 and
-`openssl`; about 2 GB of free memory for the six containers and the two image
-builds; ports 80 (dashboard), 18080 (REST), 19090 (gRPC) and 19100 (model
+`openssl`; about 2 GB of free memory for the five running containers (plus a
+one-shot `migrate` job, which `docker compose ps -a` lists as exited) and the
+two image builds; ports 80 (dashboard), 18080 (REST), 19090 (gRPC) and 19100 (model
 files; `FLEETML_S3_PUBLIC_PORT` moves it) free, and 13000 for Grafana if you
 start the optional observability profile. On Windows
 FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell with Docker
@@ -127,14 +128,13 @@ and `source ~/.fleetml.env` brings them back in a new shell:
 (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
 ```
 
-Measured on an Apple-silicon laptop, cold: **1 min 39 s** from `git clone` to
-the dashboard's login answering, with no FleetML images or build cache present
-(most of it is pulling the base images and building the server and dashboard
-images); with the images cached, well under a minute.
+The first start takes a few minutes on a cold Docker cache, most of it
+pulling the base images and building the server and dashboard images; with
+the images cached, well under a minute.
 
 If port 80 is taken, move the dashboard to any free port with an override file
-(Compose 2.24 or later for `!override`) and open it on that port, here
-http://localhost:8081:
+(Compose 2.24 or later for `!override`; `docker compose version` prints
+yours) and open it on that port, here http://localhost:8081:
 
 ```bash
 printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
@@ -163,28 +163,33 @@ delete the data), in a shell with the saved values.
 file: `fleetml-linux-amd64.tar.gz`, `fleetml-linux-arm64.tar.gz`,
 `fleetml-darwin-amd64.tar.gz`, `fleetml-darwin-arm64.tar.gz`,
 `fleetml-windows-amd64.zip` and `fleetml-windows-arm64.zip`. On macOS and
-Linux (on Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`):
+Linux, into `~/.local/bin` without `sudo` (on Linux without Perl,
+`sha256sum -c` replaces `shasum -a 256 -c`):
 
 ```bash
 OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
 curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
 grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && sudo mv fleetml /usr/local/bin/
+tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"
 fleetml version
 ```
 
-Without `sudo`, `mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/` instead
-of the `sudo mv`, with `~/.local/bin` on the `PATH`. On Windows, the
+Keep the `export` in `~/.bashrc` or `~/.zshrc`; for every user of the
+machine, `sudo mv fleetml /usr/local/bin/` instead. On Windows, the
 PowerShell version is in [Get the CLI](docs/QUICKSTART.md#get-the-cli). From source, with Go 1.24:
 `go build -o bin/fleetml ./cmd/fleetml`.
 
 ### Install the SDKs
 
-Android, from Maven Central (with `mavenCentral()` in the app's repositories):
+Android, from Maven Central (with `mavenCentral()` in the app's repositories;
+the app needs compileSdk 34 or later and minSdk 26,
+[details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
 implementation("dev.fleetml:fleetml-sdk:0.6.0")
+implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL

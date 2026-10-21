@@ -9,6 +9,7 @@ import fleetml.device.v1.Device.HeartbeatResponse
 import fleetml.device.v1.Device.RefreshTokenResponse
 import io.grpc.Status
 import io.grpc.StatusException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -46,6 +47,9 @@ internal class HeartbeatManager(
 
     @Volatile private var connected: Boolean? = null
 
+    private val inFlightLock = Any()
+    private var inFlight: CompletableDeferred<Boolean>? = null
+
     fun start(scope: CoroutineScope) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
@@ -66,8 +70,28 @@ internal class HeartbeatManager(
         if (seconds > 0) intervalSeconds = seconds
     }
 
-    /** One heartbeat. Returns true if the server was reached. */
+    /**
+     * One heartbeat. Returns true if the server was reached. A call while a
+     * heartbeat is in flight (the timer's first beat and an app's syncNow() at
+     * start-up) waits for that heartbeat's result instead of sending a second
+     * one, so its assignments are applied once.
+     */
     internal suspend fun beatOnce(): Boolean {
+        val (result, mine) = synchronized(inFlightLock) {
+            inFlight?.let { it to false } ?: CompletableDeferred<Boolean>().also { inFlight = it }.let { it to true }
+        }
+        if (!mine) return result.await()
+        var reached = false
+        try {
+            reached = beat()
+            return reached
+        } finally {
+            synchronized(inFlightLock) { inFlight = null }
+            result.complete(reached)
+        }
+    }
+
+    private suspend fun beat(): Boolean {
         val token = tokens.getAuthToken() ?: return false
         val deviceId = tokens.getDeviceId() ?: return false
         return try {

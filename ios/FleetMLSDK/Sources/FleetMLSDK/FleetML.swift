@@ -32,6 +32,10 @@ public enum FleetML {
 
     private static let lock = NSLock()
     private static var instance: Instance?
+    /// Set once registerBackgroundTask() has registered the launch handler.
+    private static let backgroundTaskRegistered = LockedFlag()
+
+    static var isBackgroundTaskRegistered: Bool { backgroundTaskRegistered.value }
 
     /// Initialize the SDK. A second call while initialized is ignored; call
     /// `stop()` first to re-initialize.
@@ -82,7 +86,7 @@ public enum FleetML {
     /// launch too, so a background launch has an instance to sync.
     public static func registerBackgroundTask() {
         #if canImport(BackgroundTasks) && os(iOS)
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier, using: nil) { task in
+        let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier, using: nil) { task in
             guard let task = task as? BGAppRefreshTask else { return }
             let inst = lock.withLock { instance }
             inst?.scheduleBackgroundRefresh() // the next run, whatever happens to this one
@@ -93,6 +97,7 @@ public enum FleetML {
             }
             task.expirationHandler = { work.cancel() }
         }
+        backgroundTaskRegistered.value = registered
         #endif
     }
 
@@ -284,16 +289,31 @@ final class Instance {
         heartbeat.stop()
         telemetry.stop()
         #if canImport(UIKit) && os(iOS)
-        // Ask for a little time to send what is queued.
-        var bgTask = UIBackgroundTaskIdentifier.invalid
-        bgTask = UIApplication.shared.beginBackgroundTask { UIApplication.shared.endBackgroundTask(bgTask) }
+        // Ask for a little time to send what is queued. onBackground runs on the
+        // main queue: both lifecycle observers and observeLifecycle dispatch it there.
+        let time = MainActor.assumeIsolated { BackgroundTime.begin() }
         Task { [telemetry] in
             await telemetry.flushNow()
-            UIApplication.shared.endBackgroundTask(bgTask)
+            await time.end()
         }
         #endif
         scheduleBackgroundRefresh()
     }
+
+    #if canImport(UIKit) && os(iOS)
+    /// A little background time from iOS, ended by its expiration handler or by end().
+    @MainActor private final class BackgroundTime {
+        private var id = UIBackgroundTaskIdentifier.invalid
+
+        static func begin() -> BackgroundTime {
+            let time = BackgroundTime()
+            time.id = UIApplication.shared.beginBackgroundTask { time.end() }
+            return time
+        }
+
+        func end() { UIApplication.shared.endBackgroundTask(id) }
+    }
+    #endif
 
     private func startTimers() {
         telemetry.start()
@@ -304,13 +324,18 @@ final class Instance {
     func scheduleBackgroundRefresh() {
         #if canImport(BackgroundTasks) && os(iOS)
         let interval = BatteryPolicy.backgroundInterval(lock.withLock { backgroundInterval })
+        let permitted = BackgroundRefresh.permitted(FleetML.backgroundTaskIdentifier)
+        if let reason = BackgroundRefresh.skipReason(permitted: permitted, registered: FleetML.isBackgroundTaskRegistered) {
+            Log.sdk.info("\(reason, privacy: .public)")
+            return
+        }
         let request = BGAppRefreshTaskRequest(identifier: FleetML.backgroundTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
         do {
             try BGTaskScheduler.shared.submit(request)
             Log.sdk.info("In the background: next refresh in \(Int(interval), privacy: .public)s or later")
         } catch {
-            let (level, message) = BackgroundRefresh.failure(error, permitted: BackgroundRefresh.permitted(FleetML.backgroundTaskIdentifier))
+            let (level, message) = BackgroundRefresh.failure(error, permitted: permitted)
             Log.sdk.log(level: level, "\(message, privacy: .public)")
         }
         #endif
@@ -368,5 +393,16 @@ final class Instance {
         stop()
         tokens.clear()
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// A Bool behind a lock, for a flag read and written from any thread.
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+
+    var value: Bool {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }

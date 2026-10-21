@@ -11,6 +11,9 @@ import fleetml.device.v1.Device.HeartbeatResponse
 import fleetml.device.v1.Device.RefreshTokenResponse
 import io.grpc.Status
 import io.grpc.StatusException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -40,7 +43,12 @@ class HeartbeatManagerTest {
         var refreshes = 0
         var failWith: Status? = null
         var response: HeartbeatResponse = HeartbeatResponse.getDefaultInstance()
+        var calls = 0
+        /** When set, a heartbeat waits for it: the call is in flight until the test completes it. */
+        var gate: CompletableDeferred<Unit>? = null
         override suspend fun heartbeat(token: String, request: HeartbeatRequest): HeartbeatResponse {
+            calls++
+            gate?.await()
             failWith?.let { throw StatusException(it) }
             requests += token to request
             return response
@@ -164,6 +172,43 @@ class HeartbeatManagerTest {
         )
         assertTrue("no stack trace above debug", warnings.all { it.third == null })
         assertTrue("the stack trace is at debug", lines.any { it.first == android.util.Log.DEBUG && it.third != null })
+    }
+
+    @Test
+    fun `a sync while a heartbeat is in flight joins it instead of sending a second one`() = runTest {
+        val api = FakeApi().apply { gate = CompletableDeferred() }
+        val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+        val timer = async { hb.beatOnce() }
+        val manual = async { hb.beatOnce() }
+        runCurrent()
+        api.gate!!.complete(Unit)
+        assertTrue(timer.await())
+        assertTrue(manual.await())
+        assertEquals(1, api.calls)
+
+        assertTrue("a later sync sends its own heartbeat", hb.beatOnce())
+        assertEquals(2, api.calls)
+    }
+
+    @Test
+    fun `two syncs offline log one failure`() = runTest {
+        val lines = mutableListOf<String>()
+        val saved = Logger.sink
+        Logger.sink = { p, m, _ -> if (p >= android.util.Log.WARN) lines += m }
+        try {
+            val api = FakeApi().apply { gate = CompletableDeferred(); failWith = Status.UNAVAILABLE }
+            val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+            val timer = async { hb.beatOnce() }
+            val manual = async { hb.beatOnce() }
+            runCurrent()
+            api.gate!!.complete(Unit)
+            assertFalse(timer.await())
+            assertFalse(manual.await())
+        } finally {
+            Logger.sink = saved
+        }
+        assertEquals(listOf("Heartbeat failed: UNAVAILABLE"), lines)
+        assertEquals(listOf(false), connection)
     }
 
     @Test

@@ -58,7 +58,19 @@ internal class ModelManager(
         }
     }
 
+    /** Variants being installed now; a second apply of the same assignment skips them. */
+    private val installing = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     private suspend fun install(a: ModelAssignment) {
+        if (!installing.add(a.variantId)) return
+        try {
+            installOnce(a)
+        } finally {
+            installing.remove(a.variantId)
+        }
+    }
+
+    private suspend fun installOnce(a: ModelAssignment) {
         if (store.isActive(a.variantId)) return
         if (store.recentlyFailed(a.variantId, now())) return
         // The signature covers the sha256 the download is checked against, so
