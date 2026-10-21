@@ -122,14 +122,14 @@ func TestDownloadResumes(t *testing.T) {
 	srv := rangeServer(body, true)
 	defer srv.Close()
 	part := filepath.Join(t.TempDir(), "x.part")
-	err := download(context.Background(), srv.Client(), srv.URL, part, shaHex(body))
+	err := download(context.Background(), srv.Client(), srv.URL, part, shaHex(body), "")
 	require.Error(t, err, "the first attempt is cut short")
 	fi, _ := os.Stat(part)
 	require.Equal(t, int64(len(body)/2), fi.Size(), "the partial file is kept")
-	require.NoError(t, download(context.Background(), srv.Client(), srv.URL, part, shaHex(body)))
+	require.NoError(t, download(context.Background(), srv.Client(), srv.URL, part, shaHex(body), ""))
 	got, _ := os.ReadFile(part)
 	assert.Equal(t, body, got)
-	assert.Error(t, download(context.Background(), srv.Client(), srv.URL, filepath.Join(t.TempDir(), "y.part"), strings.Repeat("0", 64)))
+	assert.Error(t, download(context.Background(), srv.Client(), srv.URL, filepath.Join(t.TempDir(), "y.part"), strings.Repeat("0", 64), ""))
 }
 
 func TestCommandValidator(t *testing.T) {
@@ -349,4 +349,47 @@ func TestDownloadFailureIsReportedOnce(t *testing.T) {
 	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as})
 	require.Len(t, a.ActiveModels(), 1)
 	assert.Len(t, failures(), 1)
+}
+
+// download_host_override sends full downloads and deltas to another address
+// with the path and query unchanged and the URL's own host in the Host
+// header, which the presigned signature covers.
+func TestDownloadHostOverride(t *testing.T) {
+	v1 := bytes.Repeat([]byte("weights-"), 20000)
+	v2 := append(append([]byte(nil), v1[:150000]...), []byte("a retrained head")...)
+	d, err := delta.Diff(v1, v2)
+	require.NoError(t, err)
+	files := map[string][]byte{"/fleetml-models/v1.bin": v1, "/fleetml-models/v2.bin": v2, "/fleetml-models/v2.delta": d}
+	type hit struct{ host, uri string }
+	var hits []hit
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, hit{r.Host, r.URL.RequestURI()})
+		_, _ = w.Write(files[r.URL.Path])
+	}))
+	defer srv.Close()
+	override := strings.TrimPrefix(srv.URL, "http://")
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: t.TempDir(), DownloadHostOverride: override}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	const public = "http://localhost:19100"
+	const query = "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-SignedHeaders=host&X-Amz-Signature=abc"
+	ctx := context.Background()
+
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1", VariantId: "var-1",
+		DownloadUrl: public + "/fleetml-models/v1.bin" + query, BlobSha256: shaHex(v1), Action: fleetmlv1.ModelAssignment_LOAD}})
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "2.0.0", VersionId: "ver-2", VariantId: "var-2",
+		DownloadUrl: public + "/fleetml-models/v2.bin" + query, BlobSha256: shaHex(v2), Action: fleetmlv1.ModelAssignment_UPDATE,
+		DeltaUrl: public + "/fleetml-models/v2.delta" + query, DeltaSha256: shaHex(d), DeltaBaseSha256: shaHex(v1)}})
+
+	require.Len(t, a.ActiveModels(), 1)
+	assert.Equal(t, "2.0.0", a.ActiveModels()[0].Active.Version)
+	assert.Equal(t, []hit{
+		{"localhost:19100", "/fleetml-models/v1.bin" + query},
+		{"localhost:19100", "/fleetml-models/v2.delta" + query},
+	}, hits, "both requests reach the override address with the original Host header, path and query")
+
+	for _, bad := range []string{"http://192.0.2.10:19100", "192.0.2.10", "192.0.2.10:19100/path"} {
+		c := &Config{Server: "127.0.0.1:1", StateDir: t.TempDir(), DownloadHostOverride: bad}
+		assert.ErrorContains(t, c.Validate(), "download_host_override must be host:port", bad)
+	}
 }

@@ -17,7 +17,9 @@ import (
 // download fetches url into part, resuming a partial file with an HTTP Range
 // request (a server that ignores Range sends everything and the file
 // restarts), then checks its sha256. On success the complete file is at part.
-func download(ctx context.Context, client *http.Client, url, part, wantSHA string) error {
+// A non-empty hostOverride (host:port) is where the request goes instead of
+// the URL's host; see overrideHost.
+func download(ctx context.Context, client *http.Client, url, part, wantSHA, hostOverride string) error {
 	if err := os.MkdirAll(filepath.Dir(part), 0o700); err != nil {
 		return err
 	}
@@ -29,6 +31,7 @@ func download(ctx context.Context, client *http.Client, url, part, wantSHA strin
 	if err != nil {
 		return err
 	}
+	overrideHost(req, hostOverride)
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
@@ -72,6 +75,18 @@ func download(ctx context.Context, client *http.Client, url, part, wantSHA strin
 		return fmt.Errorf("sha256 mismatch: got %s, want %s", got, wantSHA)
 	}
 	return nil
+}
+
+// overrideHost sends req to host (host:port) instead of the URL's host. The
+// path and query are unchanged and the Host header stays the URL's original
+// host: a presigned S3 URL's signature covers that header, so the object
+// store accepts the request although it arrived at another address.
+func overrideHost(req *http.Request, host string) {
+	if host == "" {
+		return
+	}
+	req.Host = req.URL.Host
+	req.URL.Host = host
 }
 
 func fileSHA256(path string) (string, error) {

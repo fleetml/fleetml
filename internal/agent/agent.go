@@ -120,6 +120,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		_ = os.Chmod(filepath.Join(m.Active.Dir, modelFile), modelFileMode) // written 0600 before 0.6.0
 		a.log.Info("active model (from the last run)", "model", m.Name, "version", m.Active.Version, "path", a.currentLink(m.Name))
 	}
+	if a.cfg.DownloadHostOverride != "" {
+		a.log.Info("model downloads go to download_host_override", "host", a.cfg.DownloadHostOverride)
+	}
 	if a.cfg.TelemetryListen != "" {
 		srv, err := a.serveLocal(a.cfg.TelemetryListen)
 		if err != nil {
@@ -407,7 +410,7 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		}
 		part := filepath.Join(a.cfg.StateDir, "downloads", safeName(as.VariantId)+".part")
 		if !a.fromDelta(ctx, as, part) {
-			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256); err != nil {
+			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256, a.cfg.DownloadHostOverride); err != nil {
 				a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
 				a.mu.Lock()
 				first := !a.downloadFailed[as.VariantId]
@@ -675,7 +678,7 @@ func (a *Agent) fromDelta(ctx context.Context, as *fleetmlv1.ModelAssignment, pa
 		a.log.Warn("model delta unusable; downloading the full model", "model", as.ModelName, "version", as.Version, "error", err)
 		return false
 	}
-	if err := download(ctx, a.http, as.DeltaUrl, dpart, as.DeltaSha256); err != nil {
+	if err := download(ctx, a.http, as.DeltaUrl, dpart, as.DeltaSha256, a.cfg.DownloadHostOverride); err != nil {
 		return fail(err)
 	}
 	old, err := os.ReadFile(base)
