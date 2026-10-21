@@ -190,7 +190,7 @@ class TelemetryReporter internal constructor(
                 queue.remove(batch.size)
                 Logger.d("Telemetry flushed: ${batch.size} sent, $accepted accepted")
             } catch (e: Exception) {
-                Logger.w("Telemetry flush failed, ${queue.size} events kept: ${e.message}")
+                Logger.failure("Telemetry flush failed, ${queue.size} events kept", e)
                 return false
             }
             batch = queue.peek(batchSize)
