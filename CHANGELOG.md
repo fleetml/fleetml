@@ -112,6 +112,9 @@ change APIs).
   the Windows run does and does not verify; `loaded` turns one heartbeat
   after the device has the model and is counted each time you ask;
   RELEASING: tarballs built by hand on a Mac.
+- Android "From a clone": the two Gradle plugins and the `sdkVersion`
+  property the SDK module needs from the app's build, without which Gradle
+  stops with `Plugin [id: 'com.google.protobuf'] was not found`.
 
 ## [0.5.0] - 2026-10-19
 

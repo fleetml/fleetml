@@ -107,6 +107,21 @@ dependencies {
 }
 ```
 
+The module's own build uses two more Gradle plugins and reads its version from
+a property, which the app's build must then provide too: next to the app's
+Android and Kotlin plugins in the root `build.gradle.kts`,
+
+```kotlin
+plugins {
+    id("com.google.protobuf") version "0.9.4" apply false
+    id("com.vanniktech.maven.publish") version "0.34.0" apply false
+}
+```
+
+and `sdkVersion=0.6.0-dev` (any version string) in the app's
+`gradle.properties`. Without them Gradle stops with
+`Plugin [id: 'com.google.protobuf'] was not found`.
+
 Building the SDK from source on the command line needs JDK 17: the wrapper's
 Gradle 8.7 with AGP 8.5 fails on a newer default JDK. Point `JAVA_HOME` at it,
 for example `/opt/homebrew/opt/openjdk@17` on macOS with Homebrew or
@@ -168,9 +183,10 @@ the key then sits in a file you commit.
 Register the class in `AndroidManifest.xml` with
 `<application android:name=".MyApp" ...>`. The app needs no permission of its
 own for the SDK: the SDK's manifest declares `INTERNET` and
-`ACCESS_NETWORK_STATE`, and WorkManager, which it uses for background checks,
-adds `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` to the
-merged manifest.
+`ACCESS_NETWORK_STATE`, WorkManager, which it uses for background checks,
+adds `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE`, and
+AndroidX Core adds the app's own `<application ID>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`
+to the merged manifest.
 
 **On the emulator, forward the model-file port.** `10.0.2.2` is how the
 emulator reaches a server on the laptop it runs on, which covers gRPC on
@@ -249,7 +265,9 @@ I FleetML : Model iris 1.0.0 is active
 ```
 
 At warning level or above it logs why registration or a heartbeat failed,
-one line each, such as an unreachable host or a refused enrollment key.
+one line each, such as an unreachable host or a refused enrollment key; the
+stack trace of each failure follows at debug level, which
+`adb logcat FleetML:I *:S` leaves out.
 
 After fixing something (the port forward, a key, a deployment), the app does
 not have to wait for its next heartbeat: `FleetML.syncNow()` from a coroutine
@@ -445,15 +463,19 @@ adb shell am force-stop <package>
 adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1
 ```
 
-`onModelReady` fires for the cached model at once, and logcat shows the
-failed heartbeat on one line:
+`onModelReady` fires for the cached model at once,
+`onConnectionStatusChanged(false)` follows, and logcat shows each failure on
+one line:
 
 ```text
-W FleetML : Heartbeat failed: UNAVAILABLE: ...
+W FleetML : Heartbeat failed: UNAVAILABLE: connect failed: ENETUNREACH (Network is unreachable)
+W FleetML : Telemetry flush failed, 1 events kept: UNAVAILABLE: connect failed: ENETUNREACH (Network is unreachable)
 ```
 
 `adb shell cmd connectivity airplane-mode disable` brings the network back;
-the next heartbeat reconnects and sends the queued events.
+the next heartbeat, within 30 seconds (the SDK's own interval until the
+server answers), reconnects and sends the queued events
+(`Telemetry flushed: 1 sent, 1 accepted`).
 
 ![Offline start in airplane mode](screenshots/android-offline-start.png)
 
