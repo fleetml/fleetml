@@ -80,8 +80,9 @@ as `Restart=always` does in the unit.
 In a container, make the agent the main process (`exec` it from the
 entrypoint script) or run the container with an init that reaps processes,
 such as `docker run --init` or `tini`/`dumb-init` as the entrypoint. Started
-under a placeholder such as `sleep infinity`, an agent that exits stays as
-a `<defunct>` process, because nothing collects it.
+in the background under a placeholder such as `sleep infinity`, an agent
+that exits leaves its `su` behind as a `<defunct>` process, because the
+placeholder does not collect it.
 
 ### Connect it to the server
 
@@ -106,7 +107,8 @@ a `<defunct>` process, because nothing collects it.
 > `fleetml deploy get <deployment ID> | jq -c .devices` counts the devices
 > that report the model loaded (`{"loaded":0,"targeted":1}` while downloads
 > fail), and `fleetml device get <device ID> | jq .last_model_event` shows the
-> agent's `MODEL_LOAD_FAILED` with the error. `loaded` counts the devices whose
+> agent's `MODEL_LOAD_FAILED` with the error once the agent's next telemetry
+> flush has sent it (30 seconds by default). `loaded` counts the devices whose
 > last heartbeat reported the version, so it turns to 1 one heartbeat (60
 > seconds by default) after the agent logs `model active`; it is counted each
 > time you ask, so a deployment that a newer one replaced counts down to 0 as
@@ -208,7 +210,7 @@ With `telemetry_listen` set, the start also logs
 version that the `validator` rejects is logged as
 
 ```text
-level=WARN msg="model failed validation; keeping the current version" model=iris version=2.0.0 error="exit status 1: not a tflite file" rejected_file=/var/lib/fleetml-agent/rejected/iris/2.0.0-<variant>/model.bin
+level=WARN msg="model failed validation; keeping the current version" model=iris version=3.0.0 error="exit status 1: not a tflite file" rejected_file=/var/lib/fleetml-agent/rejected/iris/3.0.0-<variant>/model.bin
 ```
 
 with the end of the command's output in `error` ([Where models go](#where-models-go), step 5).
@@ -304,7 +306,7 @@ While you work on a validator, run it against the rejected file by hand, as
 the agent's user, and see its exit code:
 
 ```bash
-sudo -u fleetml-agent sh -c 'python3 /opt/inference/check_model.py /var/lib/fleetml-agent/rejected/iris/2.0.0-<variant>/model.bin; echo "exit $?"'
+sudo -u fleetml-agent sh -c 'python3 /opt/inference/check_model.py /var/lib/fleetml-agent/rejected/iris/3.0.0-<variant>/model.bin; echo "exit $?"'
 ```
 
 Once it passes, start the agent once with `-retry-failed`, which clears the
@@ -318,9 +320,10 @@ sudo systemctl start fleetml-agent
 ```
 
 The foreground run logs
-`level=INFO msg="cleared the failed versions; they are retried on the next heartbeat" count=1`
-and then the version's validation and activation; stop it with Ctrl-C once
-it has. Without systemd, stop the agent under its supervisor and run the
+`level=INFO msg="cleared the failed versions; they are retried on the next heartbeat" count=1`,
+and its first heartbeat, right away, retries the version
+(`level=INFO msg="model active" model=iris version=3.0.0 ...` once the
+validator passes); stop it with Ctrl-C then. Without systemd, stop the agent under its supervisor and run the
 `su` command from [Without systemd](#without-systemd) with `-retry-failed`
 added in the same way. A restart without the flag keeps waiting out the
 hour.
@@ -392,7 +395,15 @@ server is back.
 
 `go test ./internal/agent` covers the queue, state, fingerprint, download
 resume, the validator command and the install path (symlink, last-known-good,
-hook, local endpoint, file modes). `./scripts/agent-install-test.sh` runs
+hook, local endpoint and its rejection reasons, file modes, the rejected file
+and `-retry-failed`, `download_host_override`), and the e2e test
+`TestE2E_AgentDownloadHostOverride` downloads through the override from a
+real SeaweedFS that refuses a plain host rewrite. The agent ran in an Ubuntu
+24.04 container with systemd against the quickstart's stack started without
+`S3_PUBLIC_ENDPOINT`: the download failed as described, then
+`download_host_override` with the Mac's LAN address brought 1.0.0 and the
+2.0.0 delta; a failing validator kept 2.0.0 and the rejected file, a restart
+did not retry it, and `-retry-failed` as above activated it. `./scripts/agent-install-test.sh` runs
 `install.sh` in Ubuntu containers with and without systemd. The runtime check ran two `linux/amd64` agents in
 Debian containers next to the dev stack: a 50% canary reached exactly one of
 them, a failing validator on that one kept the last-known-good version and
