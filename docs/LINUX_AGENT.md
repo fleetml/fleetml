@@ -61,8 +61,10 @@ placeholder key.
 
 ### Without systemd
 
-On a machine without systemd (a container, a BusyBox or Yocto image, a kiosk
-with its own init), `install.sh` installs the binary, the user and the config
+On a machine where systemd is not running (a container, also one whose image
+carries the systemd package, a chroot, a BusyBox or Yocto image, a kiosk with
+its own init; the script checks for `/run/systemd/system`, which only a
+running systemd creates), `install.sh` installs the binary, the user and the config
 the same way, skips the unit, creates `/var/lib/fleetml-agent` owned by
 `fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
 systemd) and says so. Once the config is set, run the agent as that user under
