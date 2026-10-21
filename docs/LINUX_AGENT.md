@@ -9,18 +9,10 @@ downloads and checking the sha256), validates each one before switching to it,
 keeps the last-known-good version, and reports telemetry. It does not run your
 models: your inference process loads them from disk.
 
-## Try it locally
-
-```bash
-./scripts/demo-agent.sh
-```
-
-starts a server on the dev stack and four agents on this machine (the agent
-also builds for macOS, for local testing), each with a stand-in inference
-process that posts to its local endpoint. A canary of a model that fails at
-inference trips the health gate and rolls back, and the canary boxes switch
-their `current` link back to the last-known-good version. It is the recording
-at the top of the [README](../README.md).
+This guide follows a real deployment: install the agent as a service on the
+machine, connect it to a FleetML server on another machine, deploy a model to
+it and check that it arrived. Running everything on one laptop is at the end,
+in [Try it locally](#try-it-locally).
 
 ## Install
 
@@ -42,8 +34,8 @@ fleetml-agent -version
 ```
 
 On a minimal image without `curl`, `wget -q` with the same URLs downloads
-the two files, or copy them over from another machine; in a container's root
-shell without `sudo`, leave `sudo` out. `sha256sum -c` prints
+the two files, or copy them over from another machine; in a root shell
+without `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
 `fleetml-agent 0.6.0`. To build the agent from source instead, `make
@@ -56,21 +48,31 @@ The script (POSIX `sh`, so a BusyBox image without bash runs it too) installs
 the binary to `/usr/local/bin`, creates a `fleetml-agent` system user (with
 `useradd`, or BusyBox's `addgroup` and `adduser`), the config file (from
 [`config.example.yaml`](../deploy/agent/config.example.yaml)) and the
-[systemd unit](../deploy/agent/fleetml-agent.service), which keeps its state in
-`/var/lib/fleetml-agent`. It starts nothing while the config still holds the
-placeholder key.
+[systemd unit](../deploy/agent/fleetml-agent.service), and starts nothing
+while the config still holds the placeholder key. The unit runs the agent as
+`fleetml-agent` with its state in `/var/lib/fleetml-agent` (created by
+`StateDirectory=`), restarts it when it exits (`Restart=always`), and
+hardens it: `NoNewPrivileges=true` (no `sudo` or setuid from the agent or its
+hooks), `ProtectSystem=strict` (the system read-only, only the state folder
+writable), `ProtectHome=true` and `PrivateTmp=true`.
 
-### Without systemd
+### Without systemd, and in containers
 
 On a machine where systemd is not running (a container, also one whose image
 carries the systemd package, a chroot, a BusyBox or Yocto image, a kiosk with
 its own init; the script checks for `/run/systemd/system`, which only a
-running systemd creates), `install.sh` installs the binary, the user and the config
-the same way, skips the unit, creates `/var/lib/fleetml-agent` owned by
-`fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
-systemd) and says so. Once the config is set, run the agent as that user under
-the machine's own supervisor (runit, s6, OpenRC, supervisord, a container's
-entrypoint), with the same command the unit runs:
+running systemd creates), `install.sh` installs the binary, the user and the
+config the same way, skips the unit, creates `/var/lib/fleetml-agent` owned
+by `fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
+systemd) and says so:
+
+```text
+No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent was created for the fleetml-agent user.
+```
+
+Once the config is set, run the agent as that user under the machine's own
+supervisor (runit, s6, OpenRC, supervisord, a container's entrypoint), with
+the same command the unit runs:
 
 ```bash
 su -s /bin/sh fleetml-agent -c '/usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
@@ -80,84 +82,155 @@ It logs to standard error, which is where the supervisor's log picks it up;
 the journal lines below are the same. The supervisor restarts it if it exits,
 as `Restart=always` does in the unit.
 
-In a container, make the agent the main process (`exec` it from the
-entrypoint script) or run the container with an init that reaps processes,
-such as `docker run --init` or `tini`/`dumb-init` as the entrypoint. Started
-in the background under a placeholder such as `sleep infinity`, an agent
-that exits leaves its `su` behind as a `<defunct>` process, because the
-placeholder does not collect it.
-
-### Connect it to the server
-
-> **First, on the server: the address models are downloaded from.** The
-> server hands out each model as a download URL for its object store's public
-> address, `S3_PUBLIC_ENDPOINT`, which is `localhost:19100` in the
-> quickstart's compose stack: only the server's own machine reaches it. For an
-> agent on another machine, whoever runs the server starts the stack with the
-> server's LAN address there, and the agent's machine must reach ports 19090
-> (gRPC) and 19100 (model files):
->
-> ```bash
-> S3_PUBLIC_ENDPOINT=<server LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
-> ```
->
-> On the server's machine,
-> `docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`
-> shows the value in use. Without a reachable address the agent registers and
-> heartbeats normally, and the server reports the deployment `COMPLETE`, which
-> means assigned, not delivered; only the agent's log shows the failure, a
-> `download failed` line on every heartbeat. From the CLI,
-> `fleetml deploy get <deployment ID> | jq -c .devices` counts the devices
-> that report the model loaded (`{"loaded":0,"targeted":1}` while downloads
-> fail), and `fleetml device get <device ID> | jq .last_model_event` shows the
-> agent's `MODEL_LOAD_FAILED` with the error once the agent's next telemetry
-> flush has sent it (30 seconds by default). `loaded` counts the devices whose
-> last heartbeat reported the version, so it turns to 1 one heartbeat (60
-> seconds by default) after the agent logs `model active`; it is counted each
-> time you ask, so a deployment that a newer one replaced counts down to 0 as
-> its devices move on. A server in production sits behind a TLS proxy with a
-> real host name instead ([CONFIG.md](CONFIG.md#docker-compose) has the compose
-> settings).
->
-> **If you cannot restart the server**, fix it on the agent's side: set
-> `download_host_override` in the agent's config to an address of the
-> server's object store that this machine reaches, for example
-> `download_host_override: <server LAN IP>:19100`. The agent then sends every
-> download, full model or delta, to that address with the URL's path and
-> signature unchanged (the request keeps the original host in its `Host`
-> header, which the signature covers), logs
-> `level=INFO msg="model downloads go to download_host_override" host=<server LAN IP>:19100`
-> at start, and the next heartbeat's download succeeds.
-
-The agent registers into a project with one of the project's enrollment keys,
-and a deployment reaches it through its labels. From the root of a clone (for
-the sample model), wherever the CLI talks to the server with the admin key (as
-in the [tour](QUICKSTART.md#tour)), this creates a project, publishes a model,
-creates an enrollment key, which it prints once, and deploys the model to the
-labels the example config sets (`site: factory-1`):
+In a container, make the agent the main process and give the container an
+init that reaps processes. Started in the background under a placeholder such
+as `sleep infinity`, an agent that exits leaves its `su` behind as a
+`<defunct>` process, because the placeholder does not collect it. In an
+entrypoint script, the last line is
 
 ```bash
-P=$(fleetml project create --name edge -o json | jq -r .id)
+exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
+```
+
+and `docker run --init` (or `tini`/`dumb-init` as the entrypoint) reaps
+what is left. To try the agent in a throwaway Ubuntu container, from the
+folder that holds the unpacked `fleetml-agent` folder, with the server's
+address and an enrollment key from [Connect and verify](#connect-and-verify)
+(the third `sed` expression is the one from [Server on another
+machine](#server-on-another-machine); leave it out when the server's
+`S3_PUBLIC_ENDPOINT` is reachable):
+
+```bash
+docker run -d --init --name fleetml-agent -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c '
+  /opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent &&
+  sed -i -e "s|^server: .*|server: <server address>:19090|" -e "s|^enrollment_key: .*|enrollment_key: \"<enrollment key>\"|" \
+    -e "s|^# download_host_override: .*|download_host_override: \"<server address>:19100\"|" /etc/fleetml-agent/config.yaml &&
+  exec su -s /bin/sh fleetml-agent -c "exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml"'
+docker logs -f fleetml-agent
+```
+
+## Server on another machine
+
+The agent talks to the server in two ways, and both must reach it from this
+machine:
+
+| | Port | Set by | Where |
+|---|---|---|---|
+| Registration and heartbeats (gRPC) | 19090 | you | `server: <server address>:19090` in the agent's config |
+| Model downloads (presigned URLs) | 19100 | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
+
+The server hands out each model as a download URL for its object store's
+public address, `S3_PUBLIC_ENDPOINT`. In the quickstart's compose stack that
+is `localhost:19100`, which only the server's own machine reaches. There are
+two ways out:
+
+- **On the server**, whoever runs it starts the stack with an address of the
+  server that this machine reaches:
+
+  ```bash
+  S3_PUBLIC_ENDPOINT=<server address>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+  ```
+
+  On the server's machine, this shows the value in use:
+
+  ```bash
+  docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
+  ```
+
+- **On this machine**, when the server stays as it is: `download_host_override`
+  in the agent's config sends every download, full model or delta, to an
+  address of the server's object store that this machine reaches, with the
+  URL's path and signature unchanged (the request keeps the original host in
+  its `Host` header, which the signature covers). The example config ships it
+  commented out; together with the two settings every machine needs:
+
+  ```bash
+  sudo sed -i -e 's|^server: .*|server: <server address>:19090|' \
+    -e 's|^enrollment_key: .*|enrollment_key: "<enrollment key>"|' \
+    -e 's|^# download_host_override: .*|download_host_override: "<server address>:19100"|' \
+    /etc/fleetml-agent/config.yaml
+  ```
+
+  At start the agent then logs
+  `level=INFO msg="model downloads go to download_host_override" host=<server address>:19100`,
+  and the next heartbeat's download succeeds.
+
+**The symptom** of an unreachable download address: the agent registers and
+heartbeats normally, and the server reports the deployment `COMPLETE`, which
+means assigned, not delivered. Only the agent's log shows the failure, on
+every heartbeat:
+
+```text
+level=WARN msg="download failed" model=iris version=1.0.0 error="downloading: Get \"http://localhost:19100/fleetml-models/models/<project>/iris/1.0.0/INT8_TFLITE.bin\": dial tcp [::1]:19100: connect: connection refused"
+```
+
+**From the CLI**, `fleetml deploy get <deployment ID> | jq -c .devices`
+counts the devices that report the model loaded (`{"loaded":0,"targeted":1}`
+while downloads fail), and `fleetml device get <device ID> | jq .last_model_event`
+shows the agent's `MODEL_LOAD_FAILED` with the error once the agent's next
+telemetry flush has sent it (30 seconds by default). `loaded` counts the
+devices whose last heartbeat reported the version, so it turns to 1 one
+heartbeat (60 seconds by default) after the agent logs `model active`; it is
+counted each time you ask, so a deployment that a newer one replaced counts
+down to 0 as its devices move on.
+
+A server in production sits behind a TLS proxy with a real host name: then
+`tls: true`, `server: <host name>:443` (or the proxy's gRPC port) and an
+`S3_PUBLIC_ENDPOINT` on the proxy too, and no override
+([CONFIG.md](CONFIG.md#docker-compose) has the compose settings).
+
+On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
+stack, where `server: localhost:19090` and the stack's default
+`S3_PUBLIC_ENDPOINT` should work as they are, since Docker Desktop publishes
+19090 and 19100 there too; current Ubuntu images for WSL run systemd, and
+without it `install.sh` takes the [no-systemd path](#without-systemd-and-in-containers).
+None of this is verified on Windows by CI, which runs Docker Engine inside
+the distribution rather than Docker Desktop.
+
+## Connect and verify
+
+The agent registers into a project with one of the project's enrollment keys,
+and a deployment reaches it through its labels. On the machine where the
+`fleetml` CLI runs ([Get the CLI](QUICKSTART.md#get-the-cli)), with `jq`,
+this creates a project, publishes a model, creates an enrollment key and
+deploys the model to the labels the example config sets (`site: factory-1`).
+The key is the server's admin key or one with the `admin` role in your
+project ([which key does what](ANDROID_SDK.md#publish-and-deploy-with-the-cli));
+the project name `edge` and the model file are this guide's, yours will differ
+(`models/iris/iris_v1.tflite` is in a clone of this repository):
+
+```bash
+export FLEETML_SERVER=http://<server address>:18080 FLEETML_API_KEY=<the key your team gave you>
+P=$(fleetml project create --name edge -o json | jq -r .id)   # or P=<the project ID your team gave you>
 fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
-fleetml enrollment-key create --project $P --name edge
+EK=$(fleetml enrollment-key create --project $P --name edge -o json | jq -r .key); echo "$EK"
 fleetml deploy start $(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":"factory-1"}' -o json | jq -r .id)
 ```
 
-`vid` looks a version up by its number, so the block picks 1.0.0 even after
-more versions are pushed (`fleetml ver list` lists the newest first). The
-deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`): it waits
-for the machine. Then, on the machine, set `server` (the server's host and
-gRPC port, `19090`; `<server LAN IP>:19090` for a server on another machine)
-and `enrollment_key` in the config, and start the service:
+`-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
+to a provisioning script; without `-o json`, `enrollment-key create` prints a
+table with the key once. One key enrolls any number of machines. `vid` looks
+a version up by its number, so the block picks 1.0.0 even after more versions
+are pushed (`fleetml ver list` lists the newest first). The deployment starts
+as `COMPLETE` (`✓ Deployment start → COMPLETE`): it waits for the machine.
+With the quickstart on the same machine as the CLI, `FLEETML_SERVER` is
+`http://localhost:18080` and the key `$FLEETML_ADMIN_KEY` after
+`source ~/.fleetml.env`.
+
+Then, on the agent's machine, set `server` and `enrollment_key` (and
+`download_host_override` if the server needs it) with the `sed` line from
+[Server on another machine](#server-on-another-machine), and start the
+service:
 
 ```bash
-sudo sed -i -e 's|^server: .*|server: <server LAN IP>:19090|' -e 's|^enrollment_key: .*|enrollment_key: "<enrollment key>"|' /etc/fleetml-agent/config.yaml
 sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
 
+Without systemd, start the `su` command from [Without
+systemd](#without-systemd-and-in-containers) under the supervisor instead.
 `sed` is on every image, BusyBox included; with an editor, `sudo vi
 /etc/fleetml-agent/config.yaml` does the same. Leave `tls: false` for the
 quickstart's compose server, which speaks plain gRPC on 19090, and set it to
@@ -170,12 +243,12 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.6.0 server=fleetml.example.com:19090 models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.6.0 server=<server address>:19090 models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
-and the machine appears in `fleetml device list --project <project ID>` with
-OS `LINUX`. A deployment that already targets its labels arrives right after
+and the machine appears in `fleetml device list --project $P` with OS
+`LINUX`. A deployment that already targets its labels arrives right after
 registration; one created later arrives with the next heartbeat (60 seconds
 with the server's default `DEVICE_HEARTBEAT_INTERVAL`; the agent's own `30s`
 applies only until the server answers):
@@ -186,8 +259,10 @@ level=INFO msg="model active" model=iris version=1.0.0 path=/var/lib/fleetml-age
 ```
 
 `/var/lib/fleetml-agent/models/iris/current` then links to the active
-version's folder ([Where models go](#where-models-go)). A second version,
-pushed and deployed to the same labels in the same shell as the first block:
+version's folder ([Where models go](#where-models-go)), and
+`fleetml deploy get <deployment ID> | jq -c .devices` turns to
+`{"loaded":1,"targeted":1}` one heartbeat later. A second version, pushed and
+deployed to the same labels in the same shell as the first block:
 
 ```bash
 fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
@@ -201,8 +276,8 @@ level=INFO msg="model built from a delta" model=iris version=2.0.0 delta_bytes=<
 level=INFO msg="model active" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
 ```
 
-After a restart, the agent keeps its registration and logs the model it has
-instead of registering again:
+After a restart (`sudo systemctl restart fleetml-agent`), the agent keeps its
+registration and logs the model it has instead of registering again:
 
 ```text
 level=INFO msg="active model (from the last run)" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
@@ -222,14 +297,7 @@ A `transport: authentication handshake failed` error means `tls: true` against
 a server without TLS; `registration failed` with `Unauthenticated` means the
 enrollment key is wrong or revoked; `download failed` with
 `connection refused` and `localhost:19100` in the URL means the server's
-`S3_PUBLIC_ENDPOINT` (above; `download_host_override` is the agent-side fix).
-
-On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
-stack: Docker Desktop publishes 19090 and 19100 there too, so
-`server: localhost:19090` and the stack's default `S3_PUBLIC_ENDPOINT` work
-as they are. Current Ubuntu images for WSL run systemd; without it,
-`install.sh` takes the [Without systemd](#without-systemd) path (not verified
-on Windows by CI).
+`S3_PUBLIC_ENDPOINT` ([Server on another machine](#server-on-another-machine)).
 
 ## Configure
 
@@ -253,7 +321,7 @@ hour's wait ([Where models go](#where-models-go), step 5).
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
 | `metered`, `on_battery` | `false` | Describe the machine's connection and power for the download policy |
 | `heartbeat_interval` | `30s` | Until the server sends its own (`DEVICE_HEARTBEAT_INTERVAL`, default 60 s) |
-| `download_host_override` | none | `host:port` that every model download goes to instead of the URL's host, for a server whose `S3_PUBLIC_ENDPOINT` this machine cannot reach ([Connect it to the server](#connect-it-to-the-server)) |
+| `download_host_override` | none | `host:port` that every model download goes to instead of the URL's host, for a server whose `S3_PUBLIC_ENDPOINT` this machine cannot reach ([Server on another machine](#server-on-another-machine)) |
 
 The server's device settings apply as for the SDKs
 ([CONFIG.md](CONFIG.md#devices)); the agent runs continuously, so it always
@@ -306,10 +374,16 @@ For each assignment the agent:
    keeps in `state.json` across restarts.
 
 While you work on a validator, run it against the rejected file by hand, as
-the agent's user, and see its exit code:
+the agent's user, and see its exit code; with `sudo`:
 
 ```bash
 sudo -u fleetml-agent sh -c 'python3 /opt/inference/check_model.py /var/lib/fleetml-agent/rejected/iris/3.0.0-<variant>/model.bin; echo "exit $?"'
+```
+
+or in a root shell without `sudo` (a container, a minimal image):
+
+```bash
+su -s /bin/sh fleetml-agent -c 'python3 /opt/inference/check_model.py /var/lib/fleetml-agent/rejected/iris/3.0.0-<variant>/model.bin; echo "exit $?"'
 ```
 
 Once it passes, start the agent once with `-retry-failed`, which clears the
@@ -322,14 +396,27 @@ sudo -u fleetml-agent /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/co
 sudo systemctl start fleetml-agent
 ```
 
-The foreground run logs
+Without systemd, stop the agent under its supervisor and run, as root,
+
+```bash
+su -s /bin/sh fleetml-agent -c '/usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml -retry-failed'
+```
+
+then start it under the supervisor again. The foreground run logs
 `level=INFO msg="cleared the failed versions; they are retried on the next heartbeat" count=1`,
 and its first heartbeat, right away, retries the version
 (`level=INFO msg="model active" model=iris version=3.0.0 ...` once the
-validator passes); stop it with Ctrl-C then. Without systemd, stop the agent under its supervisor and run the
-`su` command from [Without systemd](#without-systemd) with `-retry-failed`
-added in the same way. A restart without the flag keeps waiting out the
-hour.
+validator passes); stop it with Ctrl-C then. A restart without the flag keeps
+waiting out the hour.
+
+The rejected copy stays where it was after the version becomes active: it is
+the file as it failed, kept for comparison, and it is replaced only when
+another version of the model fails. Once you no longer need it, remove it
+(the active copy is under `models/`):
+
+```bash
+sudo rm -r /var/lib/fleetml-agent/rejected/iris/3.0.0-<variant>
+```
 
 A validator can be anything that loads the model the way production does, for
 example a Python script that runs one inference with ONNX Runtime on a known
@@ -445,6 +532,19 @@ When the server is unreachable the agent keeps the models it has: `current`
 links stay in place, telemetry stays queued, and heartbeats resume when the
 server is back.
 
+## Try it locally
+
+```bash
+./scripts/demo-agent.sh
+```
+
+starts a server on the dev stack and four agents on this machine (the agent
+also builds for macOS, for local testing), each with a stand-in inference
+process that posts to its local endpoint. A canary of a model that fails at
+inference trips the health gate and rolls back, and the canary boxes switch
+their `current` link back to the last-known-good version. It is the recording
+at the top of the [README](../README.md).
+
 ## Verified
 
 `go test ./internal/agent` covers the queue, state, fingerprint, download
@@ -452,17 +552,26 @@ resume, the validator command and the install path (symlink, last-known-good,
 hook, local endpoint and its rejection reasons, file modes, the rejected file
 and `-retry-failed`, `download_host_override`), and the e2e test
 `TestE2E_AgentDownloadHostOverride` downloads through the override from a
-real SeaweedFS that refuses a plain host rewrite. The agent ran in an Ubuntu
-24.04 container with systemd against the quickstart's stack started without
-`S3_PUBLIC_ENDPOINT`: the download failed as described, then
-`download_host_override` with the Mac's LAN address brought 1.0.0 and the
-2.0.0 delta; a failing validator kept 2.0.0 and the rejected file, a restart
-did not retry it, and `-retry-failed` as above activated it. `./scripts/agent-install-test.sh` runs
-`install.sh` in Ubuntu containers with and without systemd. The runtime check ran two `linux/amd64` agents in
-Debian containers next to the dev stack: a 50% canary reached exactly one of
-them, a failing validator on that one kept the last-known-good version and
-reported `MODEL_LOAD_FAILED`, and completing the rollout moved both `current`
-links and ran the hook. `./scripts/signing-e2e.sh agent` checks signatures:
-a model whose stored signature was overwritten is rejected, and one signed
-with the previous key is accepted during the rotation's grace period and
-rejected after it.
+real SeaweedFS that refuses a plain host rewrite.
+`./scripts/agent-install-test.sh` runs `install.sh` in Ubuntu containers
+without systemd, with systemd installed but not running, and with a stand-in
+for a running systemd, and in an Alpine (BusyBox) container without bash or
+`useradd`.
+
+The agent ran in an Ubuntu 24.04 container against the quickstart's stack
+started without `S3_PUBLIC_ENDPOINT`, following [Server on another
+machine](#server-on-another-machine) and [Connect and
+verify](#connect-and-verify) as written: the download failed as described,
+then `download_host_override` with the Mac's LAN address brought 1.0.0 and
+the 2.0.0 delta. In an Ubuntu 24.04 container with systemd, a failing
+validator kept 2.0.0 and the rejected file, a restart did not retry it,
+`-retry-failed` as above activated it, and the path unit in [Reloading the
+inference process](#reloading-the-inference-process-after-an-update)
+restarted a stand-in inference service after each switch. The runtime check
+ran two `linux/amd64` agents in Debian containers next to the dev stack: a
+50% canary reached exactly one of them, a failing validator on that one kept
+the last-known-good version and reported `MODEL_LOAD_FAILED`, and completing
+the rollout moved both `current` links and ran the hook.
+`./scripts/signing-e2e.sh agent` checks signatures: a model whose stored
+signature was overwritten is rejected, and one signed with the previous key
+is accepted during the rotation's grace period and rejected after it.
