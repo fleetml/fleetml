@@ -7,6 +7,78 @@ change APIs).
 
 ## [0.7.0] - Unreleased
 
+### Added
+
+- `scripts/agent-install-test.sh` has two more cases: an image with the
+  systemd package but without systemd running, and an Alpine (BusyBox)
+  container without bash or `useradd`. CI runs the Android sample app's unit
+  tests next to the SDK's.
+
+### Changed
+
+- Linux agent: `install.sh` is POSIX `sh` and creates its user with BusyBox's
+  `addgroup` and `adduser` where `useradd` is missing, so it runs on BusyBox
+  images. It decides on the service unit by whether systemd is running
+  (`/run/systemd/system`), not by whether `systemctl` is installed; without a
+  running systemd it prints `No running systemd on this machine: ...`.
+- Linux agent: the example config's `post_activate` touches
+  `/var/lib/fleetml-agent/model-switched`, which the shipped unit can write,
+  instead of a file under `/run`, which it cannot.
+
+### Fixed
+
+- Android SDK: `FleetML.syncNow()` called at start-up (as in the guide's
+  snippet) ran next to the first automatic heartbeat, so the first run
+  downloaded, validated and activated the model twice, `onModelReady` fired
+  twice and an offline start logged `Heartbeat failed` twice; two installs of
+  one model at once could also break each other's download and leave the
+  device without the model for an hour. A sync while a heartbeat is in
+  flight now joins it, and a model being installed is not installed again.
+- iOS SDK: an app that lists `com.fleetml.sdk.refresh` in
+  `BGTaskSchedulerPermittedIdentifiers` without calling
+  `FleetML.registerBackgroundTask()` crashed the first time it went to the
+  background (`No launch handler registered for task with identifier`); the
+  SDK now skips the request and logs an info line naming the missing call.
+- iOS SDK: no more Swift 6 warnings from `FleetML.swift` (`'bgTask' mutated
+  after capture by sendable closure` and the main-actor `shared` access) in
+  apps that build it.
+- Linux agent: `install.sh` on an image with the systemd package but without
+  systemd running copied the unit and exited 1 at `systemctl daemon-reload`.
+- Android sample app: its debug network security config has a line for the
+  Mac's LAN address (`mac-lan-ip.invalid` to replace), without which a phone
+  over Wi-Fi registered and then failed every download with `CLEARTEXT
+  communication ... not permitted`.
+
+### Docs
+
+- The Android, iOS and Linux agent guides lead with the real device and the
+  real deployment: a production-shaped configuration, the phone (USB, then
+  Wi-Fi) or the server on another machine, publish and deploy with the key
+  an app or edge developer is given, offline and update tests, and a
+  production checklist; the emulator, the simulator and the local try-out
+  follow as shorter variants, then Windows, the sample apps and the
+  contributor sections.
+- Android: the host, port and TLS from Gradle properties, with debug builds
+  on `localhost`, `10.0.2.2` or the LAN address; AGP 8's `buildConfig`
+  switch; the API's signatures; which key does what (checked with project
+  `admin` and `operator` keys); the offline lines and reconnect times as
+  measured; the README snippet gains the TFLite line.
+- iOS: the app's settings from an `.xcconfig` through `Info.plist`, an
+  `AppModel` that prints its callbacks, a complete `project.yml` for a phone,
+  `devicectl` over USB and Wi-Fi, `log collect`, the -1009 and -1004 cases,
+  the `package:` identity, `from: "0.6.0"` throughout.
+- Linux agent: "Server on another machine" as its own section with a `sed`
+  line for `download_host_override`; a `docker run --init` example and the
+  entrypoint `exec` line; `-o json | jq -r .key`; the validator by hand with
+  `su` too; removing the rejected copy; reloading the inference process with
+  a path unit, and why `sudo` cannot work under the unit's
+  `NoNewPrivileges=true`.
+- Quickstart: section 3 always shows the canary cohort, `D2`, `EXP` and one
+  `SIM` line are saved for a second shell; the CLI installs without `sudo`;
+  "On Windows" opens with how the two shells and two clones fit together,
+  and adds the PowerShell version check, `docker compose version`,
+  `.wslconfig` and `Unblock-File`.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
