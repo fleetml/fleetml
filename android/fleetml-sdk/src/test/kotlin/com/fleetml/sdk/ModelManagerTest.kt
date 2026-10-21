@@ -1,5 +1,6 @@
 package com.fleetml.sdk
 
+import com.fleetml.sdk.internal.Logger
 import com.fleetml.sdk.internal.ModelManager
 import com.fleetml.sdk.internal.ModelStore
 import com.fleetml.sdk.internal.TelemetryQueue
@@ -83,6 +84,22 @@ class ModelManagerTest {
         assertEquals("good-v1", mm.loadedStatuses().single().variantId)
         assertEquals("1.0.0", mm.activeModels().single().version)
         assertEquals(TelemetryEvent.EventType.MODEL_LOAD, queue.peek(10).single().type)
+    }
+
+    @Test
+    fun `logcat shows the download, the validation and the activation`() = runTest {
+        val lines = mutableListOf<String>()
+        val saved = Logger.sink
+        Logger.sink = { p, m, _ -> if (p >= android.util.Log.INFO) lines += m }
+        try {
+            manager().apply(listOf(assign("good-v1", "1.0.0")))
+        } finally {
+            Logger.sink = saved
+        }
+        assertEquals(
+            listOf("Downloaded model good-v1 (0KB)", "Model iris 1.0.0 passed validation", "Model iris 1.0.0 is active"),
+            lines,
+        )
     }
 
     @Test
