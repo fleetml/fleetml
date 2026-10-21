@@ -113,10 +113,12 @@ For a quick test only, `static let enrollmentKey = "<enrollment key>"` works
 too, but the key then sits in a file you commit.
 
 Without the background task set up (it is optional, see
-[Battery and data](#battery-and-data)), every launch logs one info line,
+[Battery and data](#battery-and-data)), the SDK logs one info line each time
+the app goes to the background, and at a launch that iOS starts in the
+background state (as the first launch after `open -a Simulator` can be):
 `Background refresh not scheduled (BGTaskSchedulerErrorDomain error 3): the app does not permit com.fleetml.sdk.refresh; add BGTaskSchedulerPermittedIdentifiers and call registerBackgroundTask(), see docs/IOS_SDK.md "Battery and data"`.
-It is harmless: the SDK works in the foreground as described here, and SDK
-0.5.0 logged the same thing as an error.
+It is harmless: the SDK works in the foreground as described here (SDK 0.5.0
+logged the same thing as an error).
 
 `localhost` is the quickstart's server on the Mac, which the simulator
 shares; a phone needs the Mac's LAN address ([Own app on a real
@@ -221,10 +223,10 @@ A first launch that registers and receives iris 1.0.0 prints these lines
 ```
 
 A registered app that cannot reach the server logs, at error level, about
-ten seconds after launch:
+ten seconds after launch (here the server's port was closed):
 
 ```text
-[com.fleetml.sdk:FleetML] Heartbeat failed: ...
+[com.fleetml.sdk:FleetML] Heartbeat failed: The operation couldn’t be completed. (GRPC.GRPCConnectionPoolError error 1.)
 ```
 
 At launch the delegate hears `fleetML(connectionChanged: true)` once the
@@ -293,12 +295,14 @@ struct MyApp: App {
 ```
 
 1. Publish the Core ML sample models from the clone's root, create an
-   enrollment key and deploy 1.0.0 to the app's label:
+   enrollment key and deploy 1.0.0 to the app's label (project names are
+   unique on a server: `already exists: slug "myapp-ios"` means the project
+   is there from an earlier run, so pick another name):
 
    ```bash
    export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
-   P=$(fleetml project create --name myapp -o json | jq -r .id)
+   P=$(fleetml project create --name myapp-ios -o json | jq -r .id)
    fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
    fleetml push models/iris/iris_v2.mlmodel --project $P --model iris --version 2.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
    M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
@@ -487,7 +491,9 @@ the server matches devices, labels and variants is in
   variables ([CONFIG.md](CONFIG.md#devices)); `FleetMLConfig` only provides
   the values used before the first response.
 - The iOS Simulator cannot run background tasks (`BGTaskScheduler` reports
-  it unavailable); test the background refresh on a device: run the app from
+  it unavailable, and an app that permits the task logs
+  `Background refresh not scheduled: background refresh is unavailable here (the simulator, or Background App Refresh is off in Settings)`
+  at info level); test the background refresh on a device: run the app from
   Xcode, send it to the background, pause it in Xcode's debugger (the LLDB
   prompt needs the debugger attached, which a `devicectl` launch does not
   have), and enter
