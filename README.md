@@ -181,10 +181,13 @@ PowerShell version is in [Get the CLI](docs/QUICKSTART.md#get-the-cli). From sou
 
 ### Install the SDKs
 
-Android, from Maven Central (with `mavenCentral()` in the app's repositories):
+Android, from Maven Central (with `mavenCentral()` in the app's repositories;
+the app needs compileSdk 34 or later and minSdk 26,
+[details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
 implementation("dev.fleetml:fleetml-sdk:0.6.0")
+implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
