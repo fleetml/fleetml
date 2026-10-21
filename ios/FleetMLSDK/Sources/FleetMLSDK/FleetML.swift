@@ -284,16 +284,31 @@ final class Instance {
         heartbeat.stop()
         telemetry.stop()
         #if canImport(UIKit) && os(iOS)
-        // Ask for a little time to send what is queued.
-        var bgTask = UIBackgroundTaskIdentifier.invalid
-        bgTask = UIApplication.shared.beginBackgroundTask { UIApplication.shared.endBackgroundTask(bgTask) }
+        // Ask for a little time to send what is queued. onBackground runs on the
+        // main queue: both lifecycle observers and observeLifecycle dispatch it there.
+        let time = MainActor.assumeIsolated { BackgroundTime.begin() }
         Task { [telemetry] in
             await telemetry.flushNow()
-            UIApplication.shared.endBackgroundTask(bgTask)
+            await time.end()
         }
         #endif
         scheduleBackgroundRefresh()
     }
+
+    #if canImport(UIKit) && os(iOS)
+    /// A little background time from iOS, ended by its expiration handler or by end().
+    @MainActor private final class BackgroundTime {
+        private var id = UIBackgroundTaskIdentifier.invalid
+
+        static func begin() -> BackgroundTime {
+            let time = BackgroundTime()
+            time.id = UIApplication.shared.beginBackgroundTask { time.end() }
+            return time
+        }
+
+        func end() { UIApplication.shared.endBackgroundTask(id) }
+    }
+    #endif
 
     private func startTimers() {
         telemetry.start()
