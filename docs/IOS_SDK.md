@@ -42,6 +42,26 @@ folder, or in a `Package.swift`:
 .product(name: "FleetMLSDK", package: "fleetml"),
 ```
 
+With [XcodeGen](https://github.com/yonaskolb/XcodeGen), the clone is a local
+package in `project.yml`, under a name of your choice, and the target depends
+on its `FleetMLSDK` product (`product:` can be left out when the name is
+`FleetMLSDK` too); the [Own app runbook](#own-app-runbook) has a whole file:
+
+```yaml
+packages:
+  FleetMLSDK:
+    path: ../fleetml
+targets:
+  MyApp:
+    dependencies:
+      - package: FleetMLSDK
+        product: FleetMLSDK
+```
+
+`path` is relative to `project.yml` and points at the clone's root, where
+the package manifest is. From GitHub instead, the package entry is
+`url: https://github.com/fleetml/fleetml` with `from: 0.5.0`.
+
 It depends on grpc-swift, pinned to exactly 1.27.6 (the 1.x line, which
 supports iOS 15; 2.x needs iOS 18), and on swift-protobuf from 1.28. An app
 that already depends on grpc-swift must use that same version, or Swift
@@ -52,15 +72,17 @@ and tools.
 
 Initialize once, for example in your `App` or app delegate. The enrollment
 key comes from `fleetml enrollment-key create --project <project ID>`, which
-prints it once ([Your own app](#your-own-app) keeps it out of the source).
-This object starts the SDK and loads each model it delivers with Core ML:
+prints it once. Keep it out of the source: the app reads it from its
+`Info.plist`, where the build puts it from an `.xcconfig` file you do not
+commit ([Your own app](#your-own-app), step 5, has the two settings). This
+object starts the SDK and loads each model it delivers with Core ML:
 
 ```swift
 import CoreML
 import FleetMLSDK
 
 final class AppModel: FleetMLDelegate {
-    static let enrollmentKey = "<enrollment key>"
+    static let enrollmentKey = Bundle.main.object(forInfoDictionaryKey: "FleetMLEnrollmentKey") as? String ?? ""
     private(set) var mlModel: MLModel?
 
     init() {
@@ -86,6 +108,15 @@ final class AppModel: FleetMLDelegate {
     }
 }
 ```
+
+For a quick test only, `static let enrollmentKey = "<enrollment key>"` works
+too, but the key then sits in a file you commit.
+
+Without the background task set up (it is optional, see
+[Battery and data](#battery-and-data)), every launch logs one info line,
+`Background refresh not scheduled (BGTaskSchedulerErrorDomain error 3): the app does not permit com.fleetml.sdk.refresh; add BGTaskSchedulerPermittedIdentifiers and call registerBackgroundTask(), see docs/IOS_SDK.md "Battery and data"`.
+It is harmless: the SDK works in the foreground as described here, and SDK
+0.5.0 logged the same thing as an error.
 
 `localhost` is the quickstart's server on the Mac, which the simulator
 shares; a phone needs the Mac's LAN address ([Own app on a real
@@ -147,7 +178,10 @@ models and the registration.
 If the SDK cannot register, `fleetML(connectionChanged:)` reports `false` and
 `fleetML(connectionFailed:)` receives the error, on the first failure after
 start and again whenever the error changes (registration is retried every
-10 seconds). Print it while you set up the app:
+10 seconds). `connectionFailed` is for registration only: a device that has
+registered before and cannot reach the server reports it with
+`fleetML(connectionChanged: false)` and the log line
+`Heartbeat failed: ...` (below). Print the error while you set up the app:
 
 ```swift
 func fleetML(connectionFailed error: Error) {
@@ -172,6 +206,9 @@ the heartbeats; without `--level` only warnings appear):
 xcrun simctl spawn booted log stream --level info --predicate 'subsystem == "com.fleetml.sdk"'
 ```
 
+It first prints `getpwuid_r did not find a match for uid <your uid>` (the
+simulator has no user of that ID) and the filter line; both are harmless.
+
 A first launch that registers and receives iris 1.0.0 prints these lines
 (time stamps and the process column left out):
 
@@ -181,6 +218,13 @@ A first launch that registers and receives iris 1.0.0 prints these lines
 [com.fleetml.sdk:FleetML] Downloaded iris 1.0.0 (555 bytes, sha256 verified)
 [com.fleetml.sdk:FleetML] Model iris 1.0.0 passed validation
 [com.fleetml.sdk:FleetML] Model iris 1.0.0 is active
+```
+
+A registered app that cannot reach the server logs, at error level, about
+ten seconds after launch:
+
+```text
+[com.fleetml.sdk:FleetML] Heartbeat failed: ...
 ```
 
 At launch the delegate hears `fleetML(connectionChanged: true)` once the
@@ -226,6 +270,111 @@ What an own app needs, in one place:
    port nothing listens on (`serverPort: 19999`) and launch it again: the
    cached model is ready at once, and `fleetML(connectionChanged: false)`
    follows within about ten seconds. On a phone, airplane mode does the same.
+
+### Own app runbook
+
+The [Simulator runbook](#simulator-runbook) below is for the sample app,
+which takes its settings as launch arguments; an own app has them in its
+code. This runs an own app with the `AppModel` above on the simulator,
+against the quickstart's server, with the `fleetml` CLI on the `PATH` and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen). The app's folder holds
+`project.yml`, `Secrets.xcconfig` and a `Sources` folder with the app's Swift
+files: `AppModel` as above (labels `["app": "myapp", ...]`) and an `App` that
+keeps it alive, for example:
+
+```swift
+import SwiftUI
+
+@main
+struct MyApp: App {
+    private let model = AppModel()
+    var body: some Scene { WindowGroup { Text("FleetML") } }
+}
+```
+
+1. Publish the Core ML sample models from the clone's root, create an
+   enrollment key and deploy 1.0.0 to the app's label:
+
+   ```bash
+   export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+   REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
+   P=$(fleetml project create --name myapp -o json | jq -r .id)
+   fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
+   fleetml push models/iris/iris_v2.mlmodel --project $P --model iris --version 2.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
+   M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
+   vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
+   EK=$(fleetml enrollment-key create --project $P --name myapp -o json | jq -r .key)
+   D1=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"app":"myapp"}' -o json | jq -r .id)
+   fleetml deploy start $D1
+   ```
+
+2. In the app's folder, `project.yml`, with the clone as a local package
+   (`path` relative to this file; `url:` and `from:` for the released
+   package) and the key from `Secrets.xcconfig` in the `Info.plist`:
+
+   ```yaml
+   name: MyApp
+   options:
+     deploymentTarget:
+       iOS: "15.0"
+   packages:
+     FleetMLSDK:
+       path: ../fleetml
+   targets:
+     MyApp:
+       type: application
+       platform: iOS
+       sources: [Sources]
+       dependencies:
+         - package: FleetMLSDK
+       configFiles:
+         Debug: Secrets.xcconfig
+         Release: Secrets.xcconfig
+       info:
+         path: Info.plist
+         properties:
+           FleetMLEnrollmentKey: $(FLEETML_ENROLLMENT_KEY)
+           UILaunchScreen: {}
+       settings:
+         base:
+           PRODUCT_BUNDLE_IDENTIFIER: com.example.myapp
+   ```
+
+   XcodeGen writes `Info.plist` from `info:`; keep `Secrets.xcconfig` and
+   the generated `Info.plist` and `.xcodeproj` out of git.
+
+3. Write the key into `Secrets.xcconfig`, generate the project, build, and
+   install and launch the app on the first available iPhone simulator:
+
+   ```bash
+   printf 'FLEETML_ENROLLMENT_KEY = %s\n' "$EK" > Secrets.xcconfig
+   xcodegen generate
+   SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+   xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
+   xcrun simctl boot $SIM; open -a Simulator
+   xcrun simctl install $SIM build/Build/Products/Debug-iphonesimulator/MyApp.app
+   xcrun simctl launch --console-pty $SIM com.example.myapp
+   ```
+
+   In a second terminal, the `log stream` command of
+   [When it does not connect](#when-it-does-not-connect) shows the
+   registration, the download, the validation and `Model iris 1.0.0 is active`.
+   `fleetml deploy get $D1 | jq -c .devices` prints `{"loaded":1,"targeted":1}`
+   one heartbeat (60 seconds by default) after that; it counts what each
+   device reported in its last heartbeat.
+
+4. Roll out 2.0.0; the app gets it with its next heartbeat:
+
+   ```bash
+   fleetml deploy start $(fleetml deploy create --project $P --version $(vid 2.0.0) --target '{"app":"myapp"}' -o json | jq -r .id)
+   ```
+
+5. Offline test: change `FleetMLConfig(serverHost: "localhost", ...)` to
+   `FleetMLConfig(serverHost: "localhost", serverPort: 19999, ...)`, rebuild
+   with the `xcodebuild` line, install and launch again. The cached 2.0.0 is
+   ready at once (`fleetML(modelReady:)`), and `fleetML(connectionChanged: false)`
+   arrives about 10 seconds later. Change the port back and rebuild to
+   reconnect.
 
 ## Enrollment and identity
 
@@ -473,7 +622,11 @@ key from `.env` instead.
    steps (`FleetMLSample: Registered as ...`, `Model ready: iris 1.0.0`).
    `fleetml deploy create --project $P --version $V2 --target '{"app":"sample"}'`
    and `deploy start` update the app to 2.0.0 on its next heartbeat, 60 seconds
-   by default (1.0.0 is kept as last-known-good).
+   by default (1.0.0 is kept as last-known-good). `fleetml deploy get $D | jq -c .devices`
+   counts the devices whose last heartbeat reported a version, so `loaded`
+   turns one heartbeat after the app shows the model, and it is counted each
+   time you ask: once 2.0.0 replaces 1.0.0, `$D` counts down to
+   `{"loaded":0,"targeted":1}`.
 
 4. Offline start: stop the server
    (`docker compose -f deploy/docker-compose.prod.yml stop server`), then
