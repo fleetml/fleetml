@@ -310,7 +310,8 @@ final class Instance {
             try BGTaskScheduler.shared.submit(request)
             Log.sdk.info("In the background: next refresh in \(Int(interval), privacy: .public)s or later")
         } catch {
-            Log.sdk.warning("Background refresh not scheduled: \(error.localizedDescription, privacy: .public)")
+            let (level, message) = BackgroundRefresh.failure(error, permitted: BackgroundRefresh.permitted(FleetML.backgroundTaskIdentifier))
+            Log.sdk.log(level: level, "\(message, privacy: .public)")
         }
         #endif
     }
