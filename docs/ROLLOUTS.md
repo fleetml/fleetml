@@ -36,9 +36,11 @@ What the devices report is on two other objects:
 - `GET /api/v1/deployments/{id}` (`fleetml deploy get`) has
   `devices: {"targeted": N, "loaded": M}`: the project's devices whose labels
   match the target selector, and how many of them reported a variant of the
-  deployment's version loaded in their last heartbeat, so `loaded` follows a
-  model's arrival on a device by up to one heartbeat. Lists of deployments
-  leave it out.
+  deployment's version loaded in their last heartbeat, so `loaded` turns one
+  heartbeat (60 seconds by default) after the device logs the model active.
+  Both are counted each time you ask: a deployment that a newer one replaced
+  counts down to 0 as its devices move to the newer version. Lists of
+  deployments leave it out.
 - `GET /api/v1/devices/{id}` (`fleetml device get`) has `loaded_models`, the
   versions the device's last heartbeat reported (model, version, version and
   variant IDs, quantization, runtime), and `last_model_event`, its newest
