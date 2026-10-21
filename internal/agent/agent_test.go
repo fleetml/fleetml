@@ -201,7 +201,7 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.handleEvents(rec, httptest.NewRequest(http.MethodPost, "/v1/events", strings.NewReader(`[{"model":"iris","latency_ms":7},{"model":"other"}]`)))
 	assert.Equal(t, http.StatusAccepted, rec.Code)
-	assert.JSONEq(t, `{"accepted":1,"rejected":1}`, rec.Body.String())
+	assert.JSONEq(t, `{"accepted":1,"rejected":1,"rejected_reasons":["event 1: unknown model \"other\" (active models: iris)"]}`, rec.Body.String())
 	last := a.queue.Peek(100)
 	assert.Equal(t, "ver-3.0.0", last[len(last)-1].ModelVersionId)
 	rec = httptest.NewRecorder()
