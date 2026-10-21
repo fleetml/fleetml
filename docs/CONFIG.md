@@ -28,7 +28,7 @@ missing or invalid variable.
 | `S3_ENDPOINT` | `localhost:19000` | Object store as `host:port`, without a scheme (the dev stack runs SeaweedFS) |
 | `S3_USE_SSL` | `false` | Reach the object store over HTTPS |
 | `S3_BUCKET` | `fleetml-models` | Bucket for model files; created at start-up if missing |
-| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100` |
+| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100`. A Linux agent that cannot reach it can send its downloads elsewhere with `download_host_override` ([LINUX_AGENT.md](LINUX_AGENT.md#connect-it-to-the-server)) |
 | `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline and alerts. JetStream must be enabled (`nats-server --jetstream`, as in both compose files): the server creates the `FLEETML_TELEMETRY` stream at startup and refuses to start without it. Servers that share a NATS share the stream, so they must also share the database |
 | `MIGRATE_ON_START` | `false` | Apply the embedded database migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
 
