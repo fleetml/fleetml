@@ -97,6 +97,8 @@ object FleetML {
     /**
      * Runs one heartbeat and one telemetry flush now, whatever the app's
      * state. The background job calls it; apps can too (e.g. pull to refresh).
+     * A call while a heartbeat is in flight, such as at start-up, joins that
+     * heartbeat, so a model is installed and reported to the callback once.
      * Returns true if the server was reached. A no-op before [init].
      */
     suspend fun syncNow(): Boolean = instance?.syncNow() ?: false

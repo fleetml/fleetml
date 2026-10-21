@@ -6,6 +6,8 @@ import com.fleetml.sdk.internal.ModelStore
 import com.fleetml.sdk.internal.TelemetryQueue
 import fleetml.device.v1.Device.ModelAssignment
 import fleetml.telemetry.v1.Telemetry.TelemetryEvent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -31,6 +33,8 @@ class ModelManagerTest {
     private val blobs = mapOf("good-v1" to "model one".toByteArray(), "good-v2" to "model two".toByteArray(), "broken" to "not a model".toByteArray())
     private val events = mutableListOf<String>()
     private var clock = 0L
+    /** Holds each download's response for a moment, so that two installs overlap. */
+    @Volatile private var slowDownloads = false
 
     private val callback = object : FleetMLCallback {
         override fun onModelReady(model: ActiveModel) { events += "ready ${model.version}" }
@@ -48,7 +52,9 @@ class ModelManagerTest {
         server = MockWebServer()
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse =
-                blobs[request.path!!.trimStart('/')]?.let { MockResponse().setBody(Buffer().write(it)) } ?: MockResponse().setResponseCode(404)
+                blobs[request.path!!.trimStart('/')]?.let {
+                    MockResponse().setBody(Buffer().write(it)).apply { if (slowDownloads) setHeadersDelay(300, java.util.concurrent.TimeUnit.MILLISECONDS) }
+                } ?: MockResponse().setResponseCode(404)
         }
         server.start()
         dir = File(System.getProperty("java.io.tmpdir"), "fleetml-mm-${System.nanoTime()}")
@@ -100,6 +106,20 @@ class ModelManagerTest {
             listOf("Downloaded model good-v1 (0KB)", "Model iris 1.0.0 passed validation", "Model iris 1.0.0 is active"),
             lines,
         )
+    }
+
+    @Test
+    fun `an assignment that is already being installed is not installed again`() = runTest {
+        slowDownloads = true
+        val mm = manager()
+        val assignment = listOf(assign("good-v1", "1.0.0"))
+        val first = launch(Dispatchers.Default) { mm.apply(assignment) }
+        val second = launch(Dispatchers.Default) { mm.apply(assignment) }
+        first.join()
+        second.join()
+        assertEquals(listOf("ready 1.0.0"), events)
+        assertEquals("downloaded once", 1, server.requestCount)
+        assertEquals(1, queue.peek(10).count { it.type == TelemetryEvent.EventType.MODEL_LOAD })
     }
 
     @Test
