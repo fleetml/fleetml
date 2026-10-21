@@ -209,7 +209,7 @@ environment `pypi`), and the workflow runs in the repository's `pypi`
 environment. Before the first publication, that entry is created as a
 pending publisher (PyPI account, **Publishing → Add a new pending
 publisher**), which also reserves the name. The first version published to
-PyPI was: (to be filled in after the first publication).
+PyPI was 0.6.0.
 
 ### iOS
 
