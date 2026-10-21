@@ -32,10 +32,10 @@ public enum FleetML {
 
     private static let lock = NSLock()
     private static var instance: Instance?
-    private static var backgroundTaskRegistered = false
+    /// Set once registerBackgroundTask() has registered the launch handler.
+    private static let backgroundTaskRegistered = LockedFlag()
 
-    /// Whether registerBackgroundTask() registered the launch handler.
-    static var isBackgroundTaskRegistered: Bool { lock.withLock { backgroundTaskRegistered } }
+    static var isBackgroundTaskRegistered: Bool { backgroundTaskRegistered.value }
 
     /// Initialize the SDK. A second call while initialized is ignored; call
     /// `stop()` first to re-initialize.
@@ -97,7 +97,7 @@ public enum FleetML {
             }
             task.expirationHandler = { work.cancel() }
         }
-        lock.withLock { backgroundTaskRegistered = registered }
+        backgroundTaskRegistered.value = registered
         #endif
     }
 
@@ -393,5 +393,16 @@ final class Instance {
         stop()
         tokens.clear()
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// A Bool behind a lock, for a flag read and written from any thread.
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+
+    var value: Bool {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }
