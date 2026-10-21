@@ -114,8 +114,12 @@ one), to paste into `$env:FLEETML_API_KEY = '<the admin key>'` or the
 dashboard's login. Or let PowerShell read it from the saved file:
 
 ```powershell
-$env:FLEETML_API_KEY = wsl -d Ubuntu bash -c '. ~/.fleetml.env; printf %s $FLEETML_ADMIN_KEY'
+$env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
 ```
+
+(`--exec` runs bash directly; without it, Ubuntu's login shell reads the line
+first and can replace `$FLEETML_ADMIN_KEY` with nothing. The Windows run
+reads the key this way.)
 
 `$env:` lasts for that PowerShell window; `fleetml config set-key <the admin key>`
 saves it for every window instead, in `%USERPROFILE%\.fleetml\config.yaml`
@@ -253,7 +257,8 @@ Every variable the tour sets (`P`, `V1`, `EK`, `SIM` and the others) lives in
 this shell only, and the simulator that section 2 starts in the background
 stops when this shell closes. So keep the shell open from section 2 to the
 end. The blocks of sections 1, 2 and 5 end with a line that adds their
-variables to `~/.fleetml.env`, so a second shell (another terminal tab, say)
+variables to `~/.fleetml.env` (readable only by you: the enrollment key is
+among them), so a second shell (another terminal tab, say)
 picks the tour up from the repository root with
 
 ```bash
@@ -261,6 +266,7 @@ source ~/.fleetml.env
 export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
 ```
 
+(and the `export PATH` line above again if you built the CLI from source).
 If the simulator's shell was closed, start the simulator again there with the
 `fleetml simulate` line of section 2 (the same 20 devices register again) and
 `SIM=$!`; `pgrep -f 'fleetml simulate'` shows whether one runs.
@@ -285,10 +291,10 @@ fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.1.
 M=$(fleetml model list --project $P -o json | jq -r '.[0].id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
 V1=$(vid 1.0.0); V2=$(vid 2.0.0); V21=$(vid 2.1.0)
-echo "export P=$P M=$M V1=$V1 V2=$V2 V21=$V21" >> ~/.fleetml.env
+(umask 077; echo "export P=$P M=$M V1=$V1 V2=$V2 V21=$V21" >> ~/.fleetml.env)
 ```
 
-Each push prints three lines: `Preparing models/iris/iris_v1.tflite (2.4 KB, sha256:<first 12 hex digits>)...`,
+Each push prints three lines: `Preparing models/iris/iris_v1.tflite (2.4 KB, sha256:047d185c19fe)...`,
 then `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and a
 `Variant ID:` line: the ID of the file just uploaded (one version can have
 several variants, for example INT8 and FP16). If an upload fails (the object
@@ -329,7 +335,7 @@ D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' 
 fleetml deploy start $D1
 sleep 5; tail -1 /tmp/fleetml-sim.log
 fleetml device list --project $P | head -5
-echo "export EK=$EK D1=$D1 SIM=$SIM" >> ~/.fleetml.env
+(umask 077; echo "export EK=$EK D1=$D1 SIM=$SIM" >> ~/.fleetml.env)
 ```
 
 The deployment goes to all devices at once, so it starts as `COMPLETE`
@@ -350,8 +356,8 @@ fleetml deploy get $D1 | jq -c .devices
 
 It prints `{"loaded":20,"targeted":20}` once all of them have. `loaded`
 counts the devices whose last heartbeat reported the version, so it turns one
-heartbeat (60 seconds by default; the simulator's devices heartbeat every few
-seconds) after a device has the model active, and it is counted each time
+heartbeat (60 seconds by default; the simulator's devices heartbeat every
+second) after a device has the model active, and it is counted each time
 you ask: a deployment that a newer one replaced counts down to 0 as its
 devices move on.
 
@@ -407,7 +413,8 @@ The experiment is `RUNNING` once started (`✓ Experiment start → RUNNING`) an
 `CONCLUDED` at the end. Concluding records the winner and ends the
 experiment; it does not deploy anything. On their next heartbeat the
 devices go back to what the deployments assign, here 1.0.0, which the drift
-step below relies on: the last loop waits for it (up to 2 minutes) and the
+step below relies on: the last loop waits for it (up to 2 minutes; a few
+seconds with the simulator, whose devices heartbeat every second) and the
 simulator's last line reads `simulator: iris 1.0.0 on 20` again. To roll the winner out to the whole fleet, deploy it:
 `fleetml deploy create --project $P --version $V21 --target '{"app":"tour"}'`
 and `fleetml deploy start` with the new ID. A `p_value` of `0` means the p-value is below the
@@ -432,7 +439,7 @@ Now the devices get slower:
 kill $SIM; sleep 1
 fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
-echo "export SIM=$SIM" >> ~/.fleetml.env
+(umask 077; echo "export SIM=$SIM" >> ~/.fleetml.env)
 sleep 20
 fleetml drift check $V1
 fleetml drift status $V1
