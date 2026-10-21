@@ -103,6 +103,7 @@ internal class ModelManager(
                 callback()?.onModelLoadFailed(a.modelName, a.version, verdict.reason)
             }
             is ValidationResult.Valid -> {
+                Logger.i("Model ${a.modelName} ${a.version} passed validation")
                 store.activate(record)
                 telemetry?.reportModelStatus(a.versionId, TelemetryEvent.EventType.MODEL_LOAD, latencyMs = (now() - started).toInt())
                 Logger.i("Model ${a.modelName} ${a.version} is active")

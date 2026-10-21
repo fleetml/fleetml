@@ -122,14 +122,14 @@ func TestDownloadResumes(t *testing.T) {
 	srv := rangeServer(body, true)
 	defer srv.Close()
 	part := filepath.Join(t.TempDir(), "x.part")
-	err := download(context.Background(), srv.Client(), srv.URL, part, shaHex(body))
+	err := download(context.Background(), srv.Client(), srv.URL, part, shaHex(body), "")
 	require.Error(t, err, "the first attempt is cut short")
 	fi, _ := os.Stat(part)
 	require.Equal(t, int64(len(body)/2), fi.Size(), "the partial file is kept")
-	require.NoError(t, download(context.Background(), srv.Client(), srv.URL, part, shaHex(body)))
+	require.NoError(t, download(context.Background(), srv.Client(), srv.URL, part, shaHex(body), ""))
 	got, _ := os.ReadFile(part)
 	assert.Equal(t, body, got)
-	assert.Error(t, download(context.Background(), srv.Client(), srv.URL, filepath.Join(t.TempDir(), "y.part"), strings.Repeat("0", 64)))
+	assert.Error(t, download(context.Background(), srv.Client(), srv.URL, filepath.Join(t.TempDir(), "y.part"), strings.Repeat("0", 64), ""))
 }
 
 func TestCommandValidator(t *testing.T) {
@@ -176,7 +176,14 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	events := a.queue.Peek(10)
 	assert.Equal(t, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, events[len(events)-1].Type)
 	_, statErr := os.Stat(filepath.Join(dir, "models", "iris", "2.0.0-var-2.0."))
-	assert.True(t, os.IsNotExist(statErr), "the rejected version is deleted")
+	assert.True(t, os.IsNotExist(statErr), "the rejected version leaves models_dir")
+	rejected := filepath.Join(dir, "rejected", "iris", "2.0.0-var-2.0.", "model.bin")
+	got, err = os.ReadFile(rejected)
+	require.NoError(t, err, "the rejected file is kept for validating it by hand")
+	assert.Equal(t, bad, got)
+	fi, err := os.Stat(rejected)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
 
 	// A good 3.0.0 replaces it; 1.0.0 becomes last-known-good and stays on disk.
 	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign(fleetmlv1.ModelAssignment_UPDATE, "3.0.0", "/v2", v2)})
@@ -194,7 +201,7 @@ func TestInstallActivatesAndKeepsLastKnownGood(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.handleEvents(rec, httptest.NewRequest(http.MethodPost, "/v1/events", strings.NewReader(`[{"model":"iris","latency_ms":7},{"model":"other"}]`)))
 	assert.Equal(t, http.StatusAccepted, rec.Code)
-	assert.JSONEq(t, `{"accepted":1,"rejected":1}`, rec.Body.String())
+	assert.JSONEq(t, `{"accepted":1,"rejected":1,"rejected_reasons":["event 1: unknown model \"other\" (active models: iris)"]}`, rec.Body.String())
 	last := a.queue.Peek(100)
 	assert.Equal(t, "ver-3.0.0", last[len(last)-1].ModelVersionId)
 	rec = httptest.NewRecorder()
@@ -349,4 +356,94 @@ func TestDownloadFailureIsReportedOnce(t *testing.T) {
 	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as})
 	require.Len(t, a.ActiveModels(), 1)
 	assert.Len(t, failures(), 1)
+}
+
+// download_host_override sends full downloads and deltas to another address
+// with the path and query unchanged and the URL's own host in the Host
+// header, which the presigned signature covers.
+func TestDownloadHostOverride(t *testing.T) {
+	v1 := bytes.Repeat([]byte("weights-"), 20000)
+	v2 := append(append([]byte(nil), v1[:150000]...), []byte("a retrained head")...)
+	d, err := delta.Diff(v1, v2)
+	require.NoError(t, err)
+	files := map[string][]byte{"/fleetml-models/v1.bin": v1, "/fleetml-models/v2.bin": v2, "/fleetml-models/v2.delta": d}
+	type hit struct{ host, uri string }
+	var hits []hit
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, hit{r.Host, r.URL.RequestURI()})
+		_, _ = w.Write(files[r.URL.Path])
+	}))
+	defer srv.Close()
+	override := strings.TrimPrefix(srv.URL, "http://")
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: t.TempDir(), DownloadHostOverride: override}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	const public = "http://localhost:19100"
+	const query = "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-SignedHeaders=host&X-Amz-Signature=abc"
+	ctx := context.Background()
+
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1", VariantId: "var-1",
+		DownloadUrl: public + "/fleetml-models/v1.bin" + query, BlobSha256: shaHex(v1), Action: fleetmlv1.ModelAssignment_LOAD}})
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "2.0.0", VersionId: "ver-2", VariantId: "var-2",
+		DownloadUrl: public + "/fleetml-models/v2.bin" + query, BlobSha256: shaHex(v2), Action: fleetmlv1.ModelAssignment_UPDATE,
+		DeltaUrl: public + "/fleetml-models/v2.delta" + query, DeltaSha256: shaHex(d), DeltaBaseSha256: shaHex(v1)}})
+
+	require.Len(t, a.ActiveModels(), 1)
+	assert.Equal(t, "2.0.0", a.ActiveModels()[0].Active.Version)
+	assert.Equal(t, []hit{
+		{"localhost:19100", "/fleetml-models/v1.bin" + query},
+		{"localhost:19100", "/fleetml-models/v2.delta" + query},
+	}, hits, "both requests reach the override address with the original Host header, path and query")
+
+	for _, bad := range []string{"http://192.0.2.10:19100", "192.0.2.10", "192.0.2.10:19100/path"} {
+		c := &Config{Server: "127.0.0.1:1", StateDir: t.TempDir(), DownloadHostOverride: bad}
+		assert.ErrorContains(t, c.Validate(), "download_host_override must be host:port", bad)
+	}
+}
+
+// -retry-failed: a version that failed validation waits an hour, across
+// restarts; RetryFailed clears that so the next heartbeat tries it again.
+// Only the last rejected version of a model is kept on disk.
+func TestRetryFailed(t *testing.T) {
+	files := map[string][]byte{"/a": []byte("broken a"), "/b": []byte("broken b")}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(files[r.URL.Path]) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	runs := filepath.Join(dir, "runs")
+	cfg := &Config{Server: "127.0.0.1:1", StateDir: dir, Validator: `echo run >> ` + runs + `; ! grep -q broken {file}`}
+	a, err := New(cfg, quiet())
+	require.NoError(t, err)
+	assign := func(version, path string) *fleetmlv1.ModelAssignment {
+		return &fleetmlv1.ModelAssignment{ModelId: "m1", ModelName: "iris", Version: version, VersionId: "ver-" + version,
+			VariantId: "var-" + version, DownloadUrl: srv.URL + path, BlobSha256: shaHex(files[path]), Action: fleetmlv1.ModelAssignment_LOAD}
+	}
+	validations := func() int { b, _ := os.ReadFile(runs); return strings.Count(string(b), "run") }
+	ctx := context.Background()
+
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	assert.Equal(t, 1, validations(), "the failed version waits out the cooldown")
+	require.NoError(t, a.Close())
+
+	// A restart alone does not retry: the cooldown is in state.json.
+	a, err = New(cfg, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	assert.Equal(t, 1, validations())
+
+	n, err := a.RetryFailed()
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.0.0", "/a")})
+	assert.Equal(t, 2, validations(), "retried after RetryFailed")
+	st, err := OpenStore(filepath.Join(dir, "state.json"))
+	require.NoError(t, err)
+	st.Read(func(s *State) { assert.Len(t, s.Failed, 1, "and failed again") })
+
+	a.apply(ctx, []*fleetmlv1.ModelAssignment{assign("2.1.0", "/b")})
+	entries, err := os.ReadDir(filepath.Join(dir, "rejected", "iris"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the last rejected version is kept")
+	assert.Equal(t, "2.1.0-var-2.1.", entries[0].Name())
 }

@@ -99,10 +99,14 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 **Requirements:** macOS, Linux or Windows, with Docker with Compose v2 and
 `openssl`; about 2 GB of free memory for the six containers and the two image
 builds; ports 80 (dashboard), 18080 (REST), 19090 (gRPC) and 19100 (model
-files; `FLEETML_S3_PUBLIC_PORT` moves it) free. On Windows
+files; `FLEETML_S3_PUBLIC_PORT` moves it) free, and 13000 for Grafana if you
+start the optional observability profile. On Windows
 FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell with Docker
-Desktop's WSL 2 backend ([On Windows](docs/QUICKSTART.md#on-windows)), and the
-CLI is exercised on GitHub's Windows runner.
+Desktop's WSL 2 backend ([On Windows](docs/QUICKSTART.md#on-windows)), and
+GitHub's Windows runner exercises the CLI and this block in WSL 2 (with Docker
+Engine there, not Docker Desktop).
+
+In bash or zsh (on Windows, in the WSL 2 Ubuntu shell):
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
@@ -126,7 +130,7 @@ and `source ~/.fleetml.env` brings them back in a new shell:
 Measured on an Apple-silicon laptop, cold: **1 min 39 s** from `git clone` to
 the dashboard's login answering, with no FleetML images or build cache present
 (most of it is pulling the base images and building the server and dashboard
-images).
+images); with the images cached, well under a minute.
 
 If port 80 is taken, move the dashboard to any free port with an override file
 (Compose 2.24 or later for `!override`) and open it on that port, here
@@ -170,8 +174,9 @@ tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && sudo mv fleetml /usr/local/bin/
 fleetml version
 ```
 
-On Windows, the PowerShell version is in
-[Get the CLI](docs/QUICKSTART.md#get-the-cli). From source, with Go 1.24:
+Without `sudo`, `mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/` instead
+of the `sudo mv`, with `~/.local/bin` on the `PATH`. On Windows, the
+PowerShell version is in [Get the CLI](docs/QUICKSTART.md#get-the-cli). From source, with Go 1.24:
 `go build -o bin/fleetml ./cmd/fleetml`.
 
 ### Install the SDKs

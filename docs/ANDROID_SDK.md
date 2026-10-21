@@ -12,8 +12,11 @@ Runtime or anything else.
 ## Install
 
 The SDK is on Maven Central as `dev.fleetml:fleetml-sdk`; its latest version
-is 0.4.0, because FleetML 0.5.0 changed nothing in it. Add it to the app with
-TensorFlow Lite next to it:
+is 0.4.0, because FleetML 0.5.0 changed nothing in it. The next release adds
+the `passed validation` line to logcat and logs a failed heartbeat on one line
+instead of with a stack trace ([What to expect on the first run](#what-to-expect-on-the-first-run));
+until it is on Maven Central, those two need the SDK [from a clone](#from-a-clone).
+Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
@@ -104,6 +107,21 @@ dependencies {
 }
 ```
 
+The module's own build uses two more Gradle plugins and reads its version from
+a property, which the app's build must then provide too: next to the app's
+Android and Kotlin plugins in the root `build.gradle.kts`,
+
+```kotlin
+plugins {
+    id("com.google.protobuf") version "0.9.4" apply false
+    id("com.vanniktech.maven.publish") version "0.34.0" apply false
+}
+```
+
+and `sdkVersion=0.6.0-dev` (any version string) in the app's
+`gradle.properties`. Without them Gradle stops with
+`Plugin [id: 'com.google.protobuf'] was not found`.
+
 Building the SDK from source on the command line needs JDK 17: the wrapper's
 Gradle 8.7 with AGP 8.5 fails on a newer default JDK. Point `JAVA_HOME` at it,
 for example `/opt/homebrew/opt/openjdk@17` on macOS with Homebrew or
@@ -114,9 +132,25 @@ JDK, set in its Gradle settings.
 ## Configure and start
 
 Initialize once per process, in `Application.onCreate()`, so screen rotation
-never re-initializes the SDK. The SDK's classes are in the package
-`com.fleetml.sdk`; the Maven group, `dev.fleetml`, is a different name, so
-`import dev.fleetml...` finds nothing:
+never re-initializes the SDK. The enrollment key comes from
+`fleetml enrollment-key create --project <project ID>`, which prints it once.
+Keep it out of the source: the build reads it from a Gradle property into
+`BuildConfig`, in `app/build.gradle.kts`:
+
+```kotlin
+android {
+    buildFeatures { buildConfig = true }
+    defaultConfig {
+        buildConfigField("String", "FLEETML_ENROLLMENT_KEY", "\"${project.findProperty("fleetmlEnrollmentKey") ?: ""}\"")
+    }
+}
+```
+
+and the build gets it on the command line, `./gradlew :app:installDebug -PfleetmlEnrollmentKey=<enrollment key>`
+(or as `fleetmlEnrollmentKey=<enrollment key>` in `~/.gradle/gradle.properties`,
+outside the project). The SDK's classes are in the package `com.fleetml.sdk`;
+the Maven group, `dev.fleetml`, is a different name, so `import dev.fleetml...`
+finds nothing:
 
 ```kotlin
 import android.app.Application
@@ -130,7 +164,7 @@ class MyApp : Application(), FleetMLCallback {
             config = FleetMLConfig(
                 serverHost = "10.0.2.2",
                 serverPort = 19090,
-                enrollmentKey = "<enrollment key>",
+                enrollmentKey = BuildConfig.FLEETML_ENROLLMENT_KEY,
                 labels = mapOf("app" to "myapp", "tier" to "beta"),
             ),
             callback = this,
@@ -143,19 +177,36 @@ class MyApp : Application(), FleetMLCallback {
 }
 ```
 
-Register the class in `AndroidManifest.xml` with
-`<application android:name=".MyApp" ...>`. `10.0.2.2` is how the emulator
-reaches a server on the laptop it runs on. On a phone, `serverHost` is
-`localhost` with the `adb reverse` forwards, or the laptop's LAN address over
-Wi-Fi ([Install](#install)), and in production the server's host name with
-`serverPort = 443` and `useTls = true`.
+For a quick test only, `enrollmentKey = "<enrollment key>"` works too, but
+the key then sits in a file you commit.
 
-The enrollment key comes from `fleetml enrollment-key create --project <project ID>`,
-which prints it once. To keep it out of the source, put it in the build
-instead: in `app/build.gradle.kts`, `buildFeatures { buildConfig = true }` and
-`buildConfigField("String", "FLEETML_ENROLLMENT_KEY", "\"<enrollment key>\"")`
-in `defaultConfig`, then `enrollmentKey = BuildConfig.FLEETML_ENROLLMENT_KEY`
-(the sample app reads it from a Gradle property this way).
+Register the class in `AndroidManifest.xml` with
+`<application android:name=".MyApp" ...>`. The app needs no permission of its
+own for the SDK: the SDK's manifest declares `INTERNET` and
+`ACCESS_NETWORK_STATE`, WorkManager, which it uses for background checks,
+adds `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE`, and
+AndroidX Core adds the app's own `<application ID>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`
+to the merged manifest.
+
+**On the emulator, forward the model-file port.** `10.0.2.2` is how the
+emulator reaches a server on the laptop it runs on, which covers gRPC on
+19090. Model files are another matter: the server hands each one out as a URL
+for `localhost:19100` (the quickstart's `S3_PUBLIC_ENDPOINT`), and `localhost`
+inside the emulator is the emulator itself, not the laptop. Forward that port
+to the laptop once per emulator start, before the app's first download
+(with `ANDROID_SERIAL` set to the emulator when a phone is attached too, see
+the [Emulator runbook](#emulator-runbook)):
+
+```bash
+adb reverse tcp:19100 tcp:19100
+```
+
+Without it the app registers and then logs
+`Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:19100`
+on every heartbeat. On a phone, `serverHost` is `localhost` with the
+`adb reverse` forwards, or the laptop's LAN address over Wi-Fi
+([Install](#install)), and in production the server's host name with
+`serverPort = 443` and `useTls = true`.
 
 `FleetMLCallback` has five methods, each with an empty default, so implement
 only what the app needs. They run on a background thread: switch to the main
@@ -193,22 +244,44 @@ in the file:
 lifecycleScope.launch { val reached = FleetML.syncNow() }
 ```
 
-**What to expect on the first run.** Within seconds of `FleetML.init`,
-`onRegistered(deviceId)` fires and the device appears in
-`fleetml device list --project <project ID>` and on the dashboard's Devices
-page. If a deployment already targets the app's labels, the model arrives
-right after registration and `onModelReady` fires; a deployment created later
-arrives with the next heartbeat, 60 seconds with the server's default. The
-SDK logs every step to logcat with the tag `FleetML`
-(`adb logcat -s FleetML`): registration, downloads, validation, and at
-warning level or above why registration or a heartbeat failed, such as an
-unreachable host or a refused enrollment key.
+### What to expect on the first run
+
+Within seconds of `FleetML.init`, `onRegistered(deviceId)` fires and the
+device appears in `fleetml device list --project <project ID>` and on the
+dashboard's Devices page. If a deployment already targets the app's labels,
+the model arrives right after registration and `onModelReady` fires; a
+deployment created later arrives with the next heartbeat, 60 seconds with the
+server's default. The SDK logs every step to logcat with the tag `FleetML`
+(`adb logcat -s FleetML`); a first run that registers and receives iris 1.0.0
+prints (time stamps and process IDs left out):
+
+```text
+D FleetML : Registering device with fingerprint <first 12 hex digits>...
+D FleetML : Registration saved for device <device ID>
+I FleetML : Registered as device <device ID>
+I FleetML : Downloaded model <variant ID> (2KB)
+I FleetML : Model iris 1.0.0 passed validation
+I FleetML : Model iris 1.0.0 is active
+```
+
+At warning level or above it logs why registration or a heartbeat failed,
+one line each, such as an unreachable host or a refused enrollment key; the
+stack trace of each failure follows at debug level, which
+`adb logcat FleetML:I *:S` leaves out.
+
+After fixing something (the port forward, a key, a deployment), the app does
+not have to wait for its next heartbeat: `FleetML.syncNow()` from a coroutine
+runs one now (above), and force-stopping and reopening the app
+(`adb shell am force-stop <package>`, then start it again) registers and
+heartbeats straight away.
 
 ### Own app: publish and deploy
 
 The CLI side for an own app, from the root of a clone (for the sample models)
-with the quickstart's server: a project, two versions, an enrollment key, and
-a deployment to the labels the app sets (`app=myapp` above):
+with the quickstart's server and the `fleetml` CLI on the `PATH`
+([Get the CLI](QUICKSTART.md#get-the-cli)): a project, two versions, an
+enrollment key, and a deployment to the labels the app sets (`app=myapp`
+above):
 
 ```bash
 export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
@@ -218,17 +291,26 @@ fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.
 M=$(fleetml model list --project $P -o json | jq -r '.[0].id')
 V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
 V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
-fleetml enrollment-key create --project $P --name myapp
+EK=$(fleetml enrollment-key create --project $P --name myapp -o json | jq -r .key)
 D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"myapp"}' -o json | jq -r .id)
 fleetml deploy start $D1
 ```
 
-`enrollment-key create` prints the key once: put it in the app's config. The
-deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`), which
+The key is in `$EK`; build the app with it, in the app's project, from the
+same shell, after the emulator's `adb reverse tcp:19100 tcp:19100`
+([Configure and start](#configure-and-start)):
+
+```bash
+./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK
+```
+
+The deployment starts as `COMPLETE` (`✓ Deployment start → COMPLETE`), which
 means assigned; once the app runs, logcat shows `Model iris 1.0.0 is active`.
 `fleetml deploy get $D1 | jq -c .devices` counts what the devices reported in
 their last heartbeat, so it prints `{"loaded":0,"targeted":1}` until the app's
-next heartbeat and `{"loaded":1,"targeted":1}` after it. Then roll out 2.0.0:
+next heartbeat (60 seconds by default) and `{"loaded":1,"targeted":1}` after
+it; it is counted each time you ask, so once 2.0.0 replaces it, this
+deployment counts down to `{"loaded":0,"targeted":1}`. Then roll out 2.0.0:
 
 ```bash
 D2=$(fleetml deploy create --project $P --version $V2 --target '{"app":"myapp"}' -o json | jq -r .id)
@@ -371,6 +453,29 @@ Models activated in an earlier run are delivered through `onModelReady` (and
 reached. A registered device in the foreground starts heartbeating straight away; until the
 server answers it keeps using its cached models, and `onConnectionStatusChanged`
 reports reachability.
+
+To try it with an own app on the emulator (API 30 and later), as runbook
+[step 5](#emulator-runbook) does for the sample app:
+
+```bash
+adb shell cmd connectivity airplane-mode enable
+adb shell am force-stop <package>
+adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1
+```
+
+`onModelReady` fires for the cached model at once,
+`onConnectionStatusChanged(false)` follows, and logcat shows each failure on
+one line:
+
+```text
+W FleetML : Heartbeat failed: UNAVAILABLE: connect failed: ENETUNREACH (Network is unreachable)
+W FleetML : Telemetry flush failed, 1 events kept: UNAVAILABLE: connect failed: ENETUNREACH (Network is unreachable)
+```
+
+`adb shell cmd connectivity airplane-mode disable` brings the network back;
+the next heartbeat, within 30 seconds (the SDK's own interval until the
+server answers), reconnects and sends the queued events
+(`Telemetry flushed: 1 sent, 1 accepted`).
 
 ![Offline start in airplane mode](screenshots/android-offline-start.png)
 
@@ -521,15 +626,30 @@ Android tools run on the Windows side, where Android Studio installs them:
 `platform-tools`), and an `adb` installed inside Ubuntu does not see the
 Windows emulator. The CLI steps of the runbook (step 3) run in the Ubuntu
 shell, and the enrollment key crosses by hand (`echo $EK` there). Steps 2, 4
-and 5 run in PowerShell: build the sample app with
-`.\gradlew.bat :sample-app:installDebug -PfleetmlEnrollmentKey=<key>` in the
-`android` folder of a clone on the Windows side (Gradle is slow on a
-`\\wsl.localhost` path), with `ANDROID_HOME` set to that SDK folder and
-`JAVA_HOME` to a JDK 17, or open the folder in Android Studio. The emulator's
-`10.0.2.2:19090` and `adb reverse tcp:19100 tcp:19100` reach the ports
-Docker Desktop publishes on Windows. A phone over Wi-Fi reaches the laptop's
-LAN address only if Windows Firewall lets in TCP 19090 and 19100, for example
-with
+and 5 run in PowerShell, in the `android` folder of a clone on the Windows
+side (`git clone https://github.com/fleetml/fleetml.git` in PowerShell;
+Gradle is slow on a `\\wsl.localhost` path), with Android Studio's SDK and
+its bundled JDK 17:
+
+```powershell
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
+$env:Path += ";$env:ANDROID_HOME\platform-tools"
+$env:ANDROID_SERIAL = 'emulator-5554'
+adb reverse tcp:19100 tcp:19100
+.\gradlew.bat :sample-app:installDebug -PfleetmlEnrollmentKey=<key>
+```
+
+`ANDROID_SERIAL` is the name `adb devices` lists; set it when more than one
+device is attached. Or open the folder in Android Studio. The emulator's
+`10.0.2.2:19090` and the reverse of 19100 reach the ports Docker Desktop
+publishes on Windows. A phone over USB needs its maker's USB driver on Windows
+before `adb devices` lists it (Google's for Pixel phones, from the SDK
+Manager). A phone over Wi-Fi uses the Windows machine's LAN address, the
+IPv4 address `ipconfig` prints for the Wi-Fi or Ethernet adapter, not WSL's
+`ip addr`, which is an internal address; the stack in the Ubuntu shell must
+then be started with `S3_PUBLIC_ENDPOINT=<LAN IP>:19100` ([Install](#install)),
+and Windows Firewall must let in TCP 19090 and 19100, for example with
 `New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow`
 in an administrator PowerShell. None of this is verified on Windows by CI.
 

@@ -5,8 +5,10 @@ package agent
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -40,6 +42,11 @@ type Config struct {
 	OnBattery bool `yaml:"on_battery"`
 	// HeartbeatInterval is used until the server sends its own.
 	HeartbeatInterval time.Duration `yaml:"heartbeat_interval"`
+	// DownloadHostOverride (host:port) replaces the host and port of every
+	// model download URL the server hands out, for a server whose
+	// S3_PUBLIC_ENDPOINT this machine cannot reach. The request still carries
+	// the original Host header, which the URL's signature covers.
+	DownloadHostOverride string `yaml:"download_host_override"`
 }
 
 // LoadConfig reads a YAML file (if path is not empty) over the defaults.
@@ -73,6 +80,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Labels == nil {
 		c.Labels = map[string]string{}
+	}
+	if c.DownloadHostOverride != "" {
+		if _, _, err := net.SplitHostPort(c.DownloadHostOverride); err != nil || strings.Contains(c.DownloadHostOverride, "/") {
+			return fmt.Errorf("download_host_override must be host:port, got %q", c.DownloadHostOverride)
+		}
 	}
 	return nil
 }

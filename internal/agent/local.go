@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,18 +97,44 @@ func (a *Agent) handleEvents(w http.ResponseWriter, r *http.Request) {
 	for id, m := range a.models() {
 		byName[m.Name] = active{id, m.Active.VersionID}
 	}
-	accepted := 0
-	for _, e := range events {
+	resp := EventsResponse{}
+	for i, e := range events {
 		m, ok := byName[e.Model]
 		if !ok {
+			resp.RejectedReasons = append(resp.RejectedReasons, fmt.Sprintf("event %d: unknown model %q (%s)", i, e.Model, activeNames(byName)))
 			continue
 		}
 		a.report(m.versionID, fleetmlv1.TelemetryEvent_INFERENCE, e.LatencyMs, e.Confidence, e.Label, e.Error, a.histograms(m.modelID, e.Features)...)
-		accepted++
+		resp.Accepted++
+	}
+	resp.Rejected = len(resp.RejectedReasons)
+	if resp.Rejected > 0 {
+		a.log.Info("local telemetry events rejected", "rejected", resp.Rejected, "first", resp.RejectedReasons[0])
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]int{"accepted": accepted, "rejected": len(events) - accepted})
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// EventsResponse is the answer to POST /v1/events.
+type EventsResponse struct {
+	Accepted int `json:"accepted"`
+	Rejected int `json:"rejected"`
+	// RejectedReasons has one entry per rejected event, e.g.
+	// `event 0: unknown model "foo" (active models: iris)`.
+	RejectedReasons []string `json:"rejected_reasons,omitempty"`
+}
+
+func activeNames[T any](byName map[string]T) string {
+	if len(byName) == 0 {
+		return "no model is active yet"
+	}
+	names := make([]string, 0, len(byName))
+	for n := range byName {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return "active models: " + strings.Join(names, ", ")
 }
 
 func osVersion() string {

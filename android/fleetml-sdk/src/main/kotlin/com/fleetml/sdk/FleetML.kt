@@ -3,6 +3,7 @@ package com.fleetml.sdk
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -218,7 +219,7 @@ internal class FleetMLInstance(
                 try {
                     registration.registerIfNeeded(::register)
                 } catch (e: Exception) {
-                    Logger.e("Registration failed: ${e.message}", e)
+                    Logger.failure("Registration failed", e, Log.ERROR)
                     callback?.onConnectionStatusChanged(false)
                     delay(REGISTER_RETRY_MS)
                 }
@@ -271,7 +272,7 @@ internal class FleetMLInstance(
                 registration.registerIfNeeded(::register)
                 registered = true
             } catch (e: Exception) {
-                Logger.w("Registration failed: ${e.message}")
+                Logger.failure("Registration failed", e)
                 return false
             }
         }

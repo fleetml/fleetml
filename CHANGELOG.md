@@ -22,6 +22,19 @@ change APIs).
   `project_id` (400 for a value that is not a UUID).
 - `scripts/agent-install-test.sh` runs the agent's `install.sh` in Ubuntu
   containers with and without systemd.
+- Linux agent: `download_host_override` (`host:port`) sends every model
+  download, full or delta, to another address than the server's
+  `S3_PUBLIC_ENDPOINT`, keeping the signed URL's path, query and `Host`
+  header, for an edge team that cannot restart the server.
+- Linux agent: `-retry-failed` retries the versions that failed validation
+  at once instead of after the hour's wait, and the rejected file is kept in
+  `<state_dir>/rejected/<model>/<version>-<variant>/model.bin` (the last one
+  per model) for running the validator by hand.
+- Linux agent: `POST /v1/events` answers with `rejected_reasons`, one per
+  rejected event (`event 0: unknown model "foo" (active models: iris)`), and
+  logs the first one.
+- Android SDK: logs `Model <name> <version> passed validation`, as the iOS
+  SDK does.
 
 ### Changed
 
@@ -54,6 +67,13 @@ change APIs).
   of silently registering again at every launch.
 - `fleetml push` showed a model under a kilobyte as `0KB`; small sizes are now
   in bytes.
+- Android SDK: a failed heartbeat, token refresh, registration or telemetry
+  flush logged a gRPC stack trace of about 30 lines at warning level; it now
+  logs one line with the status and cause, and the trace at debug level.
+- iOS SDK: an app without the SDK's background task logged
+  `Background refresh not scheduled ... BGTaskSchedulerErrorDomain error 3` as
+  an error at every launch; it is now an info line that says how to enable
+  the task, and only a permitted task that fails to schedule is an error.
 
 ### Docs
 
@@ -76,6 +96,25 @@ change APIs).
 - The next heartbeat is 60 seconds with the quickstart's server; the SDKs' and
   agent's 30 s applies only until the server answers.
 - `docs/ROLLOUTS.md` "Did the model arrive?" describes the new fields.
+- Second developer review: Android's emulator port forward for model files
+  next to the init snippet, the enrollment key from a Gradle property,
+  the first-run logcat lines, retrying without waiting for a heartbeat, the
+  permissions the SDK brings, airplane mode for an own app, PowerShell lines
+  in "From Windows"; iOS's key from the `Info.plist`, an own-app runbook with
+  an XcodeGen project, `connectionFailed` being registration-only; the Linux
+  agent's version lookup by number, `sed` instead of `sudoedit`, the
+  agent-side `download_host_override`, the rejected file and
+  `-retry-failed`, the server-side telemetry check, containers' PID 1; the
+  tour's variables saved to `~/.fleetml.env` with a resume from another
+  shell, every printed line and the real waits; Windows: the shell on each
+  block, the admin key from `~/.fleetml.env` in one line,
+  `fleetml config set-key`, reserved port ranges, `docker-users`, and what
+  the Windows run does and does not verify; `loaded` turns one heartbeat
+  after the device has the model and is counted each time you ask;
+  RELEASING: tarballs built by hand on a Mac.
+- Android "From a clone": the two Gradle plugins and the `sdkVersion`
+  property the SDK module needs from the app's build, without which Gradle
+  stops with `Plugin [id: 'com.google.protobuf'] was not found`.
 
 ## [0.5.0] - 2026-10-19
 

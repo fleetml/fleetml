@@ -90,15 +90,15 @@ internal class HeartbeatManager(
                 try {
                     reRegister()
                 } catch (re: Exception) {
-                    Logger.w("Re-registration failed: ${re.message}")
+                    Logger.failure("Re-registration failed", re)
                 }
             } else {
-                Logger.w("Heartbeat failed: ${e.status}")
+                Logger.failure("Heartbeat failed", e)
             }
             setConnected(false)
             false
         } catch (e: Exception) {
-            Logger.w("Heartbeat failed: ${e.message}")
+            Logger.failure("Heartbeat failed", e)
             setConnected(false)
             false
         }
@@ -115,7 +115,7 @@ internal class HeartbeatManager(
         } catch (e: StatusException) {
             // FAILED_PRECONDITION (too early, clock skew) is retried on the next heartbeat.
             if (e.status.code == Status.Code.UNAUTHENTICATED) throw e
-            Logger.w("Token refresh failed: ${e.status}")
+            Logger.failure("Token refresh failed", e)
             token
         }
     }

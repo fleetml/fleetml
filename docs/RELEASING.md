@@ -126,6 +126,13 @@ to `dist/`:
   `fleetml-agent-linux-arm64.tar.gz`;
 - `SHA256SUMS` for all eight.
 
+The script archives every file owned by `0:0`, without the builder's user
+and group names and without extended attributes, with GNU tar on Linux and
+BSD tar on macOS alike. A tarball built by hand on a Mac (a stand-in for a
+test, say) needs the same, or it carries AppleDouble `._*` files and
+`LIBARCHIVE.xattr` headers that GNU tar warns about when extracting:
+`COPYFILE_DISABLE=1 tar --no-xattrs --owner=0 --group=0 -czf <archive>.tar.gz <files>`.
+
 It attaches them to the tag's GitHub release, creating the release as a draft
 if there is none yet, and it never changes a release's notes. The binaries get
 their version from the tag.

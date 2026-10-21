@@ -120,6 +120,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		_ = os.Chmod(filepath.Join(m.Active.Dir, modelFile), modelFileMode) // written 0600 before 0.6.0
 		a.log.Info("active model (from the last run)", "model", m.Name, "version", m.Active.Version, "path", a.currentLink(m.Name))
 	}
+	if a.cfg.DownloadHostOverride != "" {
+		a.log.Info("model downloads go to download_host_override", "host", a.cfg.DownloadHostOverride)
+	}
 	if a.cfg.TelemetryListen != "" {
 		srv, err := a.serveLocal(a.cfg.TelemetryListen)
 		if err != nil {
@@ -407,7 +410,7 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		}
 		part := filepath.Join(a.cfg.StateDir, "downloads", safeName(as.VariantId)+".part")
 		if !a.fromDelta(ctx, as, part) {
-			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256); err != nil {
+			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256, a.cfg.DownloadHostOverride); err != nil {
 				a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
 				a.mu.Lock()
 				first := !a.downloadFailed[as.VariantId]
@@ -440,11 +443,17 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 	env := map[string]string{"FLEETML_MODEL_NAME": as.ModelName, "FLEETML_MODEL_VERSION": as.Version, "FLEETML_MODEL_FILE": file}
 	if a.cfg.Validator != "" {
 		if err := runCommand(ctx, a.cfg.Validator, file, env); err != nil {
-			a.log.Warn("model failed validation; keeping the current version", "model", as.ModelName, "version", as.Version, "error", err)
 			_ = a.store.Update(func(s *State) { s.Failed[as.VariantId] = a.now() })
+			attrs := []any{"model", as.ModelName, "version", as.Version, "error", err}
 			if active == nil || active.Dir != dir {
+				if kept, kerr := a.keepRejected(as, file); kerr == nil {
+					attrs = append(attrs, "rejected_file", kept)
+				} else {
+					a.log.Warn("keeping the rejected model file failed", "error", kerr)
+				}
 				_ = os.RemoveAll(dir)
 			}
+			a.log.Warn("model failed validation; keeping the current version", attrs...)
 			a.report(as.VersionId, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, 0, 0, "", err.Error())
 			return
 		}
@@ -484,6 +493,44 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 			a.log.Warn("post_activate command failed", "error", err)
 		}
 	}
+}
+
+// keepRejected moves a model file that failed validation to
+// <state_dir>/rejected/<model>/<version>-<variant>/model.bin, readable only by
+// the agent's user, so the validator can be run against it by hand. Only the
+// last rejected version of each model is kept.
+func (a *Agent) keepRejected(as *fleetmlv1.ModelAssignment, file string) (string, error) {
+	modelDir := filepath.Join(a.cfg.StateDir, "rejected", safeName(as.ModelName))
+	if err := os.RemoveAll(modelDir); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(modelDir, safeName(as.Version)+"-"+safeName(shortID(as.VariantId)))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	kept := filepath.Join(dir, modelFile)
+	if err := os.Rename(file, kept); err != nil { // models_dir may be on another file system
+		data, rerr := os.ReadFile(file)
+		if rerr != nil {
+			return "", errors.Join(err, rerr)
+		}
+		if werr := os.WriteFile(kept, data, 0o600); werr != nil {
+			return "", werr
+		}
+	}
+	return kept, os.Chmod(kept, 0o600)
+}
+
+// RetryFailed forgets the versions that failed validation or their signature
+// check, so the next heartbeat tries them again instead of waiting out the
+// hour; it returns how many there were.
+func (a *Agent) RetryFailed() (int, error) {
+	n := 0
+	err := a.store.Update(func(s *State) {
+		n = len(s.Failed)
+		s.Failed = map[string]time.Time{}
+	})
+	return n, err
 }
 
 func (a *Agent) unload(as *fleetmlv1.ModelAssignment) {
@@ -675,7 +722,7 @@ func (a *Agent) fromDelta(ctx context.Context, as *fleetmlv1.ModelAssignment, pa
 		a.log.Warn("model delta unusable; downloading the full model", "model", as.ModelName, "version", as.Version, "error", err)
 		return false
 	}
-	if err := download(ctx, a.http, as.DeltaUrl, dpart, as.DeltaSha256); err != nil {
+	if err := download(ctx, a.http, as.DeltaUrl, dpart, as.DeltaSha256, a.cfg.DownloadHostOverride); err != nil {
 		return fail(err)
 	}
 	old, err := os.ReadFile(base)

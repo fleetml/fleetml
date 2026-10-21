@@ -1,5 +1,6 @@
 package com.fleetml.sdk
 
+import com.fleetml.sdk.internal.Logger
 import com.fleetml.sdk.internal.ModelManager
 import com.fleetml.sdk.internal.ModelStore
 import com.fleetml.sdk.internal.TelemetryQueue
@@ -141,5 +142,33 @@ class HeartbeatManagerTest {
         val (hb, _) = setup(MemTokens(null, 0), api)
         assertFalse(hb.beatOnce())
         assertTrue(api.requests.isEmpty())
+    }
+
+    @Test
+    fun `an offline heartbeat logs one warning line and keeps the stack trace at debug`() = runTest {
+        val lines = mutableListOf<Triple<Int, String, Throwable?>>()
+        val saved = Logger.sink
+        Logger.sink = { p, m, t -> lines += Triple(p, m, t) }
+        try {
+            val cause = java.net.ConnectException("failed to connect to /10.0.2.2 (port 19090) from /:: (port 0) after 20000ms: connect failed: ENETUNREACH (Network is unreachable)")
+            val api = FakeApi().apply { failWith = Status.UNAVAILABLE.withDescription("io exception").withCause(cause) }
+            val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+            assertFalse(hb.beatOnce())
+        } finally {
+            Logger.sink = saved
+        }
+        val warnings = lines.filter { it.first >= android.util.Log.WARN }
+        assertEquals(
+            listOf("Heartbeat failed: UNAVAILABLE: io exception: failed to connect to /10.0.2.2 (port 19090) from /:: (port 0) after 20000ms: connect failed: ENETUNREACH (Network is unreachable)"),
+            warnings.map { it.second },
+        )
+        assertTrue("no stack trace above debug", warnings.all { it.third == null })
+        assertTrue("the stack trace is at debug", lines.any { it.first == android.util.Log.DEBUG && it.third != null })
+    }
+
+    @Test
+    fun `describe keeps a plain exception's message`() {
+        assertEquals("boom", Logger.describe(IllegalStateException("boom")))
+        assertEquals("DEADLINE_EXCEEDED", Logger.describe(StatusException(Status.DEADLINE_EXCEEDED)))
     }
 }

@@ -14,3 +14,4 @@ state_dir: /var/lib/fleetml-agent
 # telemetry_listen: "127.0.0.1:9601"   # POST /v1/events from the inference process
 # metered: false
 # on_battery: false
+# download_host_override: "<server address>:19100"   # when the server's S3_PUBLIC_ENDPOINT is not reachable from here
