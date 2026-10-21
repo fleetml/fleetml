@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs deploy/agent/install.sh in throwaway Ubuntu containers, without
 # systemd, with systemd installed but not running, and with a stand-in for a
-# running systemd, and checks what it leaves behind.
+# running systemd, and in an Alpine (BusyBox) container without bash or
+# useradd, and checks what it leaves behind.
 #   ./scripts/agent-install-test.sh [path to a linux fleetml-agent binary]
 # Without an argument it uses bin/fleetml-agent-linux-<Docker's arch>
 # (make build-agent).
@@ -11,13 +12,18 @@ ARCH=$(docker version -f '{{.Server.Arch}}')
 BIN=${1:-bin/fleetml-agent-linux-$ARCH}
 [ -x "$BIN" ] || { echo "no agent binary at $BIN (run make build-agent)" >&2; exit 1; }
 IMAGE=${IMAGE:-ubuntu:24.04}
+BUSYBOX_IMAGE=${BUSYBOX_IMAGE:-alpine:3.20}
 
-# run <name> <script>: the script runs as root in a fresh container.
+# run <name> <script> [image shell...]: the script runs as root in a fresh
+# container, by default in $IMAGE with bash.
 run() {
-  if docker run --rm -v "$PWD/deploy/agent:/src/agent:ro" -v "$PWD/$BIN:/src/fleetml-agent:ro" "$IMAGE" bash -euo pipefail -c "$2"; then
-    echo "PASS $1"
+  name=$1 script=$2
+  shift 2
+  [ $# -gt 0 ] || set -- "$IMAGE" bash -euo pipefail
+  if docker run --rm -v "$PWD/deploy/agent:/src/agent:ro" -v "$PWD/$BIN:/src/fleetml-agent:ro" "$@" -c "$script"; then
+    echo "PASS $name"
   else
-    echo "FAIL $1" >&2
+    echo "FAIL $name" >&2
     exit 1
   fi
 }
@@ -71,3 +77,24 @@ sed -i "s/<project enrollment key>/test-key/" /etc/fleetml-agent/config.yaml
 /tmp/agent/install.sh /src/fleetml-agent
 grep -qx "enable --now fleetml-agent" /tmp/systemctl.log
 '
+
+# BusyBox: install.sh runs under ash and creates the user with addgroup and
+# adduser. The script below is POSIX sh too.
+# shellcheck disable=SC2016
+run "busybox (alpine, no bash, no useradd)" '
+! command -v bash
+! command -v useradd
+cp -r /src/agent /tmp/agent
+out=$(/tmp/agent/install.sh /src/fleetml-agent)
+echo "$out"
+echo "$out" | grep -q "No running systemd on this machine"
+[ "$(id -gn fleetml-agent)" = fleetml-agent ]
+[ "$(stat -c "%U %G %a" /var/lib/fleetml-agent)" = "fleetml-agent fleetml-agent 755" ]
+[ "$(stat -c "%G %a" /etc/fleetml-agent/config.yaml)" = "fleetml-agent 640" ]
+sed -i -e "s/^server: .*/server: 127.0.0.1:1/" -e "s/<project enrollment key>/test-key/" /etc/fleetml-agent/config.yaml
+log=$(su -s /bin/sh fleetml-agent -c "exec timeout 3 /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml" 2>&1 || true)
+echo "$log"
+echo "$log" | grep -q "fleetml-agent starting"
+! echo "$log" | grep -q "permission denied"
+[ -f /var/lib/fleetml-agent/state.json ]
+' "$BUSYBOX_IMAGE" sh -eu

@@ -52,8 +52,9 @@ and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
 from the clone.
 
-The script installs the binary to `/usr/local/bin`, creates a
-`fleetml-agent` system user, the config file (from
+The script (POSIX `sh`, so a BusyBox image without bash runs it too) installs
+the binary to `/usr/local/bin`, creates a `fleetml-agent` system user (with
+`useradd`, or BusyBox's `addgroup` and `adduser`), the config file (from
 [`config.example.yaml`](../deploy/agent/config.example.yaml)) and the
 [systemd unit](../deploy/agent/fleetml-agent.service), which keeps its state in
 `/var/lib/fleetml-agent`. It starts nothing while the config still holds the
