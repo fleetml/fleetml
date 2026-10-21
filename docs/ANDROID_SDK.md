@@ -11,17 +11,15 @@ Runtime or anything else.
 
 ## Install
 
-The SDK is on Maven Central as `dev.fleetml:fleetml-sdk`; its latest version
-is 0.4.0, because FleetML 0.5.0 changed nothing in it. The next release adds
-the `passed validation` line to logcat and logs a failed heartbeat on one line
-instead of with a stack trace ([What to expect on the first run](#what-to-expect-on-the-first-run));
-until it is on Maven Central, those two need the SDK [from a clone](#from-a-clone).
-Add it to the app with TensorFlow Lite next to it:
+The SDK is on Maven Central as `dev.fleetml:fleetml-sdk`; 0.6.0 is the
+version this guide describes (0.4.0 lacks the `passed validation` logcat line
+and still logs a failed heartbeat with a stack trace). Add it to the app with
+TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.4.0")
+    implementation("dev.fleetml:fleetml-sdk:0.6.0")
     implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
 }
 ```
@@ -44,7 +42,7 @@ contains the classes lite-generated code uses (not tested here with every
 protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.4.0") {
+implementation("dev.fleetml:fleetml-sdk:0.6.0") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```

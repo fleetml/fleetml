@@ -23,7 +23,7 @@ import BackgroundTasks
 /// runs one heartbeat and one telemetry flush. Models download only as the
 /// `DownloadPolicy` allows, unless the deployment is urgent.
 public enum FleetML {
-    public static let sdkVersion = "0.5.0"
+    public static let sdkVersion = "0.6.0"
 
     /// The identifier of the background refresh task. Add it to the app's
     /// `BGTaskSchedulerPermittedIdentifiers`, enable the "fetch" background mode,

@@ -17,7 +17,7 @@ It needs Xcode 15 or later (16 recommended; the package manifest is
 swift-tools-version 5.9). In Xcode, choose **File → Add Package Dependencies**, paste
 `https://github.com/fleetml/fleetml` and add the **FleetMLSDK** library to the
 app target, with the Dependency Rule **Up to Next Major Version** from
-0.5.0.
+0.6.0.
 
 In a `Package.swift`:
 

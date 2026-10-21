@@ -14,7 +14,7 @@ which stays the command-line tool; the package installs no command.
 pip install fleetml
 ```
 
-`pip install fleetml` works from 0.5.0; until then, `pip install ./python`
+`pip install fleetml` works from 0.6.0; until then, `pip install ./python`
 from a clone of the repository (also the way to work against unreleased
 changes). Python 3.9 or later; the only dependency is `httpx`.
 

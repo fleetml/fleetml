@@ -201,7 +201,7 @@ Run anyway), and antivirus or a company policy may scan or block an unsigned
 program. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.5.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.6.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -272,7 +272,7 @@ If the simulator's shell was closed, start the simulator again there with the
 `SIM=$!`; `pgrep -f 'fleetml simulate'` shows whether one runs.
 
 From Python, the same steps run with the Python client (`pip install fleetml`
-from 0.5.0; until then `pip install ./python` from a clone); sections 1 to 3
+from 0.6.0; until then `pip install ./python` from a clone); sections 1 to 3
 are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
 page.
 

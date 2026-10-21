@@ -184,18 +184,18 @@ PowerShell version is in [Get the CLI](docs/QUICKSTART.md#get-the-cli). From sou
 Android, from Maven Central (with `mavenCentral()` in the app's repositories):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.4.0")
+implementation("dev.fleetml:fleetml-sdk:0.6.0")
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.5.0;
+(Dependency Rule **Up to Next Major Version** from 0.6.0;
 [details](docs/IOS_SDK.md#install)):
 
 ```text
 https://github.com/fleetml/fleetml
 ```
 
-Python, for pipelines and notebooks: `pip install fleetml` from 0.5.0; until
+Python, for pipelines and notebooks: `pip install fleetml` from 0.6.0; until
 then `pip install ./python` from a clone ([Python client](docs/PYTHON_CLIENT.md)):
 
 ```python

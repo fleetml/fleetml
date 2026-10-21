@@ -12,7 +12,7 @@ with the same words as the `fleetml` CLI, and depends only on `httpx`.
 pip install fleetml
 ```
 
-`pip install fleetml` works from 0.5.0; until then, `pip install ./python`
+`pip install fleetml` works from 0.6.0; until then, `pip install ./python`
 from a clone of the repository.
 
 ```python
