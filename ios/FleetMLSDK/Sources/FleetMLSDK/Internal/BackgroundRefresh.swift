@@ -16,6 +16,17 @@ enum BackgroundRefresh {
         (bundle.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String])?.contains(identifier) ?? false
     }
 
+    /// Why a refresh request is not submitted at all, or nil to submit it. A
+    /// permitted task without a launch handler (registerBackgroundTask() not
+    /// called) makes iOS throw "No launch handler registered for task with
+    /// identifier", an Objective-C exception that ends the app.
+    static func skipReason(permitted: Bool, registered: Bool) -> String? {
+        guard permitted && !registered else { return nil }
+        return "Background refresh not scheduled: the app permits \(FleetML.backgroundTaskIdentifier) but has not called "
+            + "FleetML.registerBackgroundTask(); call it before the app finishes launching, "
+            + "see docs/IOS_SDK.md \"Battery and data\""
+    }
+
     static func failure(_ error: Error, permitted: Bool) -> (level: OSLogType, message: String) {
         let ns = error as NSError
         if !permitted {

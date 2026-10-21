@@ -32,6 +32,10 @@ public enum FleetML {
 
     private static let lock = NSLock()
     private static var instance: Instance?
+    private static var backgroundTaskRegistered = false
+
+    /// Whether registerBackgroundTask() registered the launch handler.
+    static var isBackgroundTaskRegistered: Bool { lock.withLock { backgroundTaskRegistered } }
 
     /// Initialize the SDK. A second call while initialized is ignored; call
     /// `stop()` first to re-initialize.
@@ -82,7 +86,7 @@ public enum FleetML {
     /// launch too, so a background launch has an instance to sync.
     public static func registerBackgroundTask() {
         #if canImport(BackgroundTasks) && os(iOS)
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier, using: nil) { task in
+        let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier, using: nil) { task in
             guard let task = task as? BGAppRefreshTask else { return }
             let inst = lock.withLock { instance }
             inst?.scheduleBackgroundRefresh() // the next run, whatever happens to this one
@@ -93,6 +97,7 @@ public enum FleetML {
             }
             task.expirationHandler = { work.cancel() }
         }
+        lock.withLock { backgroundTaskRegistered = registered }
         #endif
     }
 
@@ -319,13 +324,18 @@ final class Instance {
     func scheduleBackgroundRefresh() {
         #if canImport(BackgroundTasks) && os(iOS)
         let interval = BatteryPolicy.backgroundInterval(lock.withLock { backgroundInterval })
+        let permitted = BackgroundRefresh.permitted(FleetML.backgroundTaskIdentifier)
+        if let reason = BackgroundRefresh.skipReason(permitted: permitted, registered: FleetML.isBackgroundTaskRegistered) {
+            Log.sdk.info("\(reason, privacy: .public)")
+            return
+        }
         let request = BGAppRefreshTaskRequest(identifier: FleetML.backgroundTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
         do {
             try BGTaskScheduler.shared.submit(request)
             Log.sdk.info("In the background: next refresh in \(Int(interval), privacy: .public)s or later")
         } catch {
-            let (level, message) = BackgroundRefresh.failure(error, permitted: BackgroundRefresh.permitted(FleetML.backgroundTaskIdentifier))
+            let (level, message) = BackgroundRefresh.failure(error, permitted: permitted)
             Log.sdk.log(level: level, "\(message, privacy: .public)")
         }
         #endif
