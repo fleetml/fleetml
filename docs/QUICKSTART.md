@@ -9,6 +9,11 @@ was run as written, in order.
 Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
 APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100
 (`FLEETML_S3_PUBLIC_PORT` moves it, see [CONFIG.md](CONFIG.md#docker-compose)).
+The first start takes a few minutes on a cold Docker cache, to pull the base
+images and build the server and dashboard, and well under a minute when the
+images are cached.
+
+In bash or zsh (on Windows, in the WSL 2 Ubuntu shell, see [On Windows](#on-windows)):
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
@@ -26,7 +31,8 @@ ignore `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a
 new one (the way back is `down -v` and a fresh start, which deletes the data).
 Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command on this
 stack, `down` included. In bash or zsh, this writes them to a file only you
-can read, and `source ~/.fleetml.env` brings them back in a new shell:
+can read, and `source ~/.fleetml.env` brings them back in a new shell
+(the [tour](#tour) adds its own values to the same file):
 
 ```bash
 (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
@@ -34,12 +40,18 @@ can read, and `source ~/.fleetml.env` brings them back in a new shell:
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
 once Postgres, the object store and NATS are reachable, and the project list
-answers `{"data":[],"pagination":{...}}`: no projects yet. The first start
-builds the images and takes a few minutes; if nothing appears after about two
-minutes more, run `docker compose -f deploy/docker-compose.prod.yml ps -a` and
+answers `{"data":[],"pagination":{...}}`: no projects yet. If nothing
+appears after about two minutes more than the build took, run
+`docker compose -f deploy/docker-compose.prod.yml ps -a` and
 `docker compose -f deploy/docker-compose.prod.yml logs server` to see which
-container stopped and why (a port already in use is the usual cause). More
-keys and their routes: [API keys](CONFIG.md#api-keys).
+container stopped and why (a port already in use is the usual cause). On
+Windows, a port can also sit in a range that Hyper-V or WSL reserves: Docker
+then fails with `bind: An attempt was made to access a socket in a way
+forbidden by its access permissions`, and
+`netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists the
+reserved ranges; move the port out of them (below for port 80,
+`FLEETML_S3_PUBLIC_PORT` for 19100). More keys and their routes:
+[API keys](CONFIG.md#api-keys).
 
 If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
 dashboard to any free port with an override file (Compose 2.24 or later for
@@ -63,7 +75,10 @@ Docker labels Docker Desktop for Windows on Arm early access, so Arm laptops
 are not a tested path.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-   and keep **Use the WSL 2 based engine** on (Settings → General).
+   and keep **Use the WSL 2 based engine** on (Settings → General). The
+   installer needs an administrator; a daily account that is not one must be
+   in the local `docker-users` group to use Docker Desktop (Computer
+   Management, Local Users and Groups, then sign out and in again).
 2. In PowerShell opened as administrator (right-click, **Run as
    administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu.
    Restart Windows if it asks to; WSL 2 also needs virtualization turned on
@@ -77,9 +92,10 @@ are not a tested path.
    there means it is not, or that the integration was turned on after the
    shell opened (open a new Ubuntu shell).
 4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
-   (`curl` and `openssl` are already there), then `cd ~` and run the block
-   above as it is. Keep the clone in the Linux file system (`~`), not under
-   `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
+   (`curl` and `openssl` are already there), then `cd ~` and run the
+   [Run FleetML](#run-fleetml) block as it is, then the "Save the three
+   values" block under it. Keep the clone in the Linux file system (`~`), not
+   under `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
 5. For the tour, install the Linux CLI in the same shell with the first block
    of [Get the CLI](#get-the-cli). To build it from source instead, install
    Go 1.24 or later from [go.dev](https://go.dev/doc/install): Ubuntu's
@@ -95,7 +111,24 @@ with the CLI from [Get the CLI](#get-the-cli).
 PowerShell and the Windows browser need the admin key too: in the Ubuntu shell,
 `echo $FLEETML_ADMIN_KEY` prints it (after `source ~/.fleetml.env` in a new
 one), to paste into `$env:FLEETML_API_KEY = '<the admin key>'` or the
-dashboard's login.
+dashboard's login. Or let PowerShell read it from the saved file:
+
+```powershell
+$env:FLEETML_API_KEY = wsl -d Ubuntu bash -c '. ~/.fleetml.env; printf %s $FLEETML_ADMIN_KEY'
+```
+
+`$env:` lasts for that PowerShell window; `fleetml config set-key <the admin key>`
+saves it for every window instead, in `%USERPROFILE%\.fleetml\config.yaml`
+([CONFIG.md](CONFIG.md#cli)).
+
+What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
+on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in
+WSL 2 Ubuntu, with Docker Engine installed inside the distribution (Docker
+Desktop cannot be installed on the runner) and WSL's own `localhost`
+forwarding; `/readyz` and `fleetml project list` from PowerShell against that
+server; and the PowerShell block of [Get the CLI](#get-the-cli). Docker
+Desktop itself (steps 1 and 3, the ports it publishes) and the port-80
+override are not exercised by CI.
 
 ## Get the CLI
 
@@ -137,6 +170,17 @@ $env:Path += ";$env:LOCALAPPDATA\fleetml"
 fleetml version
 ```
 
+Without `sudo`, put it in a folder of your own instead of the last-but-one
+line's `sudo mv`: `mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/`, and
+`export PATH="$HOME/.local/bin:$PATH"` (in `~/.bashrc` or `~/.zshrc` to keep
+it; many Linux distributions already have that folder on the `PATH`).
+
+The PowerShell block leaves `fleetml.zip` and `SHA256SUMS` in the folder it
+ran in; delete them once `fleetml version` answers. Its `PATH` line writes
+the user `Path` back as a plain string (`REG_SZ`): a `Path` that was
+`REG_EXPAND_SZ`, with entries such as `%USERPROFILE%\bin`, keeps working,
+but those entries are stored expanded from then on.
+
 If the first `Invoke-WebRequest` fails with a secure-channel (SSL/TLS) error
 on an older Windows, run `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`
 first.
@@ -155,15 +199,20 @@ program. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 
 `fleetml version` prints the release, for example `✓ fleetml v0.5.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
-and `$env:FLEETML_API_KEY = '<the admin key>'`; then `fleetml project list`
+and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
+[On Windows](#on-windows)), or once for every window with
+`fleetml config set-key <the admin key>`, which saves the key in
+`%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
 prints the same projects as in WSL (`No results.` before the tour). Pushing
 from Windows works too, because Docker Desktop also publishes the object
-store's port 19100 on Windows, for example with the sample model from the clone
-in the Ubuntu file system, which Windows sees under `\\wsl.localhost\Ubuntu`
-(`<user>` is the Ubuntu user):
+store's port 19100 on Windows. With a clone on the Windows side (which the
+Android SDK's Windows steps use anyway), from its folder:
+`fleetml push models\iris\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`;
+or with the clone in the Ubuntu file system, which Windows sees under
+`\\wsl.localhost\Ubuntu` (`<user>` is the Ubuntu user):
 `fleetml push \\wsl.localhost\Ubuntu\home\<user>\fleetml\models\iris\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`
-(not verified on Windows by CI: the Windows run pushes from Windows only to a
-stand-in for the REST API).
+(neither is verified on Windows by CI: the Windows run pushes from Windows
+only to a stand-in for the REST API).
 Windows PowerShell 5.1, the one built into Windows, drops the inner double
 quotes of an argument it passes to a program, so a JSON flag needs them
 escaped: `--target '{\"app\":\"tour\"}'`. PowerShell 7.3 and later pass
@@ -200,6 +249,22 @@ fleetml project list
 
 `fleetml project list` prints `No results.` on the new server.
 
+Every variable the tour sets (`P`, `V1`, `EK`, `SIM` and the others) lives in
+this shell only, and the simulator that section 2 starts in the background
+stops when this shell closes. So keep the shell open from section 2 to the
+end. The blocks of sections 1, 2 and 5 end with a line that adds their
+variables to `~/.fleetml.env`, so a second shell (another terminal tab, say)
+picks the tour up from the repository root with
+
+```bash
+source ~/.fleetml.env
+export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+```
+
+If the simulator's shell was closed, start the simulator again there with the
+`fleetml simulate` line of section 2 (the same 20 devices register again) and
+`SIM=$!`; `pgrep -f 'fleetml simulate'` shows whether one runs.
+
 From Python, the same steps run with the Python client (`pip install fleetml`
 from 0.5.0; until then `pip install ./python` from a clone); sections 1 to 3
 are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
@@ -220,22 +285,26 @@ fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.1.
 M=$(fleetml model list --project $P -o json | jq -r '.[0].id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
 V1=$(vid 1.0.0); V2=$(vid 2.0.0); V21=$(vid 2.1.0)
+echo "export P=$P M=$M V1=$V1 V2=$V2 V21=$V21" >> ~/.fleetml.env
 ```
 
-Each push prints `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)`
-and, under it, a `Variant ID:` line: the ID of the file just uploaded (one
-version can have several variants, for example INT8 and FP16). If an upload fails (the object store unreachable, say),
-run the same push again: a variant that was never verified is replaced.
+Each push prints three lines: `Preparing models/iris/iris_v1.tflite (2.4 KB, sha256:<first 12 hex digits>)...`,
+then `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and a
+`Variant ID:` line: the ID of the file just uploaded (one version can have
+several variants, for example INT8 and FP16). If an upload fails (the object
+store unreachable, say), run the same push again: a variant that was never
+verified is replaced.
 
 An upload that does not match its declared sha256 is refused and never
 reaches a device. This one step uses the REST API with curl, because
 `fleetml push` always declares the file's real sha256: here the declared hash
 is all zeros, the real file is uploaded, and the server's check at finalize
-refuses it.
+refuses it (`ZEROS` is 64 zeros, a well-formed sha256 that no file has).
 
 ```bash
 H="Authorization: Bearer $FLEETML_API_KEY"
-OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$(printf '0%.0s' $(seq 64))\"}" localhost:18080/api/v1/versions/$V2/variants)
+ZEROS=0000000000000000000000000000000000000000000000000000000000000000
+OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$ZEROS\"}" localhost:18080/api/v1/versions/$V2/variants)
 curl -s -o /dev/null -X PUT --data-binary @models/iris/iris_v1.tflite "$(echo "$OUT" | jq -r .data.upload_url)"
 curl -s -X POST -H "$H" localhost:18080/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
 ```
@@ -260,16 +329,31 @@ D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' 
 fleetml deploy start $D1
 sleep 5; tail -1 /tmp/fleetml-sim.log
 fleetml device list --project $P | head -5
+echo "export EK=$EK D1=$D1 SIM=$SIM" >> ~/.fleetml.env
 ```
 
 The deployment goes to all devices at once, so it starts as `COMPLETE`
 (`✓ Deployment start → COMPLETE`), the simulator's last line reads
 `simulator: iris 1.0.0 on 20`, and `fleetml device list` shows the devices (ID, OS,
-RAM, chipset). `COMPLETE` means assigned, not delivered: each device still
-downloads and verifies the model, and
-`fleetml deploy get $D1 | jq -c .devices` counts the targeted devices and those
-that report the version loaded in their last heartbeat,
-`{"loaded":20,"targeted":20}` once all of them have.
+RAM, chipset). The simulator keeps running in the background through section
+5; `kill $SIM` in [Clean up](#clean-up) stops it. Its log is
+`/tmp/fleetml-sim.log`, one file per machine: two tours on one machine at
+the same time would write to the same file.
+
+`COMPLETE` means assigned, not delivered: each device still downloads and
+verifies the model. This counts the targeted devices and those that report
+the version loaded:
+
+```bash
+fleetml deploy get $D1 | jq -c .devices
+```
+
+It prints `{"loaded":20,"targeted":20}` once all of them have. `loaded`
+counts the devices whose last heartbeat reported the version, so it turns one
+heartbeat (60 seconds by default; the simulator's devices heartbeat every few
+seconds) after a device has the model active, and it is counted each time
+you ask: a deployment that a newer one replaced counts down to 0 as its
+devices move on.
 
 ### 3. A canary that rolls itself back
 
@@ -278,7 +362,8 @@ over at least 30 events from the canary cohort rolls it back. Each device is
 in the cohort or not by a hash of its ID and the deployment's ID, decided on
 its own and kept for the deployment's life, so the cohort is about 25%: of 20
 devices it can be 4 or 7 as well as 5. The deploy loop runs every 30 seconds,
-and the loop below gives up after 5 minutes:
+so the rollback usually comes within a minute; the loop below gives up after
+5 minutes:
 
 ```bash
 D2=$(fleetml deploy create --project $P --version $V2 --strategy CANARY --target '{"app":"tour"}' \
@@ -306,7 +391,7 @@ use the same gate; see [ROLLOUTS.md](ROLLOUTS.md).
 ### 4. An A/B experiment
 
 Half the fleet runs 1.0.0, half 2.1.0. The test runs once both arms have 300
-inferences, and the loop gives up after 5 minutes:
+inferences, usually within a minute; the loop gives up after 5 minutes:
 
 ```bash
 EXP=$(fleetml experiment create --project $P --name "iris 2.1.0 latency" --control $V1 --treatment $V21 --target '{"app":"tour"}' --min-sample-size 300 -o json | jq -r .id)
@@ -314,13 +399,16 @@ fleetml experiment start $EXP
 for i in $(seq 100); do [ "$(fleetml experiment results $EXP | jq -r .final)" = true ] && break; sleep 3; done
 fleetml experiment results $EXP | jq '{control_ms: .control.avg_latency_ms, treatment_ms: .treatment.avg_latency_ms, p_value, recommendation}'
 fleetml experiment conclude $EXP --winner $V21
+for i in $(seq 60); do tail -1 /tmp/fleetml-sim.log | grep -q 'iris 1.0.0 on 20$' && break; sleep 2; done
+tail -1 /tmp/fleetml-sim.log
 ```
 
 The experiment is `RUNNING` once started (`✓ Experiment start → RUNNING`) and
 `CONCLUDED` at the end. Concluding records the winner and ends the
 experiment; it does not deploy anything. On their next heartbeat the
 devices go back to what the deployments assign, here 1.0.0, which the drift
-step below relies on. To roll the winner out to the whole fleet, deploy it:
+step below relies on: the last loop waits for it (up to 2 minutes) and the
+simulator's last line reads `simulator: iris 1.0.0 on 20` again. To roll the winner out to the whole fleet, deploy it:
 `fleetml deploy create --project $P --version $V21 --target '{"app":"tour"}'`
 and `fleetml deploy start` with the new ID. A `p_value` of `0` means the p-value is below the
 precision of a double; read it as p < 0.0001, which is how the demo and the
@@ -344,6 +432,7 @@ Now the devices get slower:
 kill $SIM; sleep 1
 fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
+echo "export SIM=$SIM" >> ~/.fleetml.env
 sleep 20
 fleetml drift check $V1
 fleetml drift status $V1
