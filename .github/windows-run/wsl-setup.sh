@@ -2,7 +2,7 @@
 # Prepares Ubuntu in WSL 2 for the Windows run workflow
 # (.github/workflows/windows-run.yml), as root: Docker Engine and the compose
 # plugin from Docker's apt repository (Docker Desktop cannot be installed on
-# the runner), git and jq as docs/QUICKSTART.md "On Windows" asks, Go 1.24 for
+# the runner), git and jq as docs/QUICKSTART.md "On Windows" asks, Go 1.25 for
 # the tour's first block, and a running dockerd that the user named by the
 # first argument can use.
 #
@@ -31,8 +31,8 @@ apt-get update -q
 apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 usermod -aG docker "$user"
 
-# The newest Go 1.24.x for this architecture, on every user's PATH.
-gover=$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' | jq -r '[.[].version | select(startswith("go1.24."))][0]')
+# The newest Go 1.25.x for this architecture, on every user's PATH.
+gover=$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' | jq -r '[.[].version | select(startswith("go1.25."))][0]')
 curl -fsSL "https://go.dev/dl/$gover.linux-$(dpkg --print-architecture).tar.gz" | tar -C /usr/local -xz
 ln -sf /usr/local/go/bin/go /usr/local/bin/go
 

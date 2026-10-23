@@ -12,7 +12,7 @@ expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 | Part | Needs |
 |---|---|
-| Server, CLI | Go 1.24, Docker (for Postgres/TimescaleDB, SeaweedFS and NATS) |
+| Server, CLI | Go 1.25, Docker (for Postgres/TimescaleDB, SeaweedFS and NATS) |
 | Dashboard | Node.js 22 |
 | Android SDK | JDK 17 and the Android SDK (an emulator for the instrumented test) |
 | iOS SDK | Xcode 16 or later |

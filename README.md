@@ -146,7 +146,7 @@ Next:
 - **See it work:** `./scripts/demo.sh` (Go and jq).
 - **Take the tour:** [docs/QUICKSTART.md](docs/QUICKSTART.md) walks through
   publishing, rollouts, a canary rollback, an A/B test, drift and the
-  dashboard against these containers (jq, and the released CLI or Go 1.24).
+  dashboard against these containers (jq, and the released CLI or Go 1.25).
 - **Connect an app:** [Android](docs/ANDROID_SDK.md) or [iOS](docs/IOS_SDK.md).
 - **Run it on Kubernetes:** the Helm chart in
   [deploy/helm/fleetml](deploy/helm/fleetml) (`helm test` included).
@@ -178,7 +178,7 @@ fleetml version
 
 Keep the `export` in `~/.bashrc` or `~/.zshrc`; for every user of the
 machine, `sudo mv fleetml /usr/local/bin/` instead. On Windows, the
-PowerShell version is in [Get the CLI](docs/QUICKSTART.md#get-the-cli). From source, with Go 1.24:
+PowerShell version is in [Get the CLI](docs/QUICKSTART.md#get-the-cli). From source, with Go 1.25:
 `go build -o bin/fleetml ./cmd/fleetml`.
 
 ### Install the SDKs

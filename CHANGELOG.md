@@ -21,6 +21,8 @@ change APIs).
   database unless that project publishes Postgres on the port the server
   uses, so a run meant for a second stack cannot touch the dev stack.
   `scripts/wait-migrate.sh` names the project the same way.
+- Building from source needs Go 1.25 or later (gRPC 1.83 requires it); the
+  server image builds with Go 1.26.
 
 ### Fixed
 
@@ -30,6 +32,13 @@ change APIs).
   removes nothing.
 - Every shell script passes shellcheck 0.9 and 0.11; `docs/screenshots/demo/record.sh`
   no longer leaves its temporary directory behind when it stops early.
+
+### Security
+
+- Dependencies: google.golang.org/grpc 1.83.2 (GO-2026-4762, GO-2026-6061,
+  GO-2026-6348, GO-2026-6443), golang.org/x/text 0.41.0 (GO-2026-5970,
+  GO-2026-6629), golang.org/x/crypto 0.55.0 and
+  github.com/klauspost/compress 1.18.7.
 
 ### Docs
 
