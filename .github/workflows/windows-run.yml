@@ -92,7 +92,7 @@ jobs:
           # Differs from the docs: the release under test (input tag), not releases/latest/download.
           $base = $ReleaseBase
           if ($env:REPO_PRIVATE -eq 'true') {
-            # Differs from the docs while the repository is private: these URLs
+            # Differs from the docs in a private repository: these URLs
             # answer 404 without a login, so the same two files come through the
             # GitHub API with the job's token (helpers.ps1, Save-ReleaseAsset).
             Save-ReleaseAsset "fleetml-windows-$arch.zip" fleetml.zip

@@ -3,17 +3,13 @@
 How a FleetML release is cut, in order. Releases are made by the maintainers
 from `main`.
 
-## Release plan up to the public launch
+## The public repository
 
-The repository stays private until v0.3.0. The three versions are tagged in
-the private repository, on the boundary commits recorded when each version
-was closed, with steps 1 to 4 below; the first CI run on GitHub's runners
-happens with that push, while the repository is still private. The visibility
-change (step 6), branch protection (step 7) and the announcement (step 8)
-happen once, after v0.3.0, and only when `main` is green. GitHub does not
-offer branch protection or rulesets on a private repository of a free
-organisation, so `main` is protected right after it becomes public, before
-anything is announced. From then on every release follows all the steps.
+The repository was private up to v0.6.0, which was tagged and released
+there like the versions before it, and has been public since 2026-10-23.
+Every release follows all the steps below. The settings made when it became
+public, and the branch rule on `main`, are recorded in sections 6 and 7;
+they are made once and stay in place.
 
 ## Release checklist
 
@@ -24,7 +20,8 @@ Every release, in this order; the numbered sections below have the details.
       `android/gradle.properties`, `FleetML.sdkVersion` in the iOS package);
       the CLI and the agent take theirs from the tag.
 - [ ] CI green on `main` at the release commit (Go, CLI on Windows, Python
-      client, Dashboard, Android SDK, Docs site, Helm chart, iOS).
+      client, Dashboard, Android SDK, Docs site, Helm chart, Shell scripts,
+      iOS).
 - [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
 - [ ] GitHub release from the tag, with the changelog section as its body.
 - [ ] Binaries: the **Release** workflow attached the eight archives and
@@ -32,14 +29,12 @@ Every release, in this order; the numbered sections below have the details.
 - [ ] Images: the same workflow's **images** job pushed
       `ghcr.io/fleetml/fleetml-server:X.Y.Z` and
       `ghcr.io/fleetml/fleetml-dashboard:X.Y.Z` (and `latest`).
-- [ ] **Public step, maintainer only:** after the first images run, make the
-      two ghcr packages public (GitHub, the organisation's **Packages**, each
-      package's **Package settings**, **Change visibility**), then check that
-      `docker pull ghcr.io/fleetml/fleetml-server:X.Y.Z` works without
-      logging in. New packages are private, and the Helm chart's default
-      values pull them anonymously. Once public, later releases need nothing.
-- [ ] **Windows run** workflow green with the release tag as `tag`
-      (`windows-latest`; `windows-11-arm` too once the repository is public).
+- [ ] Check that `docker pull ghcr.io/fleetml/fleetml-server:X.Y.Z` works
+      without logging in: the Helm chart's default values pull the images
+      anonymously. Both packages are public (section 6); a package for a new
+      image starts private and has to be made public the same way.
+- [ ] **Windows run** workflow green with the release tag as `tag`, on
+      `windows-latest` and on `windows-11-arm`.
 - [ ] Android: run the **Android publish** workflow with `X.Y.Z` when
       `sdkVersion` changed, then check that
       `https://repo1.maven.org/maven2/dev/fleetml/fleetml-sdk/X.Y.Z/` answers.
@@ -141,9 +136,9 @@ Its **images** job builds the server and dashboard images from the tag's two
 Dockerfiles for linux/amd64 and linux/arm64 and pushes them to ghcr.io as
 `ghcr.io/fleetml/fleetml-server:X.Y.Z` and `ghcr.io/fleetml/fleetml-dashboard:X.Y.Z`,
 plus `latest` unless the tag is a pre-release (`v0.5.0-rc.1`); these are the
-Helm chart's default images. A package is private when it is first pushed:
-making the two public is a step for the maintainer, in the browser, once
-(see the checklist).
+Helm chart's default images. Both packages are public; a package for a new
+image starts private and has to be made public by a maintainer, in the
+browser (section 6).
 
 ## 4. Release notes
 
@@ -217,31 +212,41 @@ Nothing has to be published for iOS: the Swift package's manifest is at the
 repository root, so Swift Package Manager picks up each `vX.Y.Z` tag as a
 version as soon as it is pushed.
 
-## 6. Make the repository public
+## 6. The public repository's settings
 
-Once, after v0.3.0, and only when the CI workflow is green for `main`. In
-**Settings → General → Danger Zone → Change repository visibility**, make it
-public. Then, in **Settings → Code security**, enable private vulnerability
-reporting (so the security policy's reports can also arrive there) and
-Dependabot alerts.
+The repository became public on 2026-10-23, after v0.6.0, with the CI
+workflow green for `main` (**Settings → General → Danger Zone → Change
+repository visibility**). These settings were made then and stay as they are:
 
-Check the public view: the README renders with its links, the Actions tab shows
-the release commit green, and the release is listed.
+- **Settings → Code security:** private vulnerability reporting (so the
+  security policy's reports can also arrive there), the dependency graph,
+  Dependabot alerts and Dependabot security updates, secret scanning and
+  push protection.
+- **Settings → Actions → General:** workflows on pull requests from forks
+  wait for a maintainer's approval when the contributor is new to the
+  repository, and the workflow token is read-only by default; a workflow
+  that writes asks for it in its own `permissions` (the Release workflow).
+- **Packages:** `ghcr.io/fleetml/fleetml-server` and
+  `ghcr.io/fleetml/fleetml-dashboard` are public. A new package starts
+  private: open it under the organisation's **Packages**, then **Package
+  settings → Danger Zone → Change visibility → Public**. The organisation's
+  own setting (**Settings → Packages**, package creation **Public**) had to
+  be allowed first; without it the option is not offered.
 
-## 7. Protect `main`
+## 7. The branch rule on `main`
 
-Immediately after step 6, before any announcement (branch protection and
-rulesets are not available while the repository is private on the free
-organisation plan). In **Settings → Branches → Add branch protection rule**
-(or a ruleset) for `main`:
+In place since the repository became public (a private repository of a
+free organisation has no branch protection or rulesets). The rule on `main`:
 
-- require a pull request before merging;
-- require the CI checks to pass (`Go`, `CLI on Windows`, `Dashboard`,
-  `Android SDK`, `Docs site`, `Helm chart`); not `iOS SDK`, which runs only
+- a pull request before merging, with no required approvals;
+- the CI checks `Go`, `CLI on Windows`, `Dashboard`, `Android SDK`,
+  `Docs site` and `Helm chart` must pass; not `iOS SDK`, which runs only
   when `ios/` changes and would otherwise block other pull requests;
-- block force pushes and deletion of the branch.
+- no force pushes and no deletion of the branch;
+- the maintainers' account `fleetml-maintainers` may bypass the rule (for
+  example for the release commit and the changelog's next section).
 
-From then on every change to `main` goes through a pull request.
+Every other change to `main` goes through a pull request.
 
 ## 8. Announce
 
