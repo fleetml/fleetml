@@ -16,8 +16,10 @@ they are made once and stay in place.
 Every release, in this order; the numbered sections below have the details.
 
 - [ ] `CHANGELOG.md` section dated; versions bumped where they changed
-      (dashboard, `__version__` of the Python client, `sdkVersion` in
-      `android/gradle.properties`, `FleetML.sdkVersion` in the iOS package);
+      (dashboard, `__version__` of the Python client and its test in
+      `python/tests/test_client.py`, `sdkVersion` in
+      `android/gradle.properties`, `FleetML.sdkVersion` in the iOS package
+      and its test in `ios/FleetMLSDK/Tests/FleetMLSDKTests/VersionTests.swift`);
       the CLI and the agent take theirs from the tag.
 - [ ] CI green on `main` at the release commit (Go, CLI on Windows, Python
       client, Dashboard, Android SDK, Docs site, Helm chart, Shell scripts,
@@ -84,14 +86,16 @@ date (`## [0.1.0] - YYYY-MM-DD`), and make sure the section describes every
 user-visible change since the previous release. The dashboard
 (`dashboard/package.json`) and the Python client (`__version__` in
 `python/src/fleetml/__init__.py`, the only place its version is written;
-`pyproject.toml` reads it) carry the release's version. The CLI and the
+`pyproject.toml` reads it, and `python/tests/test_client.py` checks it)
+carry the release's version. The CLI and the
 Linux agent have no version in the source: the release binaries get it from
 the tag (`internal/version`, set with `-ldflags -X` by
 `scripts/release-binaries.sh`), and a build from source reports `dev`, or the
 tag's version when built from a clean checkout of the tag. Bump the SDK
 versions only if the SDKs changed (`sdkVersion` in
 `android/gradle.properties`, which is both `BuildConfig.SDK_VERSION` and the
-Maven Central version, and `FleetML.sdkVersion` in the iOS package). Commit:
+Maven Central version, and `FleetML.sdkVersion` in the iOS package, which
+`ios/FleetMLSDK/Tests/FleetMLSDKTests/VersionTests.swift` checks). Commit:
 
 ```bash
 git commit -am "chore: release v0.1.0"
