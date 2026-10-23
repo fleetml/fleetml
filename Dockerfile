@@ -1,7 +1,7 @@
 # The builder runs on the build machine's platform and cross-compiles for the
 # image's (docker buildx --platform linux/amd64,linux/arm64, as the Release
 # workflow's images job does). VERSION is the release without the v.
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 WORKDIR /app

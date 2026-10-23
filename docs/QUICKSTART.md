@@ -117,7 +117,7 @@ are not a tested path.
    under `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
 5. For the tour, install the Linux CLI in the same shell with the first block
    of [Get the CLI](#get-the-cli). To build it from source instead, install
-   Go 1.24 or later from [go.dev](https://go.dev/doc/install): Ubuntu's
+   Go 1.25 or later from [go.dev](https://go.dev/doc/install): Ubuntu's
    `golang` package is older.
 
 Docker Desktop publishes the containers' ports on Windows too, so the
@@ -260,7 +260,7 @@ escaped in 7.3 with
 In Windows PowerShell 5.1 with a console code page other than UTF-8, the
 `✓` of `fleetml version` may show as `?`; the program is the same.
 
-From source, with Go 1.24 or later: `go build -o bin/fleetml ./cmd/fleetml`
+From source, with Go 1.25 or later: `go build -o bin/fleetml ./cmd/fleetml`
 in the repository (it reports its version as `dev`).
 
 The server image contains the CLI too, so without installing anything,
@@ -274,7 +274,7 @@ container is not the object store.
 The tour runs from the repository root, in the same shell as the stack (it
 uses `FLEETML_ADMIN_KEY`), and needs `jq` and the `fleetml` CLI on the `PATH`:
 the release from [Get the CLI](#get-the-cli). Without it, build the CLI from
-source with Go 1.24 or later and put it on the `PATH` for this shell:
+source with Go 1.25 or later and put it on the `PATH` for this shell:
 
 ```bash
 go build -o bin/fleetml ./cmd/fleetml && export PATH="$PWD/bin:$PATH"
