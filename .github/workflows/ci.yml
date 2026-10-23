@@ -206,3 +206,20 @@ jobs:
           helm template t deploy/helm/fleetml --set secrets.existingSecret=fleetml,s3.publicEndpoint=s3.example.com:443 \
             --set postgres.enabled=false,postgres.url=postgres://db/fleetml,nats.enabled=false,nats.url=nats://nats:4222 \
             --set seaweedfs.enabled=false,s3.endpoint=s3.example.com:443 > /dev/null
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # The runner image's shellcheck (0.9 on Ubuntu 24.04), at its default
+      # severity; the scripts pass 0.11 as well.
+      - name: shellcheck
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q shellcheck; }
+          shellcheck --version | sed -n 2p
+          git ls-files -z '*.sh' | xargs -0 shellcheck
+      # The workflows, with the shellcheck inside the image for their run: blocks.
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color

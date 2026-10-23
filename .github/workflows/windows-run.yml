@@ -92,7 +92,7 @@ jobs:
           # Differs from the docs: the release under test (input tag), not releases/latest/download.
           $base = $ReleaseBase
           if ($env:REPO_PRIVATE -eq 'true') {
-            # Differs from the docs while the repository is private: these URLs
+            # Differs from the docs in a private repository: these URLs
             # answer 404 without a login, so the same two files come through the
             # GitHub API with the job's token (helpers.ps1, Save-ReleaseAsset).
             Save-ReleaseAsset "fleetml-windows-$arch.zip" fleetml.zip
@@ -381,7 +381,7 @@ jobs:
         if: always() && steps.setup.outcome == 'success'
         run: |
           . .github\windows-run\helpers.ps1
-          $null = Invoke-Native wsl -d Ubuntu -u tester --exec bash -c 'if [ -f ~/.fleetml-run.env ]; then . ~/.fleetml-run.env; else export JWT_SECRET=x SIGNING_MASTER_KEY=x FLEETML_ADMIN_KEY=x; fi; if [ -f ~/fleetml/deploy/docker-compose.prod.yml ]; then cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml down -v --remove-orphans; else echo no stack was started; fi'
+          $null = Invoke-Native wsl -d Ubuntu -u tester --exec bash -c 'if [ -f ~/.fleetml-run.env ]; then . ~/.fleetml-run.env; fi; export JWT_SECRET=${JWT_SECRET:-x} SIGNING_MASTER_KEY=${SIGNING_MASTER_KEY:-x} FLEETML_ADMIN_KEY=${FLEETML_ADMIN_KEY:-x}; if [ -f ${FLEETML_RUN_DIR:-/nonexistent}/deploy/docker-compose.prod.yml ]; then cd $FLEETML_RUN_DIR && docker compose -f deploy/docker-compose.prod.yml down -v --remove-orphans; else echo no stack was started; fi'
           $left = Invoke-Native wsl -d Ubuntu -u tester --exec docker ps -aq
           Test-Expect 'no containers left' "$(@($left -split "`n" | Where-Object { $_ }).Count) left" (-not $left.Trim())
           Add-Note 'stack and its volumes removed'

@@ -19,7 +19,7 @@ KEY=$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')
 WORK=$(mktemp -d -t fleetml-demo.XXXXXX)
 START=$(date +%s)
 
-if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else B= D= G= R= N=; fi
+if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else B='' D='' G='' R='' N=''; fi
 say() { printf '\n%s▶ %s%s\n' "$B" "$*" "$N"; }
 note() { printf '  %s\n' "$*"; }
 show() { printf '  %s$ %s%s\n' "$D" "$*" "$N"; }
@@ -35,11 +35,11 @@ fleet_is() { [ "$(fleet)" = "$1" ]; }
 psql_admin() { docker compose -f deploy/docker-compose.yml exec -T postgres psql -U fleetml -d fleetml -qAtc "$1"; }
 
 cleanup() {
-  [ -n "${SIM_PID:-}" ] && kill "$SIM_PID" 2>/dev/null || true
+  if [ -n "${SIM_PID:-}" ]; then kill "$SIM_PID" 2>/dev/null || true; fi
   if [ "${KEEP:-}" != 1 ]; then
-    [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
+    if [ -n "${SERVER_PID:-}" ]; then { kill "$SERVER_PID" && wait "$SERVER_PID"; } 2>/dev/null || true; fi
     psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)" >/dev/null 2>&1 || true
-    [ -n "${NATS_NAME:-}" ] && docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true
+    if [ -n "${NATS_NAME:-}" ]; then docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true; fi
     rm -rf "$WORK"
   fi
 }

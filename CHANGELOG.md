@@ -7,10 +7,37 @@ change APIs).
 
 ## [0.8.0] - Unreleased
 
+### Added
+
+- CI has a `Shell scripts` job: shellcheck on every shell script and
+  actionlint on the workflows.
+- iOS SDK: a unit test asserts `FleetML.sdkVersion`, as the Python client's
+  test asserts its `__version__`.
+
+### Changed
+
+- `scripts/e2e.sh` and `scripts/python-e2e.sh` name their compose project
+  (`COMPOSE_PROJECT_NAME`, default `fleetml`) and stop before creating a
+  database unless that project publishes Postgres on the port the server
+  uses, so a run meant for a second stack cannot touch the dev stack.
+  `scripts/wait-migrate.sh` names the project the same way.
+
+### Fixed
+
+- The Windows run's quickstart script cloned into `~/fleetml` after
+  `rm -rf fleetml`; on a case-insensitive file system that is a checkout at
+  `~/fleetML`. It now clones into a directory it creates with `mktemp` and
+  removes nothing.
+- Every shell script passes shellcheck 0.9 and 0.11; `docs/screenshots/demo/record.sh`
+  no longer leaves its temporary directory behind when it stops early.
+
 ### Docs
 
 - Quickstart: the arm64 Windows binary is now run on `windows-11-arm` by the
   Windows run workflow, next to the amd64 one on `windows-latest`.
+- RELEASING.md describes the public repository: its code security, Actions
+  and package settings, the branch rule on `main`, and both version tests
+  among the files a release bumps.
 
 ## [0.7.0] - 2026-10-23
 

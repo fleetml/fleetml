@@ -99,7 +99,9 @@ run_client() {
         [ ! -e "$WORK/agent/models/$name/current" ] || { echo "FAIL: $name is active"; return 1; }
         grep "signature rejected" "$WORK/agent.log" | grep "model=$name" | tail -1 | sed 's/^/  agent: /'
       done
-      echo "  active on the agent: $(cd "$WORK/agent/models" && ls -d */current 2>/dev/null | cut -d/ -f1 | tr '\n' ' ')"
+      active=""
+      for link in "$WORK"/agent/models/*/current; do [ -L "$link" ] && active+="$(basename "$(dirname "$link")") "; done
+      echo "  active on the agent: $active"
       ;;
     android)
       ADB=$(command -v adb || echo "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb")

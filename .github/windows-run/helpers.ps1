@@ -83,9 +83,9 @@ function Start-FakeServer {
 }
 
 # Save-ReleaseAsset <name> <file>: downloads an asset of release $env:TAG.
-# Public repository: the docs' URL, $ReleaseBase/<name>. Private (until the
-# repository goes public) that URL answers 404, so the asset is looked up
-# through the API and downloaded with the job's token.
+# Public repository: the docs' URL, $ReleaseBase/<name>. In a private
+# repository that URL answers 404, so the asset is looked up through the API
+# and downloaded with the job's token.
 function Save-ReleaseAsset([string]$Name, [string]$OutFile) {
     if ($env:REPO_PRIVATE -ne 'true') {
         Invoke-WebRequest "$ReleaseBase/$Name" -OutFile $OutFile -UseBasicParsing
