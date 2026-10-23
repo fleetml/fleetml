@@ -27,7 +27,7 @@ WORK=$(mktemp -d -t fleetml-demo-agent.XXXXXX)
 BOXES=(edge-a edge-b edge-c edge-d)
 PIDS=()
 
-if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; N=$'\033[0m'; else B= D= G= R= Y= N=; fi
+if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; N=$'\033[0m'; else B='' D='' G='' R='' Y='' N=''; fi
 say() { printf '\n%s▶ %s%s\n' "$B" "$*" "$N"; }
 note() { printf '  %s\n' "$*"; }
 show() { printf '  %s$ %s%s\n' "$D" "$*" "$N"; }
@@ -46,9 +46,9 @@ all_on() { local i; for i in "${!BOXES[@]}"; do [ "$(active "$i")" = "$1" ] || r
 
 cleanup() {
   for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
-  [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
+  if [ -n "${SERVER_PID:-}" ]; then { kill "$SERVER_PID" && wait "$SERVER_PID"; } 2>/dev/null || true; fi
   psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)" >/dev/null 2>&1 || true
-  [ -n "${NATS_NAME:-}" ] && docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true
+  if [ -n "${NATS_NAME:-}" ]; then docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true; fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -130,7 +130,7 @@ canary() {
 in_cohort() { [ "$(canary_boxes)" -gt 0 ]; }
 # The cohort is a hash of the deployment and the device; with four boxes it is
 # empty one time in sixteen, and a new deployment draws a new one.
-for attempt in 1 2 3 4 5; do
+for _ in 1 2 3 4 5; do
   canary
   for _ in $(seq 1 48); do in_cohort && break 2; sleep 0.25; done
   api POST "/api/v1/deployments/$D2/cancel" >/dev/null

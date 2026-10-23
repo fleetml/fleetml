@@ -8,7 +8,17 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE/../../.."
 TMP=$(mktemp -d -t fleetml-gif.XXXXXX)
 PREVIEW_PORT=${PREVIEW_PORT:-4174}
-trap 'rc=$?; touch "$TMP/info.done" 2>/dev/null; kill ${VHS_PID:-} ${PREVIEW_PID:-} 2>/dev/null; rm -rf "$TMP"; exit $rc' EXIT
+# Every step runs even if one fails (set -e would end the trap at the first,
+# e.g. kill with no PID left, and leave $TMP behind).
+cleanup() {
+  local rc=$?
+  touch "$TMP/info.done" 2>/dev/null || true
+  [ -z "${VHS_PID:-}" ] || kill "$VHS_PID" 2>/dev/null || true
+  [ -z "${PREVIEW_PID:-}" ] || kill "$PREVIEW_PID" 2>/dev/null || true
+  rm -rf "$TMP"
+  exit "$rc"
+}
+trap cleanup EXIT
 
 if curl -s -o /dev/null "localhost:$PREVIEW_PORT"; then echo "port $PREVIEW_PORT is in use; set PREVIEW_PORT" >&2; exit 1; fi
 (cd dashboard && npm ci --silent && npx vite build --outDir "$TMP/dist" >/dev/null)
@@ -20,6 +30,7 @@ VHS_PID=$!
 until [ -f "$TMP/info" ]; do kill -0 "$VHS_PID" 2>/dev/null || { cat "$TMP/vhs.log" >&2; exit 1; }; sleep 1; done
 
 # 2. The dashboard, served on its own origin with /api proxied to the demo server.
+# shellcheck disable=SC1091 # $TMP/info is written by demo-agent.sh at run time
 . "$TMP/info"
 (cd dashboard && FLEETML_API="$API" exec node_modules/.bin/vite preview --outDir "$TMP/dist" --port "$PREVIEW_PORT" --strictPort >/dev/null 2>&1) &
 PREVIEW_PID=$!

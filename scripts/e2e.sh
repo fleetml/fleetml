@@ -31,9 +31,9 @@ fi
 LOG=$(mktemp -t fleetml-e2e-server.XXXXXX)
 
 cleanup() {
-  [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
+  if [ -n "${SERVER_PID:-}" ]; then { kill "$SERVER_PID" && wait "$SERVER_PID"; } 2>/dev/null || true; fi
   psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)" >/dev/null 2>&1 || true
-  [ -n "${NATS_NAME:-}" ] && docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true
+  if [ -n "${NATS_NAME:-}" ]; then docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
 
