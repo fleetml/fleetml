@@ -6,18 +6,25 @@
 # then checks what they printed against the docs' text, as scripts/e2e.sh and
 # the Python live test do (COMPLETE, ROLLING_OUT, ROLLED_BACK). Run it from the
 # repository root (the checkout, under /mnt); the clone and the stack live in
-# the Linux file system (~/fleetml), as "On Windows" asks.
+# the Linux file system, as "On Windows" asks, in a new directory this script
+# creates with mktemp ($QS_WORK/fleetml). It never clones into or removes a
+# fixed path under $HOME: on a case-insensitive file system ~/fleetml can be
+# the checkout itself.
 #
-# While the repository is private (REPO_PRIVATE=true) the block's `git clone`
-# from GitHub is replaced by a clone of this checkout. The stack is left
-# running for the workflow's later steps, with its secrets in
-# ~/.fleetml-run.env; the workflow ends with `docker compose ... down -v`.
+# With REPO_PRIVATE=true (the workflow sets it for a private repository; set
+# it by hand to test a local checkout) the block's `git clone` from GitHub is
+# replaced by a clone of this checkout. The stack is left running for the
+# workflow's later steps; ~/.fleetml-run.env holds the clone's path
+# (FLEETML_RUN_DIR) and, once the stack is up, its secrets. The workflow ends
+# with `docker compose ... down -v` in that directory.
 set -e
 # This script's own names start with QS_ or qs_: the docs' blocks qs_run in the
 # same shell and set P, M, OUT, SIM, D1, D2 and others.
 QS_CHECKOUT=$PWD
 QS_DOCS=$QS_CHECKOUT/docs/QUICKSTART.md
 QS_OUT=$(mktemp -d)
+QS_WORK=$(mktemp -d "${TMPDIR:-/tmp}/fleetml-qs.XXXXXX")
+QS_CLONE=$QS_WORK/fleetml
 QS_NOTES=()
 
 # qs_note <text>: a line for the step's row in the job summary.
@@ -68,11 +75,11 @@ qs_on_exit() {
   [ "$rc" -eq 0 ] && return
   [ -z "${FLEETML_ADMIN_KEY:-}" ] || echo "::add-mask::$FLEETML_ADMIN_KEY"
   if [ -n "$QS_CURRENT" ]; then echo "--- the block $QS_LABEL failed; it printed:"; cat "$QS_CURRENT"; fi
-  if [ -d ~/fleetml ]; then
+  if [ -d "$QS_CLONE" ]; then
     echo "--- docker compose ps -a, then the last log lines of migrate, postgres and server"
-    (cd ~/fleetml && docker compose -f deploy/docker-compose.prod.yml ps -a && docker compose -f deploy/docker-compose.prod.yml logs --tail 50 migrate postgres server) || true
+    (cd "$QS_CLONE" && docker compose -f deploy/docker-compose.prod.yml ps -a && docker compose -f deploy/docker-compose.prod.yml logs --tail 50 migrate postgres server) || true
     echo "--- the migrations the migrate container sees"
-    echo "$(find ~/fleetml/internal/db/migrations -name '*.sql' 2>/dev/null | wc -l) .sql files in ~/fleetml/internal/db/migrations" 
+    echo "$(find "$QS_CLONE/internal/db/migrations" -name '*.sql' 2>/dev/null | wc -l) .sql files in $QS_CLONE/internal/db/migrations"
   fi
   [ ! -f /tmp/fleetml-sim.log ] || { echo "--- simulator log, last lines"; tail -20 /tmp/fleetml-sim.log; }
   case "${QS_NOTES[*]: -1}" in
@@ -88,11 +95,12 @@ qs_wait_fleet() {
   return 1
 }
 
-# Run FleetML, from ~ as "On Windows" says.
+# Run FleetML. "On Windows" runs it from ~; here from the new $QS_WORK, so
+# the block's `git clone ... && cd fleetml` makes $QS_CLONE.
 qs_code=$(qs_block '## Run FleetML')
 if [ "${REPO_PRIVATE:-}" = true ]; then
   qs_code=$(printf '%s\n' "$qs_code" | sed "s|^git clone https://github.com/fleetml/fleetml.git |git clone '$QS_CHECKOUT' fleetml |")
-  qs_check "the block's first line clones from GitHub (replaced while private)" "$(printf '%s\n' "$qs_code" | head -1)" \
+  qs_check "the block's first line clones from GitHub (replaced for a private repository)" "$(printf '%s\n' "$qs_code" | head -1)" \
     grep -q "^git clone '$QS_CHECKOUT' fleetml " <<<"$qs_code"
   # The checkout belongs to Windows (another owner as git sees it).
   git config --global --add safe.directory "$QS_CHECKOUT"
@@ -100,11 +108,13 @@ if [ "${REPO_PRIVATE:-}" = true ]; then
 else
   qs_note "clone: from GitHub as written"
 fi
-cd ~
-rm -rf fleetml
+# Written before the block, so the workflow's down -v finds a half-started stack.
+(umask 077 && printf 'export FLEETML_RUN_DIR=%q\n' "$QS_CLONE" >~/.fleetml-run.env)
+cd "$QS_WORK"
 qs_run run-fleetml "$qs_code"
-(umask 077 && printf 'export JWT_SECRET=%q SIGNING_MASTER_KEY=%q FLEETML_ADMIN_KEY=%q\n' \
-  "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" >~/.fleetml-run.env)
+(umask 077 && printf 'export FLEETML_RUN_DIR=%q JWT_SECRET=%q SIGNING_MASTER_KEY=%q FLEETML_ADMIN_KEY=%q\n' \
+  "$QS_CLONE" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" >~/.fleetml-run.env)
+qs_check "the block cloned into the script's own directory" "$PWD" test "$PWD" = "$QS_CLONE"
 ready='{"db":"connected","nats":"connected","s3":"connected","status":"ok"}'
 qs_check "/readyz answers $ready" "$(grep -o '{"db".*}' "$QS_OUT/run-fleetml" | head -1)" grep -qF "$ready" "$QS_OUT/run-fleetml"
 qs_check 'the project list answers {"data":[],"pagination":{...}}' "$(grep -o '{"data".*' "$QS_OUT/run-fleetml" | head -1)" grep -q '^{"data":\[\],"pagination":' "$QS_OUT/run-fleetml"
