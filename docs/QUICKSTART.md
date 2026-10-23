@@ -218,10 +218,11 @@ If the first `Invoke-WebRequest` fails with a secure-channel (SSL/TLS) error
 on an older Windows, run `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`
 first.
 
-The amd64 binary and this block are exercised in Windows PowerShell 5.1 on
-GitHub's Windows runner by the
-[Windows run](../.github/workflows/windows-run.yml) workflow; the arm64
-binary is cross-compiled and not yet run on Windows on Arm.
+Both binaries and this block are exercised in Windows PowerShell 5.1 on
+GitHub's Windows runners by the
+[Windows run](../.github/workflows/windows-run.yml) workflow: the amd64
+binary on `windows-latest`, the arm64 binary on `windows-11-arm` (Windows
+on Arm).
 
 `fleetml.exe` is not code-signed. Started from a terminal as above, it runs
 like any console program; a copy downloaded with a browser and started from
