@@ -15,9 +15,23 @@ DB="fleetml_pye2e_${RANDOM}${RANDOM}"
 KEY=$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')
 REST_PORT=${FLEETML_PY_E2E_REST_PORT:-18380}
 GRPC_PORT=${FLEETML_PY_E2E_GRPC_PORT:-19390}
-WORK=$(mktemp -d -t fleetml-py-e2e.XXXXXX)
 
-psql_admin() { docker compose -f deploy/docker-compose.yml exec -T postgres psql -U fleetml -d fleetml -qAtc "$1"; }
+# The throwaway database lives on the Postgres of one compose project: the dev
+# stack (`fleetml`, the name in deploy/docker-compose.yml) unless
+# COMPOSE_PROJECT_NAME names a stack of your own. The project is named
+# explicitly and must publish Postgres on the port the server connects to, so
+# a run meant for another stack never creates or drops a database in the dev
+# stack.
+PROJECT=${COMPOSE_PROJECT_NAME:-fleetml}
+PG_PORT=$(sed -E 's|.*:([0-9]+)/?$|\1|' <<<"$PG_HOST_URL")
+psql_admin() { docker compose -p "$PROJECT" -f deploy/docker-compose.yml exec -T postgres psql -U fleetml -d fleetml -qAtc "$1"; }
+published=$(docker compose -p "$PROJECT" -f deploy/docker-compose.yml port postgres 5432 2>/dev/null | sed 's/.*://' || true)
+if [ "$published" != "$PG_PORT" ]; then
+  echo "compose project $PROJECT publishes Postgres on ${published:-no port}, not on $PG_PORT, the port the server connects to;" \
+    "set COMPOSE_PROJECT_NAME to the stack you started (make docker-up starts $PROJECT)" >&2
+  exit 1
+fi
+WORK=$(mktemp -d -t fleetml-py-e2e.XXXXXX)
 
 cleanup() {
   [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
