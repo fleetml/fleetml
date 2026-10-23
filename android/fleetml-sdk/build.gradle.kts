@@ -59,14 +59,14 @@ android {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.3"
+        artifact = "com.google.protobuf:protoc:4.36.2"
     }
     plugins {
         create("grpc") {
-            artifact = "io.grpc:protoc-gen-grpc-java:1.62.2"
+            artifact = "io.grpc:protoc-gen-grpc-java:1.85.1"
         }
         create("grpckt") {
-            artifact = "io.grpc:protoc-gen-grpc-kotlin:1.4.1:jdk8@jar"
+            artifact = "io.grpc:protoc-gen-grpc-kotlin:1.5.0:jdk8@jar"
         }
     }
     generateProtoTasks {
@@ -122,47 +122,47 @@ mavenPublishing {
 
 dependencies {
     // gRPC
-    implementation("io.grpc:grpc-okhttp:1.62.2")
-    implementation("io.grpc:grpc-protobuf-lite:1.62.2")
-    implementation("io.grpc:grpc-stub:1.62.2")
-    implementation("io.grpc:grpc-kotlin-stub:1.4.1")
+    implementation("io.grpc:grpc-okhttp:1.85.1")
+    implementation("io.grpc:grpc-protobuf-lite:1.85.1")
+    implementation("io.grpc:grpc-stub:1.85.1")
+    implementation("io.grpc:grpc-kotlin-stub:1.5.0")
     // api: protobuf-lite messages appear in the public API (RegisterResult.config,
     // TelemetryReporter.reportModelStatus), so consumers compile against them.
-    api("com.google.protobuf:protobuf-kotlin-lite:3.25.3")
+    api("com.google.protobuf:protobuf-kotlin-lite:4.36.2")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // AndroidX
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.security:security-crypto:1.1.0")
     // Battery policy: foreground detection and background sync
     implementation("androidx.lifecycle:lifecycle-process:2.6.2")
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
 
     // HTTP
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
 
     // Model runtimes used by the default validators when the app includes them.
-    compileOnly("org.tensorflow:tensorflow-lite:2.16.1")
-    compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+    compileOnly("org.tensorflow:tensorflow-lite:2.17.0")
+    compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     // JSON (for metadata)
-    implementation("org.json:json:20240303")
+    implementation("org.json:json:20260814")
 
     // ed25519 artifact signatures (the platform API needs API 33)
-    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.12.1")
-    testImplementation("io.mockk:mockk:1.13.10")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("io.mockk:mockk:1.14.11")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")
     testImplementation("androidx.test:core:1.5.0")
 
     // Instrumented test against a live dev stack (scripts/android-e2e.sh)
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("org.tensorflow:tensorflow-lite:2.16.1")
+    androidTestImplementation("org.tensorflow:tensorflow-lite:2.17.0")
 }
