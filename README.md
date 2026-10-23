@@ -274,3 +274,9 @@ as described in [SECURITY.md](SECURITY.md); FleetML does not terminate TLS
 itself, so put its ports behind a TLS proxy before exposing them.
 
 FleetML is licensed under the [Apache License 2.0](LICENSE).
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).

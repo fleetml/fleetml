@@ -47,6 +47,9 @@ change APIs).
 - RELEASING.md describes the public repository: its code security, Actions
   and package settings, the branch rule on `main`, and both version tests
   among the files a release bumps.
+- A Contact section (hello@fleetml.dev, security@fleetml.dev, GitHub
+  Discussions) ends the README, the guides and the Python client's README,
+  and `SUPPORT.md` says where questions and bugs go.
 
 ## [0.7.0] - 2026-10-23
 

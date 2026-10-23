@@ -867,3 +867,9 @@ non-urgent deployment and runs `LiveServerTests` on the simulator: a device on
 an expensive network and on battery registers, its model waits, then an urgent
 deployment downloads and activates. Without the script's environment the live
 test is skipped.
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).

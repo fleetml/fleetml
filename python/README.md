@@ -27,3 +27,9 @@ print(fm.wait_for_deployment(deployment.id).status)
 
 Documentation: [docs/PYTHON_CLIENT.md](https://github.com/fleetml/fleetml/blob/main/docs/PYTHON_CLIENT.md).
 License: Apache-2.0.
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](https://github.com/fleetml/fleetml/blob/main/SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).

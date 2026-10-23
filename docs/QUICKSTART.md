@@ -547,3 +547,9 @@ docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
 without it they keep running, and so do their network and Grafana's volume.
 Compose needs the two secrets for `down` too: from a new shell,
 `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
