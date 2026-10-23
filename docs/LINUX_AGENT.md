@@ -575,3 +575,9 @@ the rollout moved both `current` links and ran the hook.
 `./scripts/signing-e2e.sh agent` checks signatures: a model whose stored
 signature was overwritten is rejected, and one signed with the previous key
 is accepted during the rotation's grace period and rejected after it.
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).

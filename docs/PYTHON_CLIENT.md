@@ -134,3 +134,9 @@ Statuses are the server's: versions DRAFT, STAGED, ACTIVE, ARCHIVED;
 deployments PENDING, ROLLING_OUT, PAUSED, COMPLETE, ROLLED_BACK, CANCELLED;
 experiments DRAFT, RUNNING, PAUSED, CONCLUDED, CANCELLED; drift severity NONE,
 WARNING, CRITICAL.
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).

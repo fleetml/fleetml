@@ -897,3 +897,9 @@ inference telemetry. Cleartext traffic is allowed only in debug builds and only
 to `10.0.2.2`, `localhost`, `127.0.0.1` and the placeholder line for a phone
 over Wi-Fi ([Over Wi-Fi](#over-wi-fi)). The [Emulator
 runbook](#emulator-runbook) builds and runs it.
+
+## Contact
+
+- Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
+- A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
+- Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
