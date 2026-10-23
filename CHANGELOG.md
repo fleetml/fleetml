@@ -5,10 +5,12 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-10-23
 
 ### Added
 
+- The Android SDK 0.7.0 is on Maven Central and the Python client 0.7.0 on
+  PyPI (`pip install fleetml`).
 - `scripts/agent-install-test.sh` has two more cases: an image with the
   systemd package but without systemd running, and an Alpine (BusyBox)
   container without bash or `useradd`. CI runs the Android sample app's unit
@@ -33,7 +35,9 @@ change APIs).
   twice and an offline start logged `Heartbeat failed` twice; two installs of
   one model at once could also break each other's download and leave the
   device without the model for an hour. A sync while a heartbeat is in
-  flight now joins it, and a model being installed is not installed again.
+  flight now joins it, and the `ModelManager` skips a variant that is
+  already being installed, so each version is downloaded and activated once
+  and `onModelReady` fires once.
 - iOS SDK: an app that lists `com.fleetml.sdk.refresh` in
   `BGTaskSchedulerPermittedIdentifiers` without calling
   `FleetML.registerBackgroundTask()` crashed the first time it went to the
@@ -66,7 +70,7 @@ change APIs).
 - iOS: the app's settings from an `.xcconfig` through `Info.plist`, an
   `AppModel` that prints its callbacks, a complete `project.yml` for a phone,
   `devicectl` over USB and Wi-Fi, `log collect`, the -1009 and -1004 cases,
-  the `package:` identity, `from: "0.6.0"` throughout.
+  the `package:` identity, `from: "0.7.0"` throughout.
 - Linux agent: "Server on another machine" as its own section with a `sed`
   line for `download_host_override`; a `docker run --init` example and the
   entrypoint `exec` line; `-o json | jq -r .key`; the validator by hand with
@@ -569,7 +573,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
-[0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...HEAD
+[0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/fleetml/fleetml/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/fleetml/fleetml/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/fleetml/fleetml/compare/v0.3.0...v0.4.0
