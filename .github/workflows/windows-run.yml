@@ -12,7 +12,7 @@ name: Windows run
 #
 # Actions, Windows run, Run workflow (default branch), or through the API:
 #   POST /repos/fleetml/fleetml/actions/workflows/windows-run.yml/dispatches
-#   {"ref":"main","inputs":{"tag":"v0.6.0","runner":"windows-latest"}}
+#   {"ref":"main","inputs":{"tag":"v0.7.0","runner":"windows-latest"}}
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
       tag:
         description: Release whose assets are downloaded (vX.Y.Z)
         type: string
-        default: v0.6.0
+        default: v0.7.0
       runner:
         description: Runner image
         type: choice
