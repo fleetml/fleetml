@@ -367,11 +367,10 @@ The phone and the machine that runs the server must be on the same network.
    [From Windows](#from-windows).
 4. Allow cleartext to that address: in your app, the commented line in the
    debug network security config above, with the address in place of
-   `<LAN IP>`; in the [sample app](#sample-app), the line
-   `<domain includeSubdomains="false">mac-lan-ip.invalid</domain>` in
-   `android/sample-app/src/debug/res/xml/network_security_config.xml`, with
-   the address in place of `mac-lan-ip.invalid`. Without it the app registers
-   (gRPC does not check the policy) and then every download fails with
+   `<LAN IP>`. The [sample app](#sample-app) needs no edit: its build
+   generates the config with the address given as `-PfleetmlDebugHost`.
+   Without it the app registers (gRPC does not check the policy) and then
+   every download fails with
    `Download of <variant ID> interrupted at 0 bytes: CLEARTEXT communication to <LAN IP> not permitted by network security policy`.
 5. Build with the address as the debug host:
 
@@ -379,7 +378,9 @@ The phone and the machine that runs the server must be on the same network.
    ./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=<LAN IP>
    ```
 
-   The sample app takes the address on its config screen instead.
+   For the sample app, `./gradlew :sample-app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=<LAN IP>`
+   in the clone's `android` folder: its config screen then shows the
+   address.
 
 The logcat lines are the same as over USB. A phone that registers but never
 downloads is almost always the object store's address: check it with
@@ -632,57 +633,134 @@ address on the config screen.
 
 ## From Windows
 
-With the server in WSL 2 ([On Windows](QUICKSTART.md#on-windows)), the
-Android tools run on the Windows side, where Android Studio installs them:
-`adb` and the emulator are in `%LOCALAPPDATA%\Android\Sdk` (`adb` in its
-`platform-tools`), and an `adb` installed inside Ubuntu sees neither a phone
-nor the Windows emulator. The CLI steps ([Publish and
-deploy](#publish-and-deploy-with-the-cli)) run in the Ubuntu shell, and the
-enrollment key crosses by hand (`echo $EK` there). Gradle runs in PowerShell,
-in a clone on the Windows side (`git clone https://github.com/fleetml/fleetml.git`
-in PowerShell, for the sample app; Gradle is slow on a `\\wsl.localhost`
-path), with Android Studio's SDK and its bundled JDK 17. None of this is
-verified on Windows by CI.
+The server runs in WSL 2 ([On Windows](QUICKSTART.md#on-windows)); the
+Android tools, Gradle and a second clone of the repository run on the Windows
+side, in PowerShell, where Android Studio installs the tools (`adb` and the
+emulator in `%LOCALAPPDATA%\Android\Sdk`; an `adb` inside Ubuntu sees
+neither a phone nor the Windows emulator, and Gradle is slow on a
+`\\wsl.localhost` path). This is the sample app on a phone over USB from
+start to end, then over Wi-Fi, then on the emulator; your own app is the same
+with `:app:installDebug` in its project. CI builds the sample app with
+`gradlew.bat` on `windows-latest`; the phone steps are run by hand.
 
-A phone over USB needs its maker's USB driver on Windows before
-`adb devices` lists it (Google's for Pixel phones, from the SDK Manager).
-Then, with the phone's serial from `adb devices`:
+Once, before you start:
+
+- **Android Studio**, for the SDK, `adb` and its bundled JDK (the JBR, Java
+  17 or 21). `& "$env:ProgramFiles\Android\Android Studio\jbr\bin\java" -version`
+  checks it (an install through JetBrains Toolbox is under
+  `%LOCALAPPDATA%\Programs` instead; use that path below).
+- **Git for Windows**: `winget install --id Git.Git -e`, or Android Studio's
+  File, New, Project from Version Control.
+- **The `fleetml` CLI for Windows**, from [Get the CLI](QUICKSTART.md#get-the-cli).
+- **The phone**: developer options with USB debugging on, and its maker's USB
+  driver on Windows (Google's for Pixel phones, from the SDK Manager) so that
+  `adb devices` lists it. Keep it unlocked with the app in front while you
+  test (developer options, Stay awake while charging): a locked phone stops
+  the SDK ([Battery and data](#battery-and-data)).
+
+In PowerShell, a clone, then the publish and deploy steps of [Publish and
+deploy](#publish-and-deploy-with-the-cli) with `ConvertFrom-Json` in place of
+`jq`, so the enrollment key stays in this window. The admin key comes from
+the stack's `~/.fleetml.env` in Ubuntu, and `deploy create` without
+`--target` targets every device in the project, so no JSON has to be quoted:
+
+```powershell
+git clone https://github.com/fleetml/fleetml.git $HOME\fleetml
+cd $HOME\fleetml
+$env:FLEETML_SERVER = 'http://localhost:18080'
+$env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
+$P = (fleetml project create --name android-windows -o json | ConvertFrom-Json).id
+fleetml push models\iris\iris_v1.tflite --project $P --model iris --version 1.0.0
+$M = (fleetml model list --project $P -o json | ConvertFrom-Json)[0].id
+$V1 = (fleetml ver list --model $M -o json | ConvertFrom-Json)[0].id
+$EK = (fleetml enrollment-key create --project $P --name phone -o json | ConvertFrom-Json).key
+$D1 = (fleetml deploy create --project $P --version $V1 -o json | ConvertFrom-Json).id
+fleetml deploy start $D1
+```
+
+The push prints `✓ Pushed models\iris\iris_v1.tflite → iris v1.0.0 (INT8)`
+and the last line `✓ Deployment start → COMPLETE`. Then the phone, with its
+serial from `adb devices`, the three port forwards that make the machine
+`localhost` for the phone, and the sample app built with that host and the
+key:
 
 ```powershell
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 $env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
 $env:Path += ";$env:ANDROID_HOME\platform-tools"
+adb devices
 $env:ANDROID_SERIAL = '<the phone''s serial>'
 adb reverse tcp:18080 tcp:18080
 adb reverse tcp:19090 tcp:19090
 adb reverse tcp:19100 tcp:19100
-.\gradlew.bat :app:installDebug -PfleetmlEnrollmentKey=<enrollment key>
+cd android
+.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" -PfleetmlDebugHost=localhost
+adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
+adb logcat -s FleetML
 ```
 
-(`:sample-app:installDebug` in the clone's `android` folder for the sample
-app.) The reverses reach the ports Docker Desktop publishes on Windows.
+The reverses reach the ports Docker Desktop publishes on Windows. The app's
+config screen shows host `localhost`, port `19090` and the key; tap
+**Connect**. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
+which is the emulator's address for the machine and does not work on a
+phone.) Logcat then shows the lines of [Over USB](#over-usb), among them
+`Registered as device <device ID>`, `Model iris 1.0.0 passed validation`
+and `Model iris 1.0.0 is active`, and the app's screen `Model ready: iris 1.0.0`.
+A phone that ran the sample app before keeps its saved host and key, which
+win over the build's: `adb shell pm clear com.fleetml.sample` resets them
+(it deletes the app's data), and a stale key shows as
+`Registration failed: UNAUTHENTICATED: unauthenticated: invalid or revoked enrollment key`.
 
-A phone over Wi-Fi uses the Windows machine's LAN address, the IPv4 address
-`ipconfig` prints for the Wi-Fi or Ethernet adapter, not WSL's `ip addr`,
-which is an internal address. In the Ubuntu shell, restart the stack with
-`source ~/.fleetml.env` and
-`S3_PUBLIC_ENDPOINT=<LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d`
-as in [Over Wi-Fi](#over-wi-fi); let TCP 19090 and 19100 through Windows
-Firewall in an administrator PowerShell:
+**Over Wi-Fi**, the phone and the Windows machine on the same network:
 
-```powershell
-New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow
-```
+1. The Windows machine's LAN address is the IPv4 address `ipconfig` prints
+   for the Wi-Fi or Ethernet adapter (not WSL's `ip addr`, an internal one).
+2. In the Ubuntu shell, in the stack's clone, save it as the address devices
+   download from and restart the server with it:
 
-and add the address to the debug network security config (for the sample app,
-in place of `mac-lan-ip.invalid` in
-`android\sample-app\src\debug\res\xml\network_security_config.xml`), then
-build with `-PfleetmlDebugHost=<LAN IP>`.
+   ```bash
+   sed -i 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:19100/' ~/.fleetml.env
+   source ~/.fleetml.env
+   docker compose -f deploy/docker-compose.prod.yml up -d
+   ```
 
-On the emulator, the same PowerShell lines with
-`$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:19100 tcp:19100`,
-and `-PfleetmlDebugHost=10.0.2.2` (the sample app uses `10.0.2.2` by
-default). Or open the folder in Android Studio.
+3. In an administrator PowerShell, mark the Wi-Fi network private (Settings,
+   Network and internet, Wi-Fi, the network, Private network; or
+   `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`)
+   and let TCP 19090 and 19100 in on private networks only:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow -Profile Private
+   ```
+
+   `Remove-NetFirewallRule -DisplayName FleetML` removes it when you are
+   done. If the phone still cannot connect, a block rule may win over it:
+   cancelling Docker Desktop's firewall prompt once leaves one, and
+   `Get-NetFirewallRule -Action Block -Enabled True | Where-Object DisplayName -like '*Docker*'`
+   lists it.
+4. Back in the first PowerShell, without the cable's forwards, the app built
+   with the LAN address (the screen then shows it, and its debug build may
+   talk plain HTTP to it):
+
+   ```powershell
+   adb reverse --remove-all
+   adb shell pm clear com.fleetml.sample
+   .\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" -PfleetmlDebugHost=<LAN IP>
+   adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
+   ```
+
+   Tap **Connect**; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`
+   on the LAN address, downloads go there also over USB and on the emulator,
+   so those need `-PfleetmlDebugHost=<LAN IP>` too (and the host typed on
+   the screen: `localhost` over USB, `10.0.2.2` on the emulator), or the
+   endpoint back to `localhost:19100` in `~/.fleetml.env`.
+
+**On the emulator**: the same PowerShell lines with
+`$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:19100 tcp:19100`
+(the emulator reaches the machine's 19090 at `10.0.2.2` by itself), and
+`.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK"`
+without `-PfleetmlDebugHost`; the screen then shows `10.0.2.2`. Or open the
+`android` folder in Android Studio and run `sample-app` there.
 
 ## Telemetry
 
@@ -894,9 +972,12 @@ unmetered instead).
 enrollment key), the SDK owned by the `Application`, a bundled Iris TFLite
 model (`models/iris`, Apache-2.0) used until the server assigns one, and
 inference telemetry. Cleartext traffic is allowed only in debug builds and only
-to `10.0.2.2`, `localhost`, `127.0.0.1` and the placeholder line for a phone
-over Wi-Fi ([Over Wi-Fi](#over-wi-fi)). The [Emulator
-runbook](#emulator-runbook) builds and runs it.
+to `10.0.2.2`, `localhost`, `127.0.0.1` and the address given as
+`-PfleetmlDebugHost` (or `fleetml.debugHost` in `android/local.properties`),
+which the build writes into the debug network security config and the config
+screen shows ([Over Wi-Fi](#over-wi-fi)). The [Emulator
+runbook](#emulator-runbook) builds and runs it; [From Windows](#from-windows)
+runs it on a phone from PowerShell.
 
 ## Contact
 

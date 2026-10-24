@@ -175,6 +175,26 @@ jobs:
           name: android-test-reports
           path: android/fleetml-sdk/build/reports/tests/
 
+  # The Android guide's "From Windows" path: the sample app built with
+  # gradlew.bat in PowerShell, as a Windows developer runs it.
+  android-windows:
+    name: Android sample app on Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: gradlew.bat assembleDebug
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon :sample-app:assembleDebug -PfleetmlDebugHost=localhost
+
   docs:
     name: Docs site
     runs-on: ubuntu-latest

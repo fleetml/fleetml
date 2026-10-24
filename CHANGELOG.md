@@ -9,6 +9,8 @@ change APIs).
 
 ### Added
 
+- CI builds the Android sample app with `gradlew.bat` in PowerShell on
+  `windows-latest` (the "Android sample app on Windows" job).
 - CI has a `Shell scripts` job: shellcheck on every shell script and
   actionlint on the workflows.
 - iOS SDK: a unit test asserts `FleetML.sdkVersion`, as the Python client's
@@ -99,6 +101,16 @@ change APIs).
   `signingMasterKey` shorter than 32 characters, or the two equal, is
   refused at install; `NOTES.txt` names the release's namespace (review 4,
   bug 12).
+- `android/gradlew.bat` exists: the Android guide's Windows steps ran
+  `.\gradlew.bat`, which was never in the repository. The wrapper scripts
+  and jar are the ones Gradle 8.7 generates (the jar's sha256 is Gradle's
+  published one), and `.gitattributes` keeps `*.bat` CRLF (review 4, bug 6).
+- Android sample app: `-PfleetmlDebugHost=<host>` (or `fleetml.debugHost` in
+  `android/local.properties`) sets the address the debug build may reach
+  over plain HTTP and prefills it on the config screen; the debug network
+  security config is generated from it. A phone over Wi-Fi no longer needs a
+  source edit, and `-PfleetmlDebugHost=localhost` gives a phone over USB the
+  right host instead of the emulator's `10.0.2.2`.
 - A failed `fleetml push` upload says `upload failed:` once, and
   `fleetml telemetry events` prints confidence with 3 decimals instead of
   float32 noise such as `0.9700000286102295` (review 4, cosmetic).
@@ -124,6 +136,16 @@ change APIs).
 
 ### Docs
 
+- Android guide, "From Windows": one linear path in PowerShell (Git for
+  Windows, a clone, publish and deploy with `ConvertFrom-Json` so the
+  enrollment key stays in one window, the three `adb reverse` lines,
+  `gradlew.bat` with the key and `-PfleetmlDebugHost=localhost`, the logcat
+  lines, the stale-key reset), then Wi-Fi with a firewall rule for private
+  networks only and its removal line, then the emulator. The quickstart's
+  "On Windows" links to it and names Docker Desktop's licence terms and the
+  Docker Engine route the Windows run uses; "Get the CLI" names Smart App
+  Control and `$ProgressPreference`; the Python client's page has a Windows
+  line (review 4, Windows docs gaps).
 - Quickstart and README "Run FleetML": the block writes the three secrets and
   `S3_PUBLIC_ENDPOINT` to `~/.fleetml.env` (0600, only if the file does not
   exist yet) and sources it before anything starts, and it prints no secret

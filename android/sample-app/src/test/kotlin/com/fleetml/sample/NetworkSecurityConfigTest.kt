@@ -8,8 +8,9 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * The debug build's cleartext exceptions: the emulator's and USB's addresses,
- * and one placeholder line that a phone over Wi-Fi replaces with the Mac's LAN
- * address (docs/ANDROID_SDK.md, "On your phone"). Release builds have none.
+ * and the address given as -PfleetmlDebugHost (a phone over Wi-Fi: the LAN
+ * address of the machine that runs the server, docs/ANDROID_SDK.md). The build
+ * generates the file. Release builds have none.
  */
 class NetworkSecurityConfigTest {
     private fun cleartextDomains(path: String): List<String> {
@@ -21,11 +22,13 @@ class NetworkSecurityConfigTest {
     }
 
     @Test
-    fun `debug allows the local addresses and has the line for the LAN address`() {
+    fun `debug allows the local addresses and the fleetmlDebugHost`() {
+        val host = System.getProperty("fleetml.debugHost").orEmpty()
         assertEquals(
-            listOf("10.0.2.2", "localhost", "127.0.0.1", LAN_PLACEHOLDER),
-            cleartextDomains("src/debug/res/xml/network_security_config.xml"),
+            (listOf("10.0.2.2", "localhost", "127.0.0.1") + host).filter { it.isNotEmpty() }.distinct(),
+            cleartextDomains(System.getProperty("fleetml.networkConfig")),
         )
+        assertFalse("no hand-edited copy is left", File("src/debug/res/xml/network_security_config.xml").exists())
     }
 
     @Test
@@ -34,9 +37,5 @@ class NetworkSecurityConfigTest {
         assertFalse(manifest.contains("networkSecurityConfig"))
         assertFalse(manifest.contains("usesCleartextTraffic"))
         assertFalse(File("src/main/res/xml/network_security_config.xml").exists())
-    }
-
-    companion object {
-        const val LAN_PLACEHOLDER = "mac-lan-ip.invalid"
     }
 }

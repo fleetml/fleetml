@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
         val key = findViewById<EditText>(R.id.keyInput)
 
         val saved = app.settings()
-        host.setText(saved?.host ?: "10.0.2.2")
+        host.setText(saved?.host ?: BuildConfig.FLEETML_DEBUG_HOST.ifEmpty { "10.0.2.2" })
         port.setText((saved?.port ?: 19090).toString())
         key.setText(saved?.enrollmentKey ?: BuildConfig.FLEETML_ENROLLMENT_KEY)
 

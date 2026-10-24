@@ -89,7 +89,9 @@ How it fits together:
   you paste it once into `fleetml config set-key`.
 - **Two clones** when you build the Android sample app: the one in Ubuntu
   for the stack, and one on the Windows side for Gradle, which is slow on a
-  `\\wsl.localhost` path.
+  `\\wsl.localhost` path. [From Windows](ANDROID_SDK.md#from-windows) in the
+  Android guide takes the sample app onto a phone from PowerShell, step by
+  step.
 
 The server, Postgres, NATS and the object store are Linux containers, and the
 quickstart, the tour and the scripts are bash, so on Windows they run in a
@@ -99,7 +101,15 @@ editions run only Linux containers, which is all FleetML uses. See Docker's
 [system requirements](https://docs.docker.com/desktop/setup/install/windows-install/)
 for the current list.
 Docker labels Docker Desktop for Windows on Arm early access, so Arm laptops
-are not a tested path.
+are not a tested path. Docker Desktop is free for personal use, education,
+non-commercial open source and small businesses; a larger company needs a
+paid Docker subscription ([Docker's terms](https://www.docker.com/pricing/faq/)).
+Without it, Docker Engine installed inside Ubuntu runs the same stack: that
+is what the Windows run on GitHub does (`.github/windows-run/wsl-setup.sh`),
+and WSL forwards `localhost` to Windows, so PowerShell and a Windows browser
+reach it. A phone over Wi-Fi then reaches WSL only with its mirrored
+networking (`networkingMode=mirrored` in `.wslconfig`) or a port proxy,
+which CI does not exercise.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
    and keep **Use the WSL 2 based engine** on (Settings → General). The
@@ -227,7 +237,9 @@ but those entries are stored expanded from then on.
 
 If the first `Invoke-WebRequest` fails with a secure-channel (SSL/TLS) error
 on an older Windows, run `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`
-first.
+first. In Windows PowerShell 5.1, `Invoke-WebRequest` downloads slowly while
+it draws its progress bar; `$ProgressPreference = 'SilentlyContinue'` first
+turns the bar off.
 
 Both binaries and this block are exercised in Windows PowerShell 5.1 on
 GitHub's Windows runners by the
@@ -238,8 +250,9 @@ on Arm).
 `fleetml.exe` is not code-signed. Started from a terminal as above, it runs
 like any console program; a copy downloaded with a browser and started from
 Explorer may get SmartScreen's "Windows protected your PC" prompt (More info,
-Run anyway), and antivirus or a company policy may scan or block an unsigned
-program. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
+Run anyway), and antivirus, Smart App Control (on a clean install of
+Windows 11) or a company's application control may scan or block an unsigned
+program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
 `fleetml version` prints the release, for example `✓ fleetml v0.7.0`. In PowerShell,
@@ -269,7 +282,8 @@ is created: unescaped in 5.1 with
 escaped in 7.3 with
 `Error: invalid --target JSON: invalid character '\\' looking for beginning of object key string`.
 In Windows PowerShell 5.1 with a console code page other than UTF-8, the
-`✓` of `fleetml version` may show as `?`; the program is the same.
+`✓` of `fleetml version` shows as `?` in the console, or as `Γ£ô` when the
+output is captured or redirected; the program is the same.
 
 From source, with Go 1.26 or later: `go build -o bin/fleetml ./cmd/fleetml`
 in the repository (it reports its version as `dev`).

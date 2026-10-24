@@ -16,7 +16,11 @@ pip install fleetml
 
 `pip install fleetml` works from 0.6.0; until then, `pip install ./python`
 from a clone of the repository (also the way to work against unreleased
-changes). Python 3.9 or later; the only dependency is `httpx`.
+changes). Python 3.9 or later; the only dependency is `httpx`. On Windows,
+`py -m pip install fleetml` in PowerShell, and `$env:FLEETML_SERVER` and
+`$env:FLEETML_API_KEY` in place of `export` (the admin key from WSL with the
+`wsl` line in [On Windows](QUICKSTART.md#on-windows)); CI runs the client's
+unit tests on `windows-latest`, and its live test on Linux.
 
 ## Configure
 
