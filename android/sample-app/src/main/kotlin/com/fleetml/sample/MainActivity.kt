@@ -73,11 +73,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun render() {
-        val connected = when (app.connected) { true -> "online"; false -> "offline"; null -> "connecting" }
+        // Online means the server answers; the assigned model can still fail to download (a CLEARTEXT block, say) or validate.
+        val connected = when (app.connected) { true -> if (app.failing != null) "online, assigned model failing" else "online"; false -> "offline"; null -> "connecting" }
         val id = FleetML.deviceId() ?: app.deviceId
         status.text = if (!FleetML.isInitialized()) "Not configured" else "Device ${id ?: "(registering)"} · $connected"
         val active = if (FleetML.isInitialized()) FleetML.activeModels() else emptyList()
-        model.text = if (active.isEmpty()) "Active model: bundled iris (no assignment yet)"
+        val failing = app.failing
+        model.text = if (active.isEmpty() && failing != null) "Active model: bundled iris (assigned $failing)"
+        else if (active.isEmpty()) "Active model: bundled iris (no assignment yet)"
         else "Active model: " + active.joinToString { "${it.modelName} ${it.version}" }
         logView.text = app.log.joinToString("\n")
     }

@@ -73,6 +73,17 @@ change APIs).
   and left the agent running (review 4, bug 10). Run again on a box where
   the service runs, `install.sh` restarts it, so an upgrade takes effect
   (review 4, bug 12).
+- Dashboard: the Overview tiles show the server's totals, and Devices,
+  Deployments and Experiments page through the server (Previous and Next,
+  `21–26 of 26`), where they stopped at the first 20 records. The project,
+  model and version pickers (Models, Telemetry, Drift, Alerts, Audit, new
+  deployments and experiments) load every record. Deployments has a Project
+  column (review 4, bug 4).
+- Android sample app: the status reads `online, assigned model failing` and
+  the model line names the assigned version and the reason while its
+  download or validation fails, instead of `online` and
+  `no assignment yet`. The SDK logs a download under 1 KB in bytes
+  (`(603 bytes)`), not `(0KB)` (review 4, cosmetic).
 - A failed `fleetml push` upload says `upload failed:` once, and
   `fleetml telemetry events` prints confidence with 3 decimals instead of
   float32 noise such as `0.9700000286102295` (review 4, cosmetic).

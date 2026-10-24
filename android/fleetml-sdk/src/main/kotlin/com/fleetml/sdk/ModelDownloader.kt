@@ -73,7 +73,8 @@ internal class ModelDownloader(
 
     private fun finish(variantId: String, part: File, sha256: String): DownloadResult {
         val file = cache.commit(variantId, part, sha256) ?: return DownloadResult.Failed("SHA256 verification failed")
-        Logger.i("Downloaded model $variantId (${file.length() / 1024}KB)")
+        val size = file.length().let { if (it < 1024) "$it bytes" else "${it / 1024}KB" } // a small delta is not "0KB"
+        Logger.i("Downloaded model $variantId ($size)")
         return DownloadResult.Downloaded(file)
     }
 

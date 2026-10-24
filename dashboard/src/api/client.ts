@@ -6,6 +6,13 @@ interface ApiResponse<T> { data: T; error?: { code: string; message: string }; p
 // The dashboard is served from the API's origin (nginx in production, the Vite
 // proxy in development), so the session cookie is sent with every request.
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await requestPage<T>(method, path, body)).data
+}
+
+/** One page of a list route: its records and the server's total. */
+export interface Page<T> { items: T[]; total: number }
+
+async function requestPage<T>(method: string, path: string, body?: unknown): Promise<{ data: T; total: number }> {
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (method !== 'GET') headers['X-CSRF-Token'] = getCsrfToken()
@@ -22,8 +29,33 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (json?.error) throw new Error(json.error.message)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return json?.data as T
+  return { data: json?.data as T, total: json?.pagination?.total ?? 0 }
 }
+
+const withQuery = (path: string, q: Record<string, string | number>) =>
+  path + (path.includes('?') ? '&' : '?') + new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString()
+
+/** The page of a list route at offset; the server's default page is 20 records. */
+async function listPage<T>(path: string, offset: number, limit = PAGE_SIZE): Promise<Page<T>> {
+  const { data, total } = await requestPage<T[]>('GET', withQuery(path, { limit, offset }))
+  return { items: data || [], total }
+}
+
+/** Every record of a list route, a page of 100 at a time. */
+async function listAll<T>(path: string): Promise<T[]> {
+  const all: T[] = []
+  for (;;) {
+    const { items, total } = await listPage<T>(path, all.length, 100)
+    all.push(...items)
+    if (items.length === 0 || all.length >= total) return all
+  }
+}
+
+/** How many records a list route has, from its pagination total. */
+const listTotal = async (path: string) => (await listPage<unknown>(path, 0, 1)).total
+
+/** Records per page on the list pages. */
+export const PAGE_SIZE = 20
 
 const apiGet = <T>(path: string) => request<T>('GET', path)
 const apiPost = <T>(path: string, body?: unknown) => request<T>('POST', path, body)
@@ -47,13 +79,15 @@ export const logout = () => apiPost<void>('/api/v1/auth/logout');
 export const getSessions = () => apiGet<(Session & { current: boolean })[]>('/api/v1/auth/sessions');
 export const revokeSession = (id: string) => apiPost<void>(`/api/v1/auth/sessions/${id}/revoke`);
 
-export const getProjects = () => apiGet<Project[]>('/api/v1/projects');
-export const getModels = (projectId: string) => apiGet<Model[]>(`/api/v1/projects/${projectId}/models`);
-export const getVersions = (modelId: string) => apiGet<ModelVersion[]>(`/api/v1/models/${modelId}/versions`);
+export const getProjects = () => listAll<Project>('/api/v1/projects');
+export const getModels = (projectId: string) => listAll<Model>(`/api/v1/projects/${projectId}/models`);
+export const getVersions = (modelId: string) => listAll<ModelVersion>(`/api/v1/models/${modelId}/versions`);
 export const getVariants = (versionId: string) => apiGet<ModelVariant[]>(`/api/v1/versions/${versionId}/variants`);
-export const getDevices = () => apiGet<Device[]>('/api/v1/devices');
-export const getDeployments = () => apiGet<Deployment[]>('/api/v1/deployments');
-export const getExperiments = () => apiGet<Experiment[]>('/api/v1/experiments');
+export const getDevices = (offset: number) => listPage<Device>('/api/v1/devices', offset);
+export const getDeployments = (offset: number) => listPage<Deployment>('/api/v1/deployments', offset);
+export const getExperiments = (offset: number) => listPage<Experiment>('/api/v1/experiments', offset);
+/** The Overview's counts: the totals of the four list routes. */
+export const getTotals = () => Promise.all(['/api/v1/projects', '/api/v1/devices', '/api/v1/deployments', '/api/v1/experiments'].map(listTotal))
 export const getTelemetrySummary = (id: string) => apiGet<TelemetrySummary>(`/api/v1/telemetry/summary/${id}`);
 export const getTelemetryTimeSeries = (id: string, interval: string) => apiGet<TimeSeriesPoint[]>(`/api/v1/telemetry/timeseries/${id}?interval=${interval}`);
 export const getDriftStatus = (id: string) => apiGet<DriftResult[]>(`/api/v1/drift/${id}`);

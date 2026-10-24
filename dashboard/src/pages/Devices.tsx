@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
-import { getDevices, getDeviceProfile } from '../api/client'
+import { getDevices, getDeviceProfile, PAGE_SIZE } from '../api/client'
 import type { Device, DeviceProfile } from '../types/api'
 import CopyableId from '../components/CopyableId'
+import { Pager } from '../components/ui'
 
 export default function Devices() {
   const [devices, setDevices] = useState<Device[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<DeviceProfile | null>(null)
 
-  useEffect(() => { getDevices().then(d => setDevices(d || [])).catch(() => {}) }, [])
+  useEffect(() => { getDevices(offset).then(p => { setDevices(p.items); setTotal(p.total) }).catch(() => {}) }, [offset])
 
   return (
     <div>
@@ -37,6 +40,7 @@ export default function Devices() {
           </tbody>
         </table>
       </div>
+      <Pager offset={offset} pageSize={PAGE_SIZE} total={total} onChange={setOffset} />
       {selected && (
         <div className="mt-4 border border-gray-200 rounded-lg shadow-sm p-5">
           <div className="flex items-center gap-3 mb-3">
