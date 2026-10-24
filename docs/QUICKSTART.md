@@ -17,26 +17,33 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell, see [On Windows](#on-wind
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-export JWT_SECRET=$(openssl rand -base64 32) SIGNING_MASTER_KEY=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' S3_PUBLIC_ENDPOINT=localhost:19100\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" > ~/.fleetml.env)
+source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
 curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
+echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
 ```
 
-**Save the three values now.** They exist only in this shell. The admin key
-is how you log in to the dashboard and how the CLI and the REST API reach the
-server, and the server stores it on the first start only: later starts
+The second line generates the stack's three secrets and saves them in
+`~/.fleetml.env`, a file only you can read, before anything starts, with
+`S3_PUBLIC_ENDPOINT`, the address devices download models from (a phone or a
+second machine needs your LAN address there instead; the device guides
+change it in this file). It leaves an existing file alone, so running the
+block again reuses the saved values. **Keep the file.** The admin key in it
+is how you log in to the dashboard and how the CLI and the REST API reach
+the server, and the server stores it on the first start only: later starts
 ignore `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a
-new one (the way back is `down -v` and a fresh start, which deletes the data).
-Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command on this
-stack, `down` included. In bash or zsh, this writes them to a file only you
-can read, and `source ~/.fleetml.env` brings them back in a new shell
-(the [tour](#tour) adds its own values to the same file):
+new one (the way back is `down -v` and a fresh start, which deletes the
+data). `SIGNING_MASTER_KEY` encrypts the signing keys, so a new one breaks
+publishing. Compose reads the file's values for every command on this
+stack, `down` included: in a new shell, `source ~/.fleetml.env` first (the
+[tour](#tour) adds its own values to the same file).
 
-```bash
-(umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
-```
+The block prints no secret. To log in, paste `FLEETML_ADMIN_KEY` from the
+file; `printf %s "$FLEETML_ADMIN_KEY" | pbcopy` puts it on the clipboard
+without printing it on macOS (`| clip.exe` in WSL, `| xclip -selection
+clipboard` on Linux).
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
 once Postgres, the object store and NATS are reachable, and the project list
@@ -58,9 +65,13 @@ dashboard to any free port with an override file and open it on that port,
 here http://localhost:8081. `!override` needs Compose 2.24 or later:
 `docker compose version` prints the version (for example
 `Docker Compose version v2.39.4-desktop.1`); older versions do not know the
-tag. This override is not exercised by CI:
+tag. This override is not exercised by CI. `source ~/.fleetml.env` first
+in a new shell: it brings the secrets back and keeps the saved
+`S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset to
+`localhost:19100`:
 
 ```bash
+source ~/.fleetml.env
 printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
 docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
 ```
@@ -112,8 +123,8 @@ are not a tested path.
    shell opened (open a new Ubuntu shell).
 4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
    (`curl` and `openssl` are already there), then `cd ~` and run the
-   [Run FleetML](#run-fleetml) block as it is, then the "Save the three
-   values" block under it. Keep the clone in the Linux file system (`~`), not
+   [Run FleetML](#run-fleetml) block as it is (it saves the secrets in
+   `~/.fleetml.env` there). Keep the clone in the Linux file system (`~`), not
    under `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
 5. For the tour, install the Linux CLI in the same shell with the first block
    of [Get the CLI](#get-the-cli). To build it from source instead, install
@@ -497,8 +508,10 @@ shows the latest result per metric. The drift loop runs every 5 minutes
 
 ### 6. Dashboard
 
-Open <http://localhost> and log in with the admin key
-(`echo $FLEETML_ADMIN_KEY`); the dashboard keeps a session cookie, not the key. **Models** shows iris with its three versions and
+Open <http://localhost> and log in with the admin key, `FLEETML_ADMIN_KEY`
+in `~/.fleetml.env` (`printf %s "$FLEETML_ADMIN_KEY" | pbcopy` copies it on
+macOS, see [Run FleetML](#run-fleetml)); the dashboard keeps a session
+cookie, not the key. **Models** shows iris with its three versions and
 their variants (one FAILED from step 1), **Deployments** the rolled-back
 canary with its reason, **Experiments** the concluded A/B test with per-arm
 results, and **Drift** the history for 1.0.0. Deployments and experiments can
@@ -521,6 +534,7 @@ Prometheus and Grafana with the FleetML dashboard (telemetry lag,
 redeliveries, request rates, deployments, alerts) run as a compose profile:
 
 ```bash
+source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
@@ -528,9 +542,12 @@ Open http://localhost:13000 in a browser: Grafana shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
 
-Run it in the same shell as the stack, since compose needs the same secrets.
-It runs the one-shot `migrate` service again, which finds nothing to do; the
-server keeps running and the data stays.
+`source ~/.fleetml.env` gives compose the stack's secrets and its saved
+`S3_PUBLIC_ENDPOINT`: without that variable, `up -d` would recreate the
+server with `localhost:19100`, and a phone or second machine set up through
+a device guide would then fail its downloads. The command runs the one-shot
+`migrate` service again, which finds nothing to do; the server keeps
+running and the data stays.
 
 With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;

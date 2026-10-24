@@ -124,6 +124,18 @@ change APIs).
 
 ### Docs
 
+- Quickstart and README "Run FleetML": the block writes the three secrets and
+  `S3_PUBLIC_ENDPOINT` to `~/.fleetml.env` (0600, only if the file does not
+  exist yet) and sources it before anything starts, and it prints no secret
+  (the admin key was echoed before the "save them" step, and §6 said
+  `echo $FLEETML_ADMIN_KEY`). The observability step and the port-80
+  override source the file first, so a saved `S3_PUBLIC_ENDPOINT` survives
+  the `up -d` (review 4, docs gaps 1 and 5).
+- The prod compose file's errors for a missing `JWT_SECRET` or
+  `SIGNING_MASTER_KEY` say to `source ~/.fleetml.env` and never to generate
+  new values for an existing stack; they suggested `openssl rand`, which on
+  an existing stack breaks publishing and every device token (review 4,
+  bug 7).
 - The Helm chart's README is rewritten and was run as written on kind: the
   published images (no build or `kind load`), the secrets generated once
   into a 0600 file with what may and may not change, the install with the

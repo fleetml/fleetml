@@ -111,22 +111,22 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell):
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-export JWT_SECRET=$(openssl rand -base64 32) SIGNING_MASTER_KEY=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' S3_PUBLIC_ENDPOINT=localhost:19100\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" > ~/.fleetml.env)
+source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
 curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
+echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
 ```
 
-Save the three values now: the server stores the admin key on its first start
-only (later starts ignore `FLEETML_ADMIN_KEY`), and compose needs
-`JWT_SECRET` and `SIGNING_MASTER_KEY` for every later command on the stack,
-`down` included. In bash or zsh, this writes them to a file only you can read,
-and `source ~/.fleetml.env` brings them back in a new shell:
-
-```bash
-(umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
-```
+The second line saves three generated secrets, and the address devices
+download models from (`S3_PUBLIC_ENDPOINT`), in `~/.fleetml.env`, readable
+only by you, before anything starts; it leaves an existing file alone. Keep
+it: the server stores the admin key on its first start only (later starts
+ignore `FLEETML_ADMIN_KEY`), and compose reads the file's values for every
+command on the stack, `down` included, so in a new shell `source
+~/.fleetml.env` first. Log in to the dashboard with `FLEETML_ADMIN_KEY` from
+the file; the block prints no secret.
 
 The first start takes a few minutes on a cold Docker cache, most of it
 pulling the base images and building the server and dashboard images; with
@@ -137,6 +137,7 @@ If port 80 is taken, move the dashboard to any free port with an override file
 yours) and open it on that port, here http://localhost:8081:
 
 ```bash
+source ~/.fleetml.env
 printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
 docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
 ```
@@ -154,7 +155,8 @@ Next:
   see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 To stop: `docker compose -f deploy/docker-compose.prod.yml down` (add `-v` to
-delete the data), in a shell with the saved values.
+delete the data: every project, device and the admin key), after
+`source ~/.fleetml.env`.
 
 ### Get the CLI
 
