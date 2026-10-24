@@ -21,8 +21,14 @@ change APIs).
   database unless that project publishes Postgres on the port the server
   uses, so a run meant for a second stack cannot touch the dev stack.
   `scripts/wait-migrate.sh` names the project the same way.
-- Building from source needs Go 1.25 or later (gRPC 1.83 requires it); the
-  server image builds with Go 1.26.
+- Building from source needs Go 1.26 or later (golang.org/x/net 0.60,
+  nats.go 1.54 and minio-go 7.4 require it); the server image builds with
+  Go 1.26.
+- Server dependencies: gin 1.12, nats.go 1.54, minio-go 7.4, pgx 5.9,
+  golang-migrate 4.20, the Prometheus client 1.25 and gRPC 1.84.
+- CI and the release workflow build with Go 1.26.10 (`toolchain go1.26.10`
+  in `go.mod`, which `actions/setup-go` reads); building from source still
+  needs Go 1.26 or later.
 
 ### Fixed
 
@@ -39,6 +45,12 @@ change APIs).
   GO-2026-6348, GO-2026-6443), golang.org/x/text 0.41.0 (GO-2026-5970,
   GO-2026-6629), golang.org/x/crypto 0.55.0 and
   github.com/klauspost/compress 1.18.7.
+- Dependencies: golang.org/x/net 0.60.0 (GO-2026-6603, GO-2026-6610,
+  GO-2026-6611, GO-2026-6612, GO-2026-6617) and github.com/jackc/pgx/v5
+  5.9.2 (GO-2026-5004).
+- Release binaries are built with Go 1.26.10 (0.7.0's were built with Go
+  1.24.0); with it, govulncheck finds no reachable vulnerability in the
+  server, CLI or agent, where Go 1.26.2 leaves 29 in the standard library.
 
 ### Docs
 

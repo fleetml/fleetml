@@ -45,8 +45,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPO_PRIVATE: ${{ github.event.repository.private }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -271,7 +271,7 @@ jobs:
       WSL_UTF8: "1"
       WSLENV: GITHUB_OUTPUT/p:REPO_PRIVATE
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: a. WSL 2 and Ubuntu
         id: wsl

@@ -32,7 +32,7 @@ function PSIChart({ points }: { points: DriftPoint[] }) {
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
           <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tickFormatter={v => new Date(v).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} tick={{ fontSize: 12 }} stroke="#9ca3af" />
           <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" />
-          <Tooltip labelFormatter={v => new Date(Number(v)).toLocaleString()} formatter={(v: number) => v.toFixed(3)} />
+          <Tooltip labelFormatter={v => new Date(Number(v)).toLocaleString()} formatter={v => typeof v === 'number' ? v.toFixed(3) : String(v ?? '')} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <ReferenceLine y={0.1} stroke="#f59e0b" strokeDasharray="4 4" />
           <ReferenceLine y={0.25} stroke="#ef4444" strokeDasharray="4 4" />
