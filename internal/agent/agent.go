@@ -18,9 +18,12 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -42,6 +45,31 @@ const modelFile = "model.bin"
 
 // modelFileMode lets an inference process running as any user read the model.
 const modelFileMode = 0o644
+
+const (
+	// callTimeout bounds every call to the server, so a connection that died
+	// without a reset (a Wi-Fi roam, a NAT or router restart, a pulled cable)
+	// fails the call instead of hanging until TCP gives up, about 15 minutes.
+	callTimeout = 30 * time.Second
+	// shutdownFlushTimeout bounds the last telemetry flush on SIGTERM. What it
+	// cannot send stays queued on disk for the next start.
+	shutdownFlushTimeout = 5 * time.Second
+)
+
+// dialOptions keep the connection to the server honest: a keepalive ping
+// after 30 s without traffic that must be answered within 10 s closes a dead
+// connection, and reconnect attempts back off to at most 15 s, so the
+// heartbeat after the server is back gets through.
+func dialOptions(creds credentials.TransportCredentials) []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 30 * time.Second, Timeout: 10 * time.Second, PermitWithoutStream: true}),
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff:           grpcbackoff.Config{BaseDelay: time.Second, Multiplier: 1.6, Jitter: 0.2, MaxDelay: 15 * time.Second},
+			MinConnectTimeout: 10 * time.Second,
+		}),
+	}
+}
 
 // Agent keeps one machine's models in line with what the server assigns.
 type Agent struct {
@@ -68,6 +96,13 @@ type Agent struct {
 	// downloadFailed holds the variants whose failed download was reported,
 	// so a download failing on every heartbeat is reported once.
 	downloadFailed map[string]bool
+
+	// callTimeout and flushTimeout are callTimeout and shutdownFlushTimeout
+	// (shorter in tests).
+	callTimeout, flushTimeout time.Duration
+	// unreachableSince is when heartbeats started failing (zero while the
+	// server answers): the first failure is logged at WARN, the recovery at INFO.
+	unreachableSince time.Time
 }
 
 // New opens the agent's state and connects to the server (lazily).
@@ -97,16 +132,21 @@ func New(cfg *Config, log *slog.Logger) (*Agent, error) {
 	if cfg.TLS {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
-	conn, err := grpc.NewClient(cfg.Server, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient(cfg.Server, dialOptions(creds)...)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", cfg.Server, err)
 	}
 	return &Agent{
-		cfg: cfg, store: store, queue: queue, log: log, http: &http.Client{Timeout: 30 * time.Minute},
+		cfg: cfg, store: store, queue: queue, log: log, http: downloadClient(),
 		conn: conn, devices: fleetmlv1.NewDeviceServiceClient(conn), tel: fleetmlv1.NewTelemetryServiceClient(conn),
 		now: time.Now, interval: cfg.HeartbeatInterval, batchSize: 100, flushEvery: 30 * time.Second, arms: map[string]string{}, reconfigured: make(chan struct{}, 1),
-		downloadFailed: map[string]bool{},
+		downloadFailed: map[string]bool{}, callTimeout: callTimeout, flushTimeout: shutdownFlushTimeout,
 	}, nil
+}
+
+// call bounds one call to the server by callTimeout.
+func (a *Agent) call(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, a.callTimeout)
 }
 
 // Close releases the connection.
@@ -138,7 +178,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			a.flush(context.Background())
+			fctx, cancel := context.WithTimeout(context.Background(), a.flushTimeout)
+			defer cancel()
+			if err := a.flush(fctx); err != nil {
+				a.log.Info("telemetry kept queued for the next start", "events", a.queue.Len(), "error", err)
+			}
 			return nil
 		case <-time.After(wait):
 		}
@@ -148,6 +192,11 @@ func (a *Agent) Run(ctx context.Context) error {
 // Sync registers if needed, sends one heartbeat and applies the response.
 // It returns true if the server was reached.
 func (a *Agent) Sync(ctx context.Context) bool {
+	// After a failed connection attempt gRPC waits before the next one; a
+	// heartbeat is the moment to try again at once.
+	if a.conn.GetState() == connectivity.TransientFailure {
+		a.conn.ResetConnectBackoff()
+	}
 	if a.needsRegistration() {
 		if err := a.register(ctx); err != nil {
 			a.log.Warn("registration failed", "error", err)
@@ -158,10 +207,17 @@ func (a *Agent) Sync(ctx context.Context) bool {
 		if status.Code(err) == codes.Unauthenticated {
 			a.log.Warn("token rejected, registering again")
 			_ = a.store.Update(func(s *State) { s.Token = "" })
+		} else if a.unreachableSince.IsZero() {
+			a.unreachableSince = a.now()
+			a.log.Warn("heartbeat failed; retrying every heartbeat, models stay active and telemetry stays queued", "error", err)
 		} else {
-			a.log.Warn("heartbeat failed", "error", err)
+			a.log.Debug("heartbeat failed", "error", err)
 		}
 		return false
+	}
+	if !a.unreachableSince.IsZero() {
+		a.log.Info("server reachable again", "unreachable_for", a.now().Sub(a.unreachableSince).Round(time.Second).String())
+		a.unreachableSince = time.Time{}
 	}
 	return true
 }
@@ -195,7 +251,9 @@ func (a *Agent) register(ctx context.Context) error {
 	if token != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 	}
-	resp, err := a.devices.Register(ctx, req)
+	cctx, cancel := a.call(ctx)
+	defer cancel()
+	resp, err := a.devices.Register(cctx, req)
 	if err != nil {
 		return err
 	}
@@ -223,7 +281,10 @@ func (a *Agent) heartbeat(ctx context.Context) error {
 	var issued, expires time.Time
 	a.store.Read(func(s *State) { deviceID, issued, expires = s.DeviceID, s.TokenIssued, s.TokenExpires })
 	if refreshDue(a.now(), issued, expires) {
-		if resp, err := a.devices.RefreshToken(a.authCtx(ctx), &fleetmlv1.RefreshTokenRequest{}); err == nil {
+		cctx, cancel := a.call(a.authCtx(ctx))
+		resp, err := a.devices.RefreshToken(cctx, &fleetmlv1.RefreshTokenRequest{})
+		cancel()
+		if err == nil {
 			_ = a.store.Update(func(s *State) {
 				s.Token, s.TokenExpires, s.TokenIssued = resp.AuthToken, time.Unix(resp.TokenExpiresAt, 0), a.now()
 			})
@@ -238,7 +299,9 @@ func (a *Agent) heartbeat(ctx context.Context) error {
 			ModelId: id, Version: m.Active.Version, VariantId: m.Active.VariantID, Status: "LOADED",
 		})
 	}
-	resp, err := a.devices.Heartbeat(a.authCtx(ctx), req)
+	cctx, cancel := a.call(a.authCtx(ctx))
+	resp, err := a.devices.Heartbeat(cctx, req)
+	cancel()
 	if err != nil {
 		return err
 	}
@@ -647,9 +710,15 @@ func (a *Agent) telemetryLoop(ctx context.Context) {
 			continue // a new flush interval applies now, not after the old one
 		case <-time.After(wait):
 		}
-		if a.flush(ctx) {
+		if err := a.flush(ctx); err == nil {
 			failures = 0
 		} else {
+			// Once per outage at WARN; the heartbeat says when it is over.
+			if failures == 0 {
+				a.log.Warn("sending telemetry failed; the events stay queued", "events", a.queue.Len(), "error", err)
+			} else {
+				a.log.Debug("sending telemetry failed", "error", err)
+			}
 			failures++
 		}
 	}
@@ -663,12 +732,12 @@ func backoff(failures int) time.Duration {
 	return d
 }
 
-// flush sends queued events in batches; false if a send failed (they stay queued).
-func (a *Agent) flush(ctx context.Context) bool {
+// flush sends queued events in batches; an error if a send failed (they stay queued).
+func (a *Agent) flush(ctx context.Context) error {
 	var deviceID string
 	a.store.Read(func(s *State) { deviceID = s.DeviceID })
 	if deviceID == "" {
-		return true // not registered yet: keep everything queued
+		return nil // not registered yet: keep everything queued
 	}
 	for {
 		a.mu.Lock()
@@ -676,11 +745,13 @@ func (a *Agent) flush(ctx context.Context) bool {
 		a.mu.Unlock()
 		batch := a.queue.Peek(n)
 		if len(batch) == 0 {
-			return true
+			return nil
 		}
-		if _, err := a.tel.ReportBatch(a.authCtx(ctx), &fleetmlv1.TelemetryBatch{DeviceId: deviceID, Events: batch}); err != nil {
-			a.log.Warn("sending telemetry failed", "error", err)
-			return false
+		cctx, cancel := a.call(a.authCtx(ctx))
+		_, err := a.tel.ReportBatch(cctx, &fleetmlv1.TelemetryBatch{DeviceId: deviceID, Events: batch})
+		cancel()
+		if err != nil {
+			return err
 		}
 		if err := a.queue.Remove(len(batch)); err != nil {
 			a.log.Warn("trimming the telemetry queue failed", "error", err)

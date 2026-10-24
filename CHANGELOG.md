@@ -16,6 +16,9 @@ change APIs).
 
 ### Changed
 
+- The server accepts gRPC keepalive pings every 20 seconds or more, also on a
+  connection without a call in progress (gRPC's default answers a client
+  that pings more often than every 5 minutes with `too_many_pings`).
 - `scripts/e2e.sh` and `scripts/python-e2e.sh` name their compose project
   (`COMPOSE_PROJECT_NAME`, default `fleetml`) and stop before creating a
   database unless that project publishes Postgres on the port the server
@@ -52,6 +55,24 @@ change APIs).
   `project already exists: slug "tour"` instead of
   `project.Create: already exists: slug "tour"`. The error codes are
   unchanged (review 4, bug 12).
+- Linux agent: a connection that dies without a reset (a Wi-Fi roam, a NAT
+  or router restart) is found within 40 seconds (gRPC keepalive: a ping
+  after 30 s idle, 10 s to answer), every call to the server has a 30 s
+  deadline, and reconnect attempts back off to at most 15 s, so the first
+  heartbeat after the server is back succeeds. Before, the agent hung
+  without a log line until TCP gave up, about 16 minutes. The first failed
+  heartbeat is logged at WARN once, the recovery at INFO
+  (`server reachable again`). A model download that receives nothing for
+  60 s is cut off and resumed on the next attempt (review 4, bug 3).
+- Linux agent: SIGTERM stops it within 5 seconds while the server is
+  unreachable; the last telemetry flush is bounded and the rest stays queued
+  (review 4, bug 3).
+- `install.sh` prints the supervisor command with both `exec`s
+  (`exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent ...'`):
+  without the inner one a supervisor's SIGTERM stopped only `su`'s shell
+  and left the agent running (review 4, bug 10). Run again on a box where
+  the service runs, `install.sh` restarts it, so an upgrade takes effect
+  (review 4, bug 12).
 - A failed `fleetml push` upload says `upload failed:` once, and
   `fleetml telemetry events` prints confidence with 3 decimals instead of
   float32 noise such as `0.9700000286102295` (review 4, cosmetic).
@@ -77,6 +98,11 @@ change APIs).
 
 ### Docs
 
+- Linux agent: "Identity and offline behaviour" gives the measured bound (a
+  3-minute server pause: the warning after 32 s, the first heartbeat 42 s
+  after the server was back) and the two log lines; the container one-liner
+  keeps the state folder in a volume, so a recreated container is the same
+  device; the supervisor and `-retry-failed` commands use `exec`.
 - Quickstart: the arm64 Windows binary is now run on `windows-11-arm` by the
   Windows run workflow, next to the amd64 one on `windows-latest`.
 - RELEASING.md describes the public repository: its code security, Actions

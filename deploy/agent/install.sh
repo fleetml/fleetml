@@ -3,7 +3,8 @@
 #   sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-amd64
 # Creates the fleetml-agent user, /etc/fleetml-agent/config.yaml (from the
 # example, if missing) and the service, and starts it once the config has a
-# server and an enrollment key. On a machine where systemd is not running
+# server and an enrollment key; run again (to upgrade the binary), it keeps
+# the config and restarts a running service. On a machine where systemd is not running
 # (none installed, or the package in a container or chroot where it is not
 # PID 1) it installs the same files without the unit, creates the state
 # folder the unit would have created, and prints how to run the agent under
@@ -39,7 +40,9 @@ if [ ! -d /run/systemd/system ]; then
   install -d -m 0755 -o fleetml-agent -g fleetml-agent /var/lib/fleetml-agent
   echo "No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent was created for the fleetml-agent user."
   echo "Once $CONFIG is set, run the agent as that user under this machine's supervisor (runit, s6, OpenRC, supervisord, a container's entrypoint), for example:"
-  echo "  su -s /bin/sh fleetml-agent -c '$RUN'"
+  # exec: the supervisor's SIGTERM must reach the agent, not the shell su starts.
+  echo "  exec su -s /bin/sh fleetml-agent -c 'exec $RUN'"
+  echo "If an agent is running, restart it under the supervisor to use the new binary."
   exit 0
 fi
 
@@ -48,6 +51,8 @@ systemctl daemon-reload
 if grep -q '<project enrollment key>' "$CONFIG"; then
   echo "Service installed but not started: edit $CONFIG first, then run: systemctl enable --now fleetml-agent"
 else
-  systemctl enable --now fleetml-agent
+  # restart, not enable --now: on a re-run the old binary may still be running.
+  systemctl enable fleetml-agent
+  systemctl restart fleetml-agent
   systemctl --no-pager status fleetml-agent | head -5
 fi

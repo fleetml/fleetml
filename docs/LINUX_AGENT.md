@@ -72,15 +72,21 @@ No running systemd on this machine: the service unit was not installed, and /var
 
 Once the config is set, run the agent as that user under the machine's own
 supervisor (runit, s6, OpenRC, supervisord, a container's entrypoint), with
-the same command the unit runs:
+the same command the unit runs; `install.sh` prints this line:
 
 ```bash
-su -s /bin/sh fleetml-agent -c '/usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
+exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
 ```
 
-It logs to standard error, which is where the supervisor's log picks it up;
-the journal lines below are the same. The supervisor restarts it if it exits,
-as `Restart=always` does in the unit.
+Both `exec`s matter: the supervisor stops what it started with SIGTERM, and
+`su` passes it to its child. Without the inner `exec` that child is a shell
+(Ubuntu's `dash` does not replace itself with the last command), the shell
+dies, the agent runs on as an orphan, and the supervisor's restart fails
+with `bind: address already in use` (with `telemetry_listen` set) or starts
+a second agent on the same state folder. It logs to standard error, which is
+where the supervisor's log picks it up; the journal lines below are the
+same. The supervisor restarts it if it exits, as `Restart=always` does in
+the unit.
 
 In a container, make the agent the main process and give the container an
 init that reaps processes. Started in the background under a placeholder such
@@ -101,13 +107,23 @@ machine](#server-on-another-machine); leave it out when the server's
 `S3_PUBLIC_ENDPOINT` is reachable):
 
 ```bash
-docker run -d --init --name fleetml-agent -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c '
+docker run -d --init --name fleetml-agent -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" \
+  -v fleetml-agent-state:/var/lib/fleetml-agent ubuntu:24.04 sh -c '
   /opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent &&
   sed -i -e "s|^server: .*|server: <server address>:19090|" -e "s|^enrollment_key: .*|enrollment_key: \"<enrollment key>\"|" \
     -e "s|^# download_host_override: .*|download_host_override: \"<server address>:19100\"|" /etc/fleetml-agent/config.yaml &&
   exec su -s /bin/sh fleetml-agent -c "exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml"'
 docker logs -f fleetml-agent
 ```
+
+The volume `fleetml-agent-state` keeps the agent's state folder: a
+container has no machine ID of its own (`/etc/machine-id` is empty), so the
+random salt in `state.json` is the device's identity, and the models are
+there too. With the volume, a recreated container is the same device with
+its models; without it, every new container registers as a new device,
+downloads everything again, and the old one stays in `fleetml device list`.
+`docker rm -f fleetml-agent && docker volume rm fleetml-agent-state` removes
+both.
 
 ## Server on another machine
 
@@ -399,7 +415,7 @@ sudo systemctl start fleetml-agent
 Without systemd, stop the agent under its supervisor and run, as root,
 
 ```bash
-su -s /bin/sh fleetml-agent -c '/usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml -retry-failed'
+su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml -retry-failed'
 ```
 
 then start it under the supervisor again. The foreground run logs
@@ -530,7 +546,26 @@ registers again if the server rejects it.
 
 When the server is unreachable the agent keeps the models it has: `current`
 links stay in place, telemetry stays queued, and heartbeats resume when the
-server is back.
+server is back. A connection that dies without a reset (a Wi-Fi roam, a NAT
+or router restart, a pulled cable) is found within 40 seconds: the agent
+pings an idle connection after 30 seconds and gives up on it after 10
+without an answer, and every call to the server has a 30-second deadline.
+The first failed heartbeat is logged once, and the recovery once:
+
+```text
+level=WARN msg="heartbeat failed; retrying every heartbeat, models stay active and telemetry stays queued" error="rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout"
+level=INFO msg="server reachable again" unreachable_for=3m10s
+```
+
+Measured with the quickstart's compose stack and the agent in a container
+(`docker pause` on the server for 3 minutes, which drops nothing and answers
+nothing): the warning came 32 seconds after the pause, and the first
+successful heartbeat 42 seconds after the server was back. Recovery comes
+with the next heartbeat, so it takes at most one heartbeat interval (60
+seconds by default); before 0.8.0 the same test left the agent silent for
+about 16 minutes. Stopping the agent while the server is unreachable takes
+at most 5 seconds: the last telemetry flush is bounded, and what it cannot
+send stays queued for the next start.
 
 ## Try it locally
 
