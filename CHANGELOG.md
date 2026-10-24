@@ -26,6 +26,9 @@ change APIs).
   Go 1.26.
 - Server dependencies: gin 1.12, nats.go 1.54, minio-go 7.4, pgx 5.9,
   golang-migrate 4.20, the Prometheus client 1.25 and gRPC 1.84.
+- CI and the release workflow build with Go 1.26.10 (`toolchain go1.26.10`
+  in `go.mod`, which `actions/setup-go` reads); building from source still
+  needs Go 1.26 or later.
 
 ### Fixed
 
@@ -45,6 +48,9 @@ change APIs).
 - Dependencies: golang.org/x/net 0.60.0 (GO-2026-6603, GO-2026-6610,
   GO-2026-6611, GO-2026-6612, GO-2026-6617) and github.com/jackc/pgx/v5
   5.9.2 (GO-2026-5004).
+- Release binaries are built with Go 1.26.10 (0.7.0's were built with Go
+  1.24.0); with it, govulncheck finds no reachable vulnerability in the
+  server, CLI or agent, where Go 1.26.2 leaves 29 in the standard library.
 
 ### Docs
 
