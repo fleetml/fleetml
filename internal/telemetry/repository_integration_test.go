@@ -154,7 +154,9 @@ func TestPipeline_Integration(t *testing.T) {
 		return n
 	}
 	require.Eventually(t, func() bool { return count() == 1 }, 5*time.Second, 100*time.Millisecond)
-	assert.Equal(t, int64(1), consumer.Dropped())
+	// The row-by-row fallback stores the good event before it drops the
+	// poison one, so the drop can land just after the row is visible.
+	require.Eventually(t, func() bool { return consumer.Dropped() == 1 }, 5*time.Second, 10*time.Millisecond)
 
 	// The same events again (a device resending after a lost acknowledgement,
 	// published outside the stream's duplicate window): stored once.
