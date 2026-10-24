@@ -258,7 +258,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.7.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.8.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with

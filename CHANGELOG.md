@@ -5,10 +5,17 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-24
+
+The fixes from the fourth developer review (seven reviewers, a real Android
+phone and iPhone among them), with its bug numbers, and dependency and
+toolchain updates. No breaking API changes; see
+[Upgrading](docs/QUICKSTART.md#upgrading).
 
 ### Added
 
+- The Android SDK 0.8.0 is on Maven Central and the Python client 0.8.0 on
+  PyPI (`pip install fleetml`).
 - Python client: `project=` on `devices.list`, `deployments.list` and
   `experiments.list`; `projects.delete`, `models.get`, `versions.promote`
   (through STAGED from DRAFT), `deployments.pause`, `resume`, `cancel`,
@@ -26,6 +33,9 @@ change APIs).
 
 ### Changed
 
+- Deleting a project also deletes its devices; before, a project without
+  telemetry was deleted and its devices stayed, enrolled in no project
+  (with telemetry, the delete failed, see Fixed).
 - The server accepts gRPC keepalive pings every 20 seconds or more, also on a
   connection without a call in progress (gRPC's default answers a client
   that pings more often than every 5 minutes with `too_many_pings`).
@@ -140,7 +150,8 @@ change APIs).
   5.9.2 (GO-2026-5004).
 - Release binaries are built with Go 1.26.10 (0.7.0's were built with Go
   1.24.0); with it, govulncheck finds no reachable vulnerability in the
-  server, CLI or agent, where Go 1.26.2 leaves 29 in the standard library.
+  server, CLI or agent, where Go 1.26.2 leaves 29 in the standard library
+  (review 4, bug 5).
 
 ### Docs
 
@@ -802,7 +813,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
-[0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...HEAD
+[0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/fleetml/fleetml/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/fleetml/fleetml/compare/v0.4.0...v0.5.0
