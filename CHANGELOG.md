@@ -32,6 +32,29 @@ change APIs).
 
 ### Fixed
 
+- `fleetml project delete` (`DELETE /api/v1/projects/:id`) works for a
+  project whose devices sent telemetry; it answered 500. The project goes
+  with its models, versions, deployments, experiments, enrollment keys and
+  devices, and its versions' telemetry, drift results and feature
+  histograms, in one transaction. Deleting a version with telemetry deletes
+  that telemetry (migration 000019). The CLI prints what it removed
+  (fourth developer review, bug 1).
+- `fleetml telemetry summary` (and the dashboard's telemetry chart) take
+  latency and confidence over INFERENCE events only; a MODEL_LOAD or ERROR
+  event no longer counts as a 0 ms inference, and an event without a
+  confidence no longer counts as 0. The event counts are unchanged
+  (review 4, bug 11).
+- The telemetry and drift routes for one model version answer 404
+  `NOT_FOUND` ("model version not found") for an unknown version instead of
+  an empty result (review 4, bug 12).
+- API error messages no longer carry internal function names:
+  `project not found` instead of `project.GetByID: not found`,
+  `project already exists: slug "tour"` instead of
+  `project.Create: already exists: slug "tour"`. The error codes are
+  unchanged (review 4, bug 12).
+- A failed `fleetml push` upload says `upload failed:` once, and
+  `fleetml telemetry events` prints confidence with 3 decimals instead of
+  float32 noise such as `0.9700000286102295` (review 4, cosmetic).
 - The Windows run's quickstart script cloned into `~/fleetml` after
   `rm -rf fleetml`; on a case-insensitive file system that is a checkout at
   `~/fleetML`. It now clones into a directory it creates with `mktemp` and

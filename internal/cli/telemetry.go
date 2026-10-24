@@ -38,7 +38,7 @@ func newTelemetryEventsCmd() *cobra.Command {
 				rows = append(rows, []string{
 					fmt.Sprint(e["event_type"]),
 					fmt.Sprint(e["latency_ms"]),
-					fmt.Sprint(e["confidence_score"]),
+					confidence(e["confidence_score"]),
 					fmt.Sprint(e["error_message"]),
 				})
 			}
@@ -70,4 +70,13 @@ func newTelemetrySummaryCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&byClass, "by-class", false, "Break down by device class")
 	return cmd
+}
+
+// confidence prints a confidence score with 3 decimals: devices send float32,
+// so 0.97 arrives as 0.9700000286102295.
+func confidence(v interface{}) string {
+	if f, ok := v.(float64); ok {
+		return fmt.Sprintf("%.3f", f)
+	}
+	return fmt.Sprint(v)
 }

@@ -3,7 +3,9 @@ package rest
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -33,6 +35,9 @@ func respondList(c *gin.Context, data interface{}, total, limit, offset int) {
 }
 
 func respondError(c *gin.Context, status int, code, message string) {
+	if code != "INTERNAL_ERROR" {
+		message = publicMessage(message)
+	}
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    code,
@@ -72,6 +77,57 @@ func handleServiceError(c *gin.Context, err error) {
 	default:
 		internalError(c, err, "An internal error occurred")
 	}
+}
+
+// internalFrame is the "repo.Method" prefix the repositories put on their
+// errors, such as "project.GetByID" or "enrollmentKey.Rotate".
+var internalFrame = regexp.MustCompile(`^([a-z][A-Za-z]*)\.[A-Z][A-Za-z]*$`)
+
+// publicMessage is the error text a client sees: the message without the
+// internal "repo.Method:" frames, with the frame's noun kept where the rest
+// would not say what was not found or already exists:
+// "project.GetByID: not found" -> "project not found",
+// `project.Create: already exists: slug "x"` -> `project already exists: slug "x"`.
+func publicMessage(message string) string {
+	parts := strings.Split(message, ": ")
+	noun := ""
+	kept := parts[:0]
+	for _, p := range parts {
+		if m := internalFrame.FindStringSubmatch(p); m != nil {
+			if noun == "" {
+				noun = frameNoun(m[1])
+			}
+			continue
+		}
+		kept = append(kept, p)
+	}
+	out := strings.Join(kept, ": ")
+	if noun != "" && (out == "not found" || strings.HasPrefix(out, "not found: ") || strings.HasPrefix(out, "already exists")) {
+		out = noun + " " + out
+	}
+	if out == "" {
+		return message
+	}
+	return out
+}
+
+// frameNoun turns a repository name into words: "enrollmentKey" -> "enrollment key".
+func frameNoun(repo string) string {
+	repo = strings.TrimSuffix(repo, "Adapter")
+	var b strings.Builder
+	for i, r := range repo {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte(' ')
+			}
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	if b.String() == "api key" {
+		return "API key"
+	}
+	return b.String()
 }
 
 func parseUUID(c *gin.Context, param string) (uuid.UUID, bool) {

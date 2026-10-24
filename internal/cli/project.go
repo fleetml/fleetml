@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -88,13 +90,92 @@ func newProjectGetCmd() *cobra.Command {
 
 func newProjectDeleteCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "delete [project-id]", Short: "Delete a project", Args: cobra.ExactArgs(1),
+		Use:   "delete [project-id]",
+		Short: "Delete a project and everything in it",
+		Long: "Delete a project with its models, versions, deployments, experiments,\n" +
+			"enrollment keys and devices, and the telemetry of its versions.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			var project map[string]interface{}
+			if err := client.Get("/api/v1/projects/"+args[0], &project); err != nil {
+				return err
+			}
+			contents := projectContents(args[0])
 			if err := client.Delete("/api/v1/projects/" + args[0]); err != nil {
 				return err
 			}
-			PrintSuccess("Project deleted")
+			if outputFmt == "json" {
+				PrintJSON(map[string]interface{}{"deleted": project["id"], "removed": contents})
+				return nil
+			}
+			var parts []string
+			for _, c := range contents {
+				parts = append(parts, plural(c.Count, c.Name))
+			}
+			PrintSuccess(fmt.Sprintf("Project %s deleted, with %s and their telemetry", project["name"], strings.Join(parts, ", ")))
 			return nil
 		},
 	}
+}
+
+// projectCount is how many of one kind of thing a project holds.
+type projectCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// projectContents counts what deleting a project removes, from the list
+// routes' totals. A count it cannot read is left out.
+func projectContents(id string) []projectCount {
+	total := func(path string) (int, bool) {
+		raw, err := client.GetRaw(path)
+		if err != nil {
+			return 0, false
+		}
+		var resp struct {
+			Data       json.RawMessage `json:"data"`
+			Pagination *struct {
+				Total int `json:"total"`
+			} `json:"pagination"`
+		}
+		if json.Unmarshal(raw, &resp) != nil {
+			return 0, false
+		}
+		if resp.Pagination != nil {
+			return resp.Pagination.Total, true
+		}
+		var items []json.RawMessage // a list without pagination
+		if json.Unmarshal(resp.Data, &items) != nil {
+			return 0, false
+		}
+		return len(items), true
+	}
+	var out []projectCount
+	add := func(name, path string) {
+		if n, ok := total(path); ok {
+			out = append(out, projectCount{name, n})
+		}
+	}
+	var models []map[string]interface{}
+	if err := client.Get("/api/v1/projects/"+id+"/models?limit=1000", &models); err == nil {
+		out = append(out, projectCount{"model", len(models)})
+		versions := 0
+		for _, m := range models {
+			n, _ := total(fmt.Sprintf("/api/v1/models/%v/versions?limit=1", m["id"]))
+			versions += n
+		}
+		out = append(out, projectCount{"version", versions})
+	}
+	add("deployment", "/api/v1/deployments?limit=1&project_id="+id)
+	add("experiment", "/api/v1/experiments?limit=1&project_id="+id)
+	add("device", "/api/v1/devices?limit=1&project_id="+id)
+	add("enrollment key", "/api/v1/projects/"+id+"/enrollment-keys")
+	return out
+}
+
+func plural(n int, name string) string {
+	if n == 1 {
+		return "1 " + name
+	}
+	return fmt.Sprintf("%d %ss", n, name)
 }

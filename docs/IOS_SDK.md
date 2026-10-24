@@ -309,7 +309,7 @@ struct MyApp: App {
    with the key your team gave you or the quickstart's `$FLEETML_ADMIN_KEY`
    (which key does what: [Android's list](ANDROID_SDK.md#publish-and-deploy-with-the-cli)
    applies here too). Project names are unique on a server:
-   `already exists: slug "myapp-ios"` means the project is there from an
+   `project already exists: slug "myapp-ios"` means the project is there from an
    earlier run, so pick another name.
 
    ```bash
