@@ -129,7 +129,8 @@ class EnrollmentKey:
 @dataclass(frozen=True)
 class Deployment:
     """A rollout. ``status`` is PENDING, ROLLING_OUT, PAUSED, COMPLETE,
-    ROLLED_BACK or CANCELLED; ``strategy`` is ALL_AT_ONCE, CANARY or ROLLING."""
+    ROLLED_BACK, CANCELLED or FAILED; ``strategy`` is ALL_AT_ONCE, CANARY or
+    ROLLING."""
 
     id: str
     project_id: str
@@ -161,6 +162,36 @@ class Deployment:
 
 
 @dataclass(frozen=True)
+class DeploymentHealth:
+    """A deployment's health gate now: whether its current stage is healthy
+    (``reason`` says why not), whether it is held, and whether it may move on."""
+
+    deployment_id: str
+    status: str
+    current_stage: int
+    healthy: bool
+    hold: bool
+    reason: str
+    can_progress: bool
+    cohort_devices: int
+    raw: Dict[str, Any] = field(repr=False, compare=False)
+
+    @classmethod
+    def from_api(cls, d: Mapping[str, Any]) -> DeploymentHealth:
+        return cls(
+            _str(d, "deployment_id"),
+            _str(d, "status"),
+            _int(d, "current_stage"),
+            bool(d.get("healthy")),
+            bool(d.get("hold")),
+            _str(d, "reason"),
+            bool(d.get("can_progress")),
+            _int(d, "cohort_devices"),
+            dict(d),
+        )
+
+
+@dataclass(frozen=True)
 class Device:
     id: str
     project_id: Optional[str]
@@ -185,6 +216,36 @@ class Device:
             _str(d, "agent_version"),
             _labels(d, "labels"),
             _opt_str(d, "last_seen_at"),
+            dict(d),
+        )
+
+
+@dataclass(frozen=True)
+class TelemetryEvent:
+    """One event a device reported. ``event_type`` is INFERENCE, MODEL_LOAD,
+    MODEL_LOAD_FAILED, OOM, PREDICTION_DRIFT, ERROR or SIGNATURE_INVALID."""
+
+    device_id: str
+    model_version_id: str
+    event_type: str
+    latency_ms: int
+    confidence_score: float
+    prediction_label: str
+    error_message: str
+    recorded_at: str
+    raw: Dict[str, Any] = field(repr=False, compare=False)
+
+    @classmethod
+    def from_api(cls, d: Mapping[str, Any]) -> TelemetryEvent:
+        return cls(
+            _str(d, "device_id"),
+            _str(d, "model_version_id"),
+            _str(d, "event_type"),
+            _int(d, "latency_ms"),
+            _float(d, "confidence_score"),
+            _str(d, "prediction_label"),
+            _str(d, "error_message"),
+            _str(d, "recorded_at"),
             dict(d),
         )
 

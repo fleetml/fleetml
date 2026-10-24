@@ -507,3 +507,111 @@ def test_license_matches_the_repository() -> None:
     for name in ("LICENSE", "NOTICE"):
         if (repo / name).exists():
             assert (here / name).read_bytes() == (repo / name).read_bytes(), f"python/{name} differs from {name}"
+
+
+# The lifecycle methods added for the fourth developer review: each is one
+# REST call, as the CLI makes it.
+
+
+def test_project_delete_and_model_get(fake: Fake) -> None:
+    fake.on("DELETE", "/api/v1/projects/p1", httpx.Response(204))
+    fake.on("GET", "/api/v1/models/m1", data(MODEL))
+    fm = fake.client()
+    fm.projects.delete("p1")
+    assert (fake.requests[-1].method, fake.requests[-1].url.path) == ("DELETE", "/api/v1/projects/p1")
+    assert fm.models.get("m1").name == "iris"
+
+
+def test_version_promote_walks_the_lifecycle(fake: Fake) -> None:
+    statuses: List[str] = []
+
+    def patch(request: httpx.Request) -> httpx.Response:
+        statuses.append(json.loads(request.content)["status"])
+        return data({**VERSION, "status": statuses[-1]})
+
+    fake.on("GET", "/api/v1/versions/v1", data(VERSION))  # DRAFT
+    fake.on("PATCH", "/api/v1/versions/v1/status", patch)
+    fm = fake.client()
+    assert fm.versions.promote("v1").status == "ACTIVE"
+    assert statuses == ["STAGED", "ACTIVE"]
+    statuses.clear()
+    assert fm.versions.promote("v1", status="ARCHIVED").status == "ARCHIVED"
+    assert statuses == ["ARCHIVED"]
+
+
+def test_deployment_lifecycle(fake: Fake) -> None:
+    for action, status in (
+        ("pause", "PAUSED"),
+        ("resume", "ROLLING_OUT"),
+        ("cancel", "CANCELLED"),
+        ("progress", "ROLLING_OUT"),
+    ):
+        fake.on("POST", f"/api/v1/deployments/d1/{action}", data({**DEPLOYMENT, "status": status}))
+    fake.on("GET", "/api/v1/deployments/d1/health", data({
+        "deployment_id": "d1", "status": "ROLLING_OUT", "current_stage": 1, "healthy": False, "hold": True,
+        "reason": "error rate 40.00% exceeds threshold 5.00%", "can_progress": False, "cohort_devices": 5,
+    }))  # fmt: skip
+    fake.on("GET", "/api/v1/deployments", data([DEPLOYMENT]))
+    fm = fake.client()
+    assert fm.deployments.pause("d1").status == "PAUSED"
+    assert fm.deployments.resume("d1").status == "ROLLING_OUT"
+    assert fm.deployments.cancel("d1").status == "CANCELLED"
+    assert fm.deployments.progress("d1").status == "ROLLING_OUT"
+    h = fm.deployments.health("d1")
+    assert (h.healthy, h.hold, h.can_progress, h.cohort_devices, h.current_stage) == (False, True, False, 5, 1)
+    assert "error rate" in h.reason
+    fm.deployments.list(project="p1", limit=5)
+    assert dict(fake.requests[-1].url.params) == {"limit": "5", "project_id": "p1"}
+
+
+def test_devices_by_project_and_get(fake: Fake) -> None:
+    device = {"id": "dev1", "project_id": "p1", "os": "LINUX", "labels": {"app": "demo"}}
+    fake.on("GET", "/api/v1/devices", data([device]))
+    fake.on("GET", "/api/v1/devices/dev1", data(device))
+    fm = fake.client()
+    assert [d.id for d in fm.devices.list(project="p1", labels={"app": "demo"})] == ["dev1"]
+    assert dict(fake.requests[-1].url.params) == {"project_id": "p1", "label.app": "demo"}
+    assert fm.devices.get("dev1").project_id == "p1"
+
+
+def test_telemetry_events(fake: Fake) -> None:
+    event = {"device_id": "dev1", "model_version_id": "v1", "event_type": "INFERENCE", "latency_ms": 12,
+             "confidence_score": 0.9700000286102295, "prediction_label": "virginica", "error_message": "",
+             "recorded_at": "2026-10-24T00:00:00Z"}  # fmt: skip
+    fake.on("GET", "/api/v1/telemetry/events", data([event]))
+    fm = fake.client()
+    [e] = fm.telemetry.events(version_id="v1", device_id="dev1", event_type="INFERENCE", limit=10)
+    assert (e.event_type, e.latency_ms, e.prediction_label) == ("INFERENCE", 12, "virginica")
+    assert round(e.confidence_score, 3) == 0.97
+    assert dict(fake.requests[-1].url.params) == {
+        "limit": "10", "model_version_id": "v1", "device_id": "dev1", "event_type": "INFERENCE",
+    }  # fmt: skip
+
+
+def test_experiment_lifecycle(fake: Fake) -> None:
+    exp = {"id": "e1", "project_id": "p1", "name": "ab", "status": "RUNNING", "control_version_id": "v1",
+           "treatment_version_id": "v2"}  # fmt: skip
+    fake.on("GET", "/api/v1/experiments/e1", data(exp))
+    fake.on("GET", "/api/v1/experiments", data([exp]))
+    for action, status in (
+        ("pause", "PAUSED"),
+        ("resume", "RUNNING"),
+        ("conclude", "CONCLUDED"),
+        ("cancel", "CANCELLED"),
+    ):
+        fake.on("POST", f"/api/v1/experiments/e1/{action}", data({**exp, "status": status}))
+    fm = fake.client()
+    assert fm.experiments.get("e1").name == "ab"
+    assert [e.id for e in fm.experiments.list(project="p1")] == ["e1"]
+    assert dict(fake.requests[-1].url.params) == {"project_id": "p1"}
+    assert fm.experiments.pause("e1").status == "PAUSED"
+    assert fm.experiments.resume("e1").status == "RUNNING"
+    assert fm.experiments.conclude("e1", "v2", note="faster").status == "CONCLUDED"
+    assert fake.body() == {"winner_version_id": "v2", "note": "faster"}
+    assert fm.experiments.cancel("e1").status == "CANCELLED"
+
+
+def test_drift_status(fake: Fake) -> None:
+    result = {"id": "r1", "model_version_id": "v1", "metric": "latency", "psi_value": 0.3, "severity": "CRITICAL"}
+    fake.on("GET", "/api/v1/drift/v1", data([result]))
+    assert [(r.metric, r.severity) for r in fake.client().drift.status("v1")] == [("latency", "CRITICAL")]

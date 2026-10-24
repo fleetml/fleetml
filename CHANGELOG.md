@@ -9,6 +9,14 @@ change APIs).
 
 ### Added
 
+- Python client: `project=` on `devices.list`, `deployments.list` and
+  `experiments.list`; `projects.delete`, `models.get`, `versions.promote`
+  (through STAGED from DRAFT), `deployments.pause`, `resume`, `cancel`,
+  `progress` and `health` (`DeploymentHealth`), `devices.get`,
+  `telemetry.events` (`TelemetryEvent`), `experiments.get`, `list`, `pause`,
+  `resume`, `conclude` and `cancel`, and `drift.status`, each one REST call
+  as the CLI makes it. The live test calls every one of them and deletes
+  its projects (review 4, bug 8).
 - CI builds the Android sample app with `gradlew.bat` in PowerShell on
   `windows-latest` (the "Android sample app on Windows" job).
 - CI has a `Shell scripts` job: shellcheck on every shell script and
@@ -136,6 +144,14 @@ change APIs).
 
 ### Docs
 
+- Python client: the tour creates a project of its own name, prints the
+  simulator line with a seed of its own, counts the project's devices
+  (`project=`), and ends with a Clean up step that deletes the project; the
+  page says where the admin key comes from, that the package is typed,
+  that only server calls raise `FleetMLError`, and lists `INVALID_TRANSITION`,
+  the `FAILED` deployment status, drift's baseline and every new method. The
+  stale "`pip install fleetml` from 0.6.0" sentence is gone from the page and
+  from the package README (review 4, Python docs gaps).
 - Android guide, "From Windows": one linear path in PowerShell (Git for
   Windows, a clone, publish and deploy with `ConvertFrom-Json` so the
   enrollment key stays in one window, the three `adb reverse` lines,

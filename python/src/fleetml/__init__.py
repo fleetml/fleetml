@@ -10,6 +10,7 @@ from fleetml.errors import FleetMLError
 from fleetml.types import (
     ArmResult,
     Deployment,
+    DeploymentHealth,
     Device,
     DriftResult,
     EnrollmentKey,
@@ -17,6 +18,7 @@ from fleetml.types import (
     ExperimentResults,
     Model,
     Project,
+    TelemetryEvent,
     TelemetrySummary,
     Version,
 )
@@ -29,6 +31,7 @@ __all__ = [
     "TERMINAL_DEPLOYMENT_STATUSES",
     "ArmResult",
     "Deployment",
+    "DeploymentHealth",
     "Device",
     "DriftResult",
     "EnrollmentKey",
@@ -38,6 +41,7 @@ __all__ = [
     "FleetMLError",
     "Model",
     "Project",
+    "TelemetryEvent",
     "TelemetrySummary",
     "Version",
     "__version__",
