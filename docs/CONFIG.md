@@ -141,7 +141,9 @@ run next to the dev stack). It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
 (required),
 `FLEETML_ADMIN_KEY` (optional) and `S3_PUBLIC_ENDPOINT` (default
 `localhost:19100`; set it to the object store's public `host:port` when
-devices are not on this machine) from the shell.
+devices are not on this machine) from the shell: the quickstart saves all
+four in `~/.fleetml.env`, which every compose command on the stack needs
+sourced first ([Run FleetML](QUICKSTART.md#run-fleetml)).
 
 ## CLI
 

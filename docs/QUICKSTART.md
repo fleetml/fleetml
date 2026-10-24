@@ -45,6 +45,9 @@ file; `printf %s "$FLEETML_ADMIN_KEY" | pbcopy` puts it on the clipboard
 without printing it on macOS (`| clip.exe` in WSL, `| xclip -selection
 clipboard` on Linux).
 
+On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
+server instead, and the tour runs against it.
+
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. If nothing
@@ -336,9 +339,8 @@ If the simulator's shell was closed, start the simulator again there with the
 `SIM=$!` and that section's last line; `pgrep -f 'fleetml simulate'` shows
 whether one runs.
 
-From Python, the same steps run with the Python client (`pip install fleetml`
-from 0.6.0; until then `pip install ./python` from a clone); sections 1 to 3
-are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
+From Python, the same steps run with the Python client (`pip install fleetml`);
+sections 1 to 3 are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
 page.
 
 ### 1. Publish a model
@@ -364,7 +366,13 @@ then `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and a
 `Variant ID:` line: the ID of the file just uploaded (one version can have
 several variants, for example INT8 and FP16). If an upload fails (the object
 store unreachable, say), run the same push again: a variant that was never
-verified is replaced.
+verified is replaced. A new version starts as `DRAFT`, and stays so in the
+CLI and the dashboard while it is deployed: the status (DRAFT, STAGED,
+ACTIVE, ARCHIVED) is a label for you, and deployments do not need it.
+`fleetml push --promote` sets ACTIVE; for a version pushed without it,
+`fleetml ver promote <version ID> --status STAGED` and then
+`fleetml ver promote <version ID>` (ACTIVE is the default; the server
+allows DRAFT to STAGED to ACTIVE, one step at a time).
 
 An upload that does not match its declared sha256 is refused and never
 reaches a device. This one step uses the REST API with curl, because
@@ -375,9 +383,9 @@ refuses it (`ZEROS` is 64 zeros, a well-formed sha256 that no file has).
 ```bash
 H="Authorization: Bearer $FLEETML_API_KEY"
 ZEROS=0000000000000000000000000000000000000000000000000000000000000000
-OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$ZEROS\"}" localhost:18080/api/v1/versions/$V2/variants)
+OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$ZEROS\"}" $FLEETML_SERVER/api/v1/versions/$V2/variants)
 curl -s -o /dev/null -X PUT --data-binary @models/iris/iris_v1.tflite "$(echo "$OUT" | jq -r .data.upload_url)"
-curl -s -X POST -H "$H" localhost:18080/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
+curl -s -X POST -H "$H" $FLEETML_SERVER/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
 ```
 
 The finalize call answers `{"code":"INTEGRITY_ERROR","message":"..."}`.
@@ -536,9 +544,9 @@ be created, rolled back, cancelled and concluded there too.
 ### 7. Operations
 
 ```bash
-curl -s localhost:18080/livez; echo
-curl -s localhost:18080/readyz; echo
-curl -s localhost:18080/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
+curl -s $FLEETML_SERVER/livez; echo
+curl -s $FLEETML_SERVER/readyz; echo
+curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
 `/livez` answers `{"status":"ok"}`. The gRPC port also serves the standard
@@ -567,20 +575,79 @@ With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;
 Prometheus is then on `:19091` and scrapes the server on `:18080`.
 
+### Next: a real device
+
+The stack and the tour's project can stay: a real device enrolls into the
+same server, with an enrollment key of the project.
+
+- **An Android phone:** [On your phone](ANDROID_SDK.md#on-your-phone), over
+  USB first, with your own app or the sample app; from Windows,
+  [From Windows](ANDROID_SDK.md#from-windows).
+- **An iPhone:** [Your own app on an iPhone](IOS_SDK.md#your-own-app-on-an-iphone).
+- **A Linux machine**, or a container on this one: the
+  [Linux device agent](LINUX_AGENT.md), with
+  [Server on another machine](LINUX_AGENT.md#server-on-another-machine) for
+  what it needs from this stack.
+- **A notebook or CI:** the same steps with the [Python client](PYTHON_CLIENT.md).
+
+A phone or a second machine downloads models from `S3_PUBLIC_ENDPOINT`,
+`localhost:19100` in `~/.fleetml.env`: the guides set it to the machine's
+LAN address there.
+
 ### Clean up
 
 ```bash
 kill $SIM
 docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
+rm -f ~/.fleetml.env /tmp/fleetml-sim.log
 ```
 
+`down -v` deletes the data: every project, model and device, and the admin
+key. Without `-v` only the containers go, and the next `up` finds the data
+again (keep `~/.fleetml.env` then: the stack needs the same secrets).
 `--profile observability` also removes Prometheus and Grafana from step 7;
-without it they keep running, and so do their network and Grafana's volume.
-Compose needs the two secrets for `down` too: from a new shell,
-`source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
+without it they keep running, and so does their network. The `rm` deletes
+the saved secrets and the simulator's log. The CLI (`~/.local/bin/fleetml`)
+and the two images (`docker image rm fleetml-prod-server fleetml-prod-dashboard`)
+stay until you remove them. Compose needs the secrets for `down` too: from a
+new shell, `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
+
+## Upgrading
+
+Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.7.0
+to 0.8.0 there are no breaking API changes (each version's "Changed" section
+lists what behaves differently), and the server applies new database
+migrations itself when it starts. Upgrade the server first, then the
+devices and the tools; each moves on its own:
+
+- **The compose stack**, in its clone, with the saved values:
+
+  ```bash
+  git fetch --tags && git checkout v0.8.0
+  source ~/.fleetml.env
+  docker compose -f deploy/docker-compose.prod.yml up -d --build
+  until curl -sf localhost:18080/readyz; do sleep 2; done; echo
+  ```
+
+  The projects, devices, telemetry and the admin key stay, and devices
+  reconnect by themselves. `git checkout main` instead follows the newest
+  code, ahead of the last release.
+- **The CLI:** the [Get the CLI](#get-the-cli) block again (it fetches the
+  latest release); `fleetml version` prints the version.
+- **An Android app:** the new version in
+  `implementation("dev.fleetml:fleetml-sdk:<version>")` ([Install](ANDROID_SDK.md#install)).
+- **An iOS app:** Xcode's File, Packages, Update to Latest Package Versions
+  (the rule "Up to Next Major Version" takes every 0.x release), or
+  `from: "<version>"` in `Package.swift` ([Install](IOS_SDK.md#install)).
+- **The Python client:** `pip install -U fleetml`.
+- **A Linux agent:** the new archive and `install.sh` again
+  ([Upgrade](LINUX_AGENT.md#upgrade)): it keeps the config and restarts the
+  running service.
+- **The Helm chart:** [Upgrading](../deploy/helm/fleetml/README.md#upgrading).
 
 ## Contact
 
 - Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
 - A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
 - Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
+- Bugs: [GitHub Issues](https://github.com/fleetml/fleetml/issues/new/choose), with the FleetML version and the command or log line that shows the problem.

@@ -144,6 +144,44 @@ change APIs).
 
 ### Docs
 
+- Quickstart: "Next: a real device" before Clean up (Android, iOS, the Linux
+  agent, Python); an "Upgrading" section for the stack (run as written from
+  a 0.7.0 stack with data and devices: data, the admin key and the devices
+  kept, migrations applied), the CLI, the SDKs, the agent and the chart;
+  Clean up says what `-v` deletes and removes the env file, and no longer
+  claims a Grafana volume; versions' DRAFT status and `push --promote` are
+  explained once; a Kubernetes pointer; the tour's curl lines use
+  `$FLEETML_SERVER` (review 4, docs gaps 3, 4 and 14).
+- README: `scripts/demo.sh` leaves the dev stack running and how to stop it;
+  links to Upgrading and the Linux agent. README, the quickstart, the guides
+  and the Python README: Contact names GitHub Issues for bugs; the stale
+  "`pip install fleetml` from 0.6.0" sentence is gone (review 4, docs gaps 6
+  and 13).
+- The device guides save `S3_PUBLIC_ENDPOINT` in `~/.fleetml.env` instead of
+  setting it for one command, and say what it changes for USB, the
+  emulator and the sample app (review 4, docs gap 1).
+- Android guide: keep the phone unlocked with the app in front; Publish and
+  deploy comes before On your phone; a new project from the command line
+  (AGP 8.5.0, Kotlin 1.9.24, Gradle 8.7; built as written against the SDK on
+  Maven Central); the first-run logcat matches the code (the background
+  line comes when the app goes to the background); the stale-settings note
+  and its error for a phone; `lifecycle-runtime-ktx` 2.8.7 with an AndroidX
+  activity; TensorFlow Lite 2.17.0 throughout; the lock screen in the
+  production checklist (review 4, docs gaps 2 and 9).
+- iOS guide: the team ID from a terminal (the certificate's `OU`, not the ID
+  `find-identity` prints); keep the phone unlocked for steps 6 to 8; the
+  closed-port offline test on the phone; `fleetml telemetry events --device`
+  as the telemetry check; `log collect` needs root, Console.app does not;
+  `Secrets.xcconfig` written 0600; `UIRequiresFullScreen` in `project.yml`
+  (the device build's orientation warning is gone); the trust error after a
+  free-team rebuild; an unavailable wireless phone; a simulator of your own
+  (review 4, docs gaps 2 and 8).
+- Linux agent guide: `apt-get install -y curl ca-certificates` for images
+  without curl; `iris` in the telemetry example; an Upgrade section
+  (`install.sh` again keeps the config and state and restarts the agent; a
+  0.8.0 agent works with a 0.7.0 server); "Try it locally" names what it
+  needs, the compose project it starts and the variables that move it; the
+  archive's LICENSE and NOTICE (review 4, docs gap 10).
 - Python client: the tour creates a project of its own name, prints the
   simulator line with a seed of its own, counts the project's devices
   (`project=`), and ends with a Clean up step that deletes the project; the

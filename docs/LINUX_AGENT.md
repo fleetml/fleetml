@@ -20,8 +20,8 @@ Every [GitHub release](https://github.com/fleetml/fleetml/releases) has the
 agent for Linux as `fleetml-agent-linux-amd64.tar.gz` and
 `fleetml-agent-linux-arm64.tar.gz`, listed in `SHA256SUMS`. Each archive holds
 the static binary `fleetml-agent`, the installer `install.sh`,
-`config.example.yaml` and `fleetml-agent.service`. On the machine, the latest
-release, checked, then installed as root:
+`config.example.yaml`, `fleetml-agent.service`, `LICENSE` and `NOTICE`. On
+the machine, the latest release, checked, then installed as root:
 
 ```bash
 ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
@@ -33,9 +33,11 @@ sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
 fleetml-agent -version
 ```
 
-On a minimal image without `curl`, `wget -q` with the same URLs downloads
-the two files, or copy them over from another machine; in a root shell
-without `sudo`, leave `sudo` out. `sha256sum -c` prints
+Debian and Ubuntu images often have neither `curl` nor `wget`
+(`ubuntu:24.04` has neither): `apt-get update && apt-get install -y curl ca-certificates`
+first. On another minimal image, `wget -q` with the same URLs downloads the
+two files, or copy them over from another machine; in a root shell without
+`sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
 `fleetml-agent 0.7.0`. To build the agent from source instead, `make
@@ -99,12 +101,13 @@ exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /
 ```
 
 and `docker run --init` (or `tini`/`dumb-init` as the entrypoint) reaps
-what is left. To try the agent in a throwaway Ubuntu container, from the
-folder that holds the unpacked `fleetml-agent` folder, with the server's
-address and an enrollment key from [Connect and verify](#connect-and-verify)
-(the third `sed` expression is the one from [Server on another
-machine](#server-on-another-machine); leave it out when the server's
-`S3_PUBLIC_ENDPOINT` is reachable):
+what is left. To try the agent in a throwaway Ubuntu container, first run the
+CLI block of [Connect and verify](#connect-and-verify) on the machine with
+the CLI (it prints the enrollment key and creates the deployment), then,
+from the folder that holds the unpacked `fleetml-agent` folder, with the
+server's address and that key (the third `sed` expression is the one from
+[Server on another machine](#server-on-another-machine); leave it out when
+the server's `S3_PUBLIC_ENDPOINT` is reachable):
 
 ```bash
 docker run -d --init --name fleetml-agent -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" \
@@ -140,11 +143,15 @@ public address, `S3_PUBLIC_ENDPOINT`. In the quickstart's compose stack that
 is `localhost:19100`, which only the server's own machine reaches. There are
 two ways out:
 
-- **On the server**, whoever runs it starts the stack with an address of the
-  server that this machine reaches:
+- **On the server**, whoever runs it saves an address of the server that
+  this machine reaches as the stack's `S3_PUBLIC_ENDPOINT` (in the
+  quickstart's `~/.fleetml.env`, so every later compose command keeps it) and
+  restarts the server with it, in the stack's clone:
 
   ```bash
-  S3_PUBLIC_ENDPOINT=<server address>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+  sed -i.bak 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<server address>:19100/' ~/.fleetml.env && rm ~/.fleetml.env.bak
+  source ~/.fleetml.env
+  docker compose -f deploy/docker-compose.prod.yml up -d
   ```
 
   On the server's machine, this shows the value in use:
@@ -503,15 +510,16 @@ reports inferences over HTTP on the machine, without a client library:
 
 ```bash
 curl -s -X POST localhost:9601/v1/events -H 'Content-Type: application/json' \
-  -d '{"model":"detector","latency_ms":12,"confidence":0.93,"label":"person"}'
+  -d '{"model":"iris","latency_ms":12,"confidence":0.93,"label":"virginica"}'
 curl -s localhost:9601/v1/models
 ```
 
-The first call answers `{"accepted":1,"rejected":0}`; the second lists the
-active models with the same `model` key and their `current` links:
+`model` is the model's name, `iris` in the walkthrough above. The first call
+answers `{"accepted":1,"rejected":0}`; the second lists the active models
+with the same `model` key and their `current` links:
 
 ```json
-[{"model":"detector","version":"2.0.0","version_id":"<version ID>","path":"/var/lib/fleetml-agent/models/detector/current"}]
+[{"model":"iris","version":"1.0.0","version_id":"<version ID>","path":"/var/lib/fleetml-agent/models/iris/current"}]
 ```
 
 `POST /v1/events` takes one event or an array; set `"error"` to a message for
@@ -526,7 +534,7 @@ An event the agent cannot attribute is rejected, and the answer says why, one
 reason per rejected event (the first one is also logged at INFO):
 
 ```json
-{"accepted":0,"rejected":1,"rejected_reasons":["event 0: unknown model \"foo\" (active models: detector)"]}
+{"accepted":0,"rejected":1,"rejected_reasons":["event 0: unknown model \"foo\" (active models: iris)"]}
 ```
 
 On the server, wherever the CLI reaches it, the events arrive with the next
@@ -567,18 +575,41 @@ about 16 minutes. Stopping the agent while the server is unreachable takes
 at most 5 seconds: the last telemetry flush is bounded, and what it cannot
 send stays queued for the next start.
 
+## Upgrade
+
+On each machine, the new release's archive (the Install block, which takes
+the latest release), then `install.sh` again:
+
+```bash
+sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
+fleetml-agent -version
+```
+
+It replaces the binary, keeps `/etc/fleetml-agent/config.yaml` and the state
+folder (the device's identity, its models and queued telemetry), and
+restarts a running service, so the new version runs at once. Without
+systemd, restart the agent under its supervisor. Upgrade the server first,
+as with every release; a 0.8.0 agent also works with a 0.7.0 server (it
+registered and heartbeated against one without an error).
+
 ## Try it locally
+
+In a clone, with Go 1.26 or later, Docker, curl and jq:
 
 ```bash
 ./scripts/demo-agent.sh
 ```
 
-starts a server on the dev stack and four agents on this machine (the agent
-also builds for macOS, for local testing), each with a stand-in inference
-process that posts to its local endpoint. A canary of a model that fails at
-inference trips the health gate and rolls back, and the canary boxes switch
-their `current` link back to the last-known-good version. It is the recording
-at the top of the [README](../README.md).
+starts the dev stack (compose project `fleetml`, Postgres, SeaweedFS and
+NATS on ports 15432, 19000 and 14222), a server on it and four agents on this
+machine (the agent also builds for macOS, for local testing), each with a
+stand-in inference process that posts to its local endpoint. A canary of a
+model that fails at inference trips the health gate and rolls back, and the
+canary boxes switch their `current` link back to the last-known-good
+version. It is the recording at the top of the [README](../README.md). It
+leaves the dev stack running (`docker compose -f deploy/docker-compose.yml down`
+stops it). Where that project or those ports are taken, give it others:
+`COMPOSE_PROJECT_NAME=fleetml-try FLEETML_PG_PORT=25432 FLEETML_S3_PORT=29000 FLEETML_NATS_PORT=24222 FLEETML_NATS_MONITOR_PORT=28222 ./scripts/demo-agent.sh`.
 
 ## Verified
 
@@ -616,3 +647,4 @@ is accepted during the rotation's grace period and rejected after it.
 - Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
 - A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
 - Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
+- Bugs: [GitHub Issues](https://github.com/fleetml/fleetml/issues/new/choose), with the FleetML version and the command or log line that shows the problem.
