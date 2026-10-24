@@ -127,7 +127,7 @@ func newPushCmd() *cobra.Command {
 				reader = io.TeeReader(f, &ProgressWriter{Total: fileSize})
 			}
 			if err := client.PutRaw(uploadURL, reader, fileSize); err != nil {
-				return fmt.Errorf("upload failed: %w", err)
+				return err // "upload failed: ..."
 			}
 			if progress {
 				fmt.Fprintln(os.Stderr) // newline after progress bar

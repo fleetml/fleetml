@@ -18,6 +18,7 @@ type DriftHandler struct {
 	detector *drift.Detector
 	store    drift.ResultStore
 	features *drift.Adapter
+	versions versionLookup
 	logger   *slog.Logger
 }
 
@@ -26,14 +27,21 @@ func NewDriftHandler(detector *drift.Detector, store drift.ResultStore, logger *
 	return &DriftHandler{detector: detector, store: store, logger: logger}
 }
 
+// WithVersions makes the per-version routes answer 404 for an unknown version.
+func (h *DriftHandler) WithVersions(v versionLookup) *DriftHandler {
+	h.versions = v
+	return h
+}
+
 // RegisterRoutes registers drift routes.
 func (h *DriftHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.GET("/drift/:model_version_id", h.getLatest)
-	rg.POST("/drift/:model_version_id/check", h.check)
-	rg.GET("/drift/:model_version_id/history", h.getHistory)
+	known := requireVersion(h.versions)
+	rg.GET("/drift/:model_version_id", known, h.getLatest)
+	rg.POST("/drift/:model_version_id/check", known, h.check)
+	rg.GET("/drift/:model_version_id/history", known, h.getHistory)
 	if a, ok := h.store.(*drift.Adapter); ok {
 		h.features = a
-		rg.GET("/drift/:model_version_id/points", h.getPoints)
+		rg.GET("/drift/:model_version_id/points", known, h.getPoints)
 		rg.GET("/models/:model_id/features", h.getFeatures)
 		rg.PUT("/models/:model_id/features", h.putFeatures)
 	}

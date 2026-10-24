@@ -119,14 +119,19 @@ func (s *Server) registerRoutes() {
 	if s.orchestrator != nil && s.deviceService != nil && s.deploySvc != nil {
 		NewIntelligenceHandler(s.orchestrator, s.deviceService, s.deploySvc, s.logger).RegisterRoutes(api)
 	}
+	// The per-version telemetry and drift routes answer 404 for an unknown version.
+	var versions versionLookup
+	if s.service != nil {
+		versions = s.service
+	}
 	if s.telemetrySvc != nil {
-		NewTelemetryHandler(s.telemetrySvc, s.logger).RegisterRoutes(api)
+		NewTelemetryHandler(s.telemetrySvc, s.logger).WithVersions(versions).RegisterRoutes(api)
 	}
 	if s.experimentSvc != nil {
 		NewExperimentHandler(s.experimentSvc, s.logger).RegisterRoutes(api)
 	}
 	if s.driftDetector != nil && s.driftStore != nil {
-		NewDriftHandler(s.driftDetector, s.driftStore, s.logger).RegisterRoutes(api)
+		NewDriftHandler(s.driftDetector, s.driftStore, s.logger).WithVersions(versions).RegisterRoutes(api)
 	}
 }
 

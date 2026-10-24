@@ -75,11 +75,12 @@ services:
       S3_BUCKET: fleetml-models
       S3_USE_SSL: "false"
       NATS_URL: nats://nats:4222
-      # Required, at least 32 characters: export JWT_SECRET=$(openssl rand -base64 32)
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to at least 32 random characters, e.g. export JWT_SECRET=$$(openssl rand -base64 32)}
+      # Required, at least 32 characters. docs/QUICKSTART.md "Run FleetML"
+      # generates it once into ~/.fleetml.env; source that file in every shell.
+      JWT_SECRET: ${JWT_SECRET:?source ~/.fleetml.env (the values you saved at first start); never generate new ones for an existing stack, see docs/QUICKSTART.md "Run FleetML"}
       # Required, at least 32 characters, different from JWT_SECRET; keep it safe:
-      # it encrypts the artifact signing keys. export SIGNING_MASTER_KEY=$(openssl rand -base64 32)
-      SIGNING_MASTER_KEY: ${SIGNING_MASTER_KEY:?set SIGNING_MASTER_KEY to at least 32 random characters, e.g. export SIGNING_MASTER_KEY=$$(openssl rand -base64 32)}
+      # it encrypts the artifact signing keys, and a new one cannot read them.
+      SIGNING_MASTER_KEY: ${SIGNING_MASTER_KEY:?source ~/.fleetml.env (the values you saved at first start); never generate new ones for an existing stack, see docs/QUICKSTART.md "Run FleetML"}
       GRPC_PORT: "19090"
       REST_PORT: "18080"
       LOG_LEVEL: info

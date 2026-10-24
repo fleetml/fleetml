@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { cancelDeployment, createDeployment, getDeployments, pauseDeployment, resumeDeployment, rollbackDeployment, startDeployment, type NewDeployment } from '../api/client'
+import { cancelDeployment, createDeployment, getDeployments, pauseDeployment, resumeDeployment, rollbackDeployment, startDeployment, PAGE_SIZE, type NewDeployment } from '../api/client'
 import type { Deployment } from '../types/api'
 import { useCatalog, type Catalog } from '../hooks/useCatalog'
-import { Button, Card, ConfirmDialog, Field, Modal, PageHeader, RowAction, Select, StatusBadge, Table, TextInput, errorMessage, formatLabels, parseLabels, shortDate } from '../components/ui'
+import { Button, Card, ConfirmDialog, Field, Modal, PageHeader, Pager, RowAction, Select, StatusBadge, Table, TextInput, errorMessage, formatLabels, parseLabels, shortDate } from '../components/ui'
 
 function progress(d: Deployment): string {
   if (d.strategy === 'CANARY' && d.canary_stages?.length) {
@@ -123,6 +123,8 @@ export default function Deployments() {
   const catalog = useCatalog()
   const [params, setParams] = useSearchParams()
   const [deps, setDeps] = useState<Deployment[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [error, setError] = useState('')
   const [pending, setPending] = useState<Pending | null>(null)
   const [reason, setReason] = useState('')
@@ -130,12 +132,12 @@ export default function Deployments() {
   const newVersion = params.get('new')
   const [creating, setCreating] = useState(newVersion !== null)
 
-  const reload = () => getDeployments().then(d => setDeps(d || [])).catch(e => setError(errorMessage(e)))
+  const reload = () => getDeployments(offset).then(p => { setDeps(p.items); setTotal(p.total) }).catch(e => setError(errorMessage(e)))
   useEffect(() => {
     reload()
     const t = setInterval(reload, 5000)
     return () => clearInterval(t)
-  }, [])
+  }, [offset])
 
   const act = (fn: () => Promise<unknown>) => fn().then(reload).catch(e => setError(errorMessage(e)))
   const closeForm = () => { setCreating(false); if (newVersion !== null) setParams({}) }
@@ -152,6 +154,7 @@ export default function Deployments() {
   }
   const ask = (kind: Pending['kind'], d: Deployment) => { setPending({ kind, d }); setReason(''); setDialogError('') }
   const name = (d: Deployment) => catalog.byVersionId[d.model_version_id]?.label || d.name || d.model_version_id.slice(0, 8)
+  const project = (d: Deployment) => catalog.projects.find(p => p.id === d.project_id)?.name || d.project_id.slice(0, 8)
   const actions = (d: Deployment) => (
     <>
       {d.status === 'PENDING' && <RowAction onClick={() => act(() => startDeployment(d.id))}>Start</RowAction>}
@@ -166,10 +169,10 @@ export default function Deployments() {
     <div>
       <PageHeader title="Deployments" action={<Button onClick={() => setCreating(true)}>New deployment</Button>} />
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-      <Table head={['Model', 'Strategy', 'Status', 'Progress', 'Target', 'Created', '']} empty={deps.length === 0 ? 'No deployments' : undefined}
+      <Table head={['Model', 'Project', 'Strategy', 'Status', 'Progress', 'Target', 'Created', '']} empty={deps.length === 0 ? 'No deployments' : undefined}
         mobile={deps.map(d => (
           <Card key={d.id} title={name(d)} subtitle={d.name !== name(d) ? d.name : undefined} badge={<StatusBadge status={d.status} />}
-            lines={[['Strategy', d.strategy.replace(/_/g, ' ') + (d.urgent ? ' (urgent)' : '')], ['Progress', progress(d)], ['Target', formatLabels(d.target_selector)], ['Created', shortDate(d.created_at)],
+            lines={[['Project', project(d)], ['Strategy', d.strategy.replace(/_/g, ' ') + (d.urgent ? ' (urgent)' : '')], ['Progress', progress(d)], ['Target', formatLabels(d.target_selector)], ['Created', shortDate(d.created_at)],
               ...(d.rollback_reason ? [['Reason', d.rollback_reason] as [string, string]] : [])]}
             actions={actions(d)} />
         ))}>
@@ -179,6 +182,7 @@ export default function Deployments() {
               {name(d)}
               {d.name && d.name !== name(d) && <div className="text-xs font-normal text-gray-500">{d.name}</div>}
             </td>
+            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{project(d)}</td>
             <td className="px-4 py-3 text-sm text-gray-700">
               {d.strategy.replace(/_/g, ' ')}
               {d.urgent && <div className="text-xs font-medium text-amber-700">urgent</div>}
@@ -194,6 +198,7 @@ export default function Deployments() {
           </tr>
         ))}
       </Table>
+      <Pager offset={offset} pageSize={PAGE_SIZE} total={total} onChange={setOffset} />
 
       {creating && (
         <NewDeploymentForm catalog={catalog} initialVersion={newVersion || ''} onClose={closeForm}

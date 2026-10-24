@@ -5,10 +5,27 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-24
+
+The fixes from the fourth developer review (seven reviewers, a real Android
+phone and iPhone among them), with its bug numbers, and dependency and
+toolchain updates. No breaking API changes; see
+[Upgrading](docs/QUICKSTART.md#upgrading).
 
 ### Added
 
+- The Android SDK 0.8.0 is on Maven Central and the Python client 0.8.0 on
+  PyPI (`pip install fleetml`).
+- Python client: `project=` on `devices.list`, `deployments.list` and
+  `experiments.list`; `projects.delete`, `models.get`, `versions.promote`
+  (through STAGED from DRAFT), `deployments.pause`, `resume`, `cancel`,
+  `progress` and `health` (`DeploymentHealth`), `devices.get`,
+  `telemetry.events` (`TelemetryEvent`), `experiments.get`, `list`, `pause`,
+  `resume`, `conclude` and `cancel`, and `drift.status`, each one REST call
+  as the CLI makes it. The live test calls every one of them and deletes
+  its projects (review 4, bug 8).
+- CI builds the Android sample app with `gradlew.bat` in PowerShell on
+  `windows-latest` (the "Android sample app on Windows" job).
 - CI has a `Shell scripts` job: shellcheck on every shell script and
   actionlint on the workflows.
 - iOS SDK: a unit test asserts `FleetML.sdkVersion`, as the Python client's
@@ -16,6 +33,12 @@ change APIs).
 
 ### Changed
 
+- Deleting a project also deletes its devices; before, a project without
+  telemetry was deleted and its devices stayed, enrolled in no project
+  (with telemetry, the delete failed, see Fixed).
+- The server accepts gRPC keepalive pings every 20 seconds or more, also on a
+  connection without a call in progress (gRPC's default answers a client
+  that pings more often than every 5 minutes with `too_many_pings`).
 - `scripts/e2e.sh` and `scripts/python-e2e.sh` name their compose project
   (`COMPOSE_PROJECT_NAME`, default `fleetml`) and stop before creating a
   database unless that project publishes Postgres on the port the server
@@ -32,6 +55,83 @@ change APIs).
 
 ### Fixed
 
+- `fleetml project delete` (`DELETE /api/v1/projects/:id`) works for a
+  project whose devices sent telemetry; it answered 500. The project goes
+  with its models, versions, deployments, experiments, enrollment keys and
+  devices, and its versions' telemetry, drift results and feature
+  histograms, in one transaction. Deleting a version with telemetry deletes
+  that telemetry (migration 000019). The CLI prints what it removed
+  (fourth developer review, bug 1).
+- `fleetml telemetry summary` (and the dashboard's telemetry chart) take
+  latency and confidence over INFERENCE events only; a MODEL_LOAD or ERROR
+  event no longer counts as a 0 ms inference, and an event without a
+  confidence no longer counts as 0. The event counts are unchanged
+  (review 4, bug 11).
+- The telemetry and drift routes for one model version answer 404
+  `NOT_FOUND` ("model version not found") for an unknown version instead of
+  an empty result (review 4, bug 12).
+- API error messages no longer carry internal function names:
+  `project not found` instead of `project.GetByID: not found`,
+  `project already exists: slug "tour"` instead of
+  `project.Create: already exists: slug "tour"`. The error codes are
+  unchanged (review 4, bug 12).
+- Linux agent: a connection that dies without a reset (a Wi-Fi roam, a NAT
+  or router restart) is found within 40 seconds (gRPC keepalive: a ping
+  after 30 s idle, 10 s to answer), every call to the server has a 30 s
+  deadline, and reconnect attempts back off to at most 15 s, so the first
+  heartbeat after the server is back succeeds. Before, the agent hung
+  without a log line until TCP gave up, about 16 minutes. The first failed
+  heartbeat is logged at WARN once, the recovery at INFO
+  (`server reachable again`). A model download that receives nothing for
+  60 s is cut off and resumed on the next attempt (review 4, bug 3).
+- Linux agent: SIGTERM stops it within 5 seconds while the server is
+  unreachable; the last telemetry flush is bounded and the rest stays queued
+  (review 4, bug 3).
+- `install.sh` prints the supervisor command with both `exec`s
+  (`exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent ...'`):
+  without the inner one a supervisor's SIGTERM stopped only `su`'s shell
+  and left the agent running (review 4, bug 10). Run again on a box where
+  the service runs, `install.sh` restarts it, so an upgrade takes effect
+  (review 4, bug 12).
+- Dashboard: the Overview tiles show the server's totals, and Devices,
+  Deployments and Experiments page through the server (Previous and Next,
+  `21–26 of 26`), where they stopped at the first 20 records. The project,
+  model and version pickers (Models, Telemetry, Drift, Alerts, Audit, new
+  deployments and experiments) load every record. Deployments has a Project
+  column (review 4, bug 4).
+- Android sample app: the status reads `online, assigned model failing` and
+  the model line names the assigned version and the reason while its
+  download or validation fails, instead of `online` and
+  `no assignment yet`. The SDK logs a download under 1 KB in bytes
+  (`(603 bytes)`), not `(0KB)` (review 4, cosmetic).
+- Helm: `s3.publicUseSSL` (the server's `S3_PUBLIC_USE_SSL`, which defaults
+  to `S3_USE_SSL`) sets whether the download URLs are `https`, apart from
+  `s3.useSSL`, the server's own connection to the store. The chart README's
+  first block (`s3.useSSL=true` with the bundled SeaweedFS) never became
+  ready, and `false` signed `http://...:443` URLs (review 4, bug 2).
+- Helm: SeaweedFS restarts when its S3 credentials change (it read them only
+  at start, so `helm upgrade` with a new `s3SecretKey` crash-looped the
+  server); the server has a startup probe that covers its 60-second wait for
+  each dependency, where the liveness probe could restart it on a cold
+  install (review 4, bug 9).
+- Helm: a `server.env` name the chart sets itself (`S3_BUCKET`, say) is set
+  once, to the `server.env` value, instead of twice; a `jwtSecret` or
+  `signingMasterKey` shorter than 32 characters, or the two equal, is
+  refused at install; `NOTES.txt` names the release's namespace (review 4,
+  bug 12).
+- `android/gradlew.bat` exists: the Android guide's Windows steps ran
+  `.\gradlew.bat`, which was never in the repository. The wrapper scripts
+  and jar are the ones Gradle 8.7 generates (the jar's sha256 is Gradle's
+  published one), and `.gitattributes` keeps `*.bat` CRLF (review 4, bug 6).
+- Android sample app: `-PfleetmlDebugHost=<host>` (or `fleetml.debugHost` in
+  `android/local.properties`) sets the address the debug build may reach
+  over plain HTTP and prefills it on the config screen; the debug network
+  security config is generated from it. A phone over Wi-Fi no longer needs a
+  source edit, and `-PfleetmlDebugHost=localhost` gives a phone over USB the
+  right host instead of the emulator's `10.0.2.2`.
+- A failed `fleetml push` upload says `upload failed:` once, and
+  `fleetml telemetry events` prints confidence with 3 decimals instead of
+  float32 noise such as `0.9700000286102295` (review 4, cosmetic).
 - The Windows run's quickstart script cloned into `~/fleetml` after
   `rm -rf fleetml`; on a case-insensitive file system that is a checkout at
   `~/fleetML`. It now clones into a directory it creates with `mktemp` and
@@ -50,10 +150,92 @@ change APIs).
   5.9.2 (GO-2026-5004).
 - Release binaries are built with Go 1.26.10 (0.7.0's were built with Go
   1.24.0); with it, govulncheck finds no reachable vulnerability in the
-  server, CLI or agent, where Go 1.26.2 leaves 29 in the standard library.
+  server, CLI or agent, where Go 1.26.2 leaves 29 in the standard library
+  (review 4, bug 5).
 
 ### Docs
 
+- Quickstart: "Next: a real device" before Clean up (Android, iOS, the Linux
+  agent, Python); an "Upgrading" section for the stack (run as written from
+  a 0.7.0 stack with data and devices: data, the admin key and the devices
+  kept, migrations applied), the CLI, the SDKs, the agent and the chart;
+  Clean up says what `-v` deletes and removes the env file, and no longer
+  claims a Grafana volume; versions' DRAFT status and `push --promote` are
+  explained once; a Kubernetes pointer; the tour's curl lines use
+  `$FLEETML_SERVER` (review 4, docs gaps 3, 4 and 14).
+- README: `scripts/demo.sh` leaves the dev stack running and how to stop it;
+  links to Upgrading and the Linux agent. README, the quickstart, the guides
+  and the Python README: Contact names GitHub Issues for bugs; the stale
+  "`pip install fleetml` from 0.6.0" sentence is gone (review 4, docs gaps 6
+  and 13).
+- The device guides save `S3_PUBLIC_ENDPOINT` in `~/.fleetml.env` instead of
+  setting it for one command, and say what it changes for USB, the
+  emulator and the sample app (review 4, docs gap 1).
+- Android guide: keep the phone unlocked with the app in front; Publish and
+  deploy comes before On your phone; a new project from the command line
+  (AGP 8.5.0, Kotlin 1.9.24, Gradle 8.7; built as written against the SDK on
+  Maven Central); the first-run logcat matches the code (the background
+  line comes when the app goes to the background); the stale-settings note
+  and its error for a phone; `lifecycle-runtime-ktx` 2.8.7 with an AndroidX
+  activity; TensorFlow Lite 2.17.0 throughout; the lock screen in the
+  production checklist (review 4, docs gaps 2 and 9).
+- iOS guide: the team ID from a terminal (the certificate's `OU`, not the ID
+  `find-identity` prints); keep the phone unlocked for steps 6 to 8; the
+  closed-port offline test on the phone; `fleetml telemetry events --device`
+  as the telemetry check; `log collect` needs root, Console.app does not;
+  `Secrets.xcconfig` written 0600; `UIRequiresFullScreen` in `project.yml`
+  (the device build's orientation warning is gone); the trust error after a
+  free-team rebuild; an unavailable wireless phone; a simulator of your own
+  (review 4, docs gaps 2 and 8).
+- Linux agent guide: `apt-get install -y curl ca-certificates` for images
+  without curl; `iris` in the telemetry example; an Upgrade section
+  (`install.sh` again keeps the config and state and restarts the agent; a
+  0.8.0 agent works with a 0.7.0 server); "Try it locally" names what it
+  needs, the compose project it starts and the variables that move it; the
+  archive's LICENSE and NOTICE (review 4, docs gap 10).
+- Python client: the tour creates a project of its own name, prints the
+  simulator line with a seed of its own, counts the project's devices
+  (`project=`), and ends with a Clean up step that deletes the project; the
+  page says where the admin key comes from, that the package is typed,
+  that only server calls raise `FleetMLError`, and lists `INVALID_TRANSITION`,
+  the `FAILED` deployment status, drift's baseline and every new method. The
+  stale "`pip install fleetml` from 0.6.0" sentence is gone from the page and
+  from the package README (review 4, Python docs gaps).
+- Android guide, "From Windows": one linear path in PowerShell (Git for
+  Windows, a clone, publish and deploy with `ConvertFrom-Json` so the
+  enrollment key stays in one window, the three `adb reverse` lines,
+  `gradlew.bat` with the key and `-PfleetmlDebugHost=localhost`, the logcat
+  lines, the stale-key reset), then Wi-Fi with a firewall rule for private
+  networks only and its removal line, then the emulator. The quickstart's
+  "On Windows" links to it and names Docker Desktop's licence terms and the
+  Docker Engine route the Windows run uses; "Get the CLI" names Smart App
+  Control and `$ProgressPreference`; the Python client's page has a Windows
+  line (review 4, Windows docs gaps).
+- Quickstart and README "Run FleetML": the block writes the three secrets and
+  `S3_PUBLIC_ENDPOINT` to `~/.fleetml.env` (0600, only if the file does not
+  exist yet) and sources it before anything starts, and it prints no secret
+  (the admin key was echoed before the "save them" step, and §6 said
+  `echo $FLEETML_ADMIN_KEY`). The observability step and the port-80
+  override source the file first, so a saved `S3_PUBLIC_ENDPOINT` survives
+  the `up -d` (review 4, docs gaps 1 and 5).
+- The prod compose file's errors for a missing `JWT_SECRET` or
+  `SIGNING_MASTER_KEY` say to `source ~/.fleetml.env` and never to generate
+  new values for an existing stack; they suggested `openssl rand`, which on
+  an existing stack breaks publishing and every device token (review 4,
+  bug 7).
+- The Helm chart's README is rewritten and was run as written on kind: the
+  published images (no build or `kind load`), the secrets generated once
+  into a 0600 file with what may and may not change, the install with the
+  bundled store and `s3.publicEndpoint` explained, a try-it block with
+  `fleetml simulate --grpc`, Upgrading (`helm upgrade --reuse-values`, what
+  restarts), Production (TLS in front, `s3.publicUseSSL`, TimescaleDB for an
+  external Postgres, what the chart does not set, backups), every value, and
+  Uninstall (review 4, docs gap 7).
+- Linux agent: "Identity and offline behaviour" gives the measured bound (a
+  3-minute server pause: the warning after 32 s, the first heartbeat 42 s
+  after the server was back) and the two log lines; the container one-liner
+  keeps the state folder in a volume, so a recreated container is the same
+  device; the supervisor and `-retry-failed` commands use `exec`.
 - Quickstart: the arm64 Windows binary is now run on `windows-11-arm` by the
   Windows run workflow, next to the amd64 one on `windows-latest`.
 - RELEASING.md describes the public repository: its code security, Actions
@@ -631,7 +813,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
-[0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...HEAD
+[0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/fleetml/fleetml/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/fleetml/fleetml/compare/v0.4.0...v0.5.0

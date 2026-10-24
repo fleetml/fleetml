@@ -242,18 +242,26 @@ func (r *Repository) QueryEvents(ctx context.Context, filter EventFilter) ([]Eve
 	return events, total, rows.Err()
 }
 
+// The latency and confidence statistics of a summary are over INFERENCE
+// events only (a MODEL_LOAD or ERROR has no inference latency); the counts are
+// over every event. A confidence of 0 means the event reported none.
+const (
+	inference   = `event_type = 'INFERENCE'`
+	teInference = `te.event_type = 'INFERENCE'`
+)
+
 // GetSummary returns aggregated stats for a model version over a time range.
 func (r *Repository) GetSummary(ctx context.Context, modelVersionID uuid.UUID, from, to time.Time) (*Summary, error) {
 	query := `SELECT
 		COUNT(*) AS total_events,
 		COUNT(*) FILTER (WHERE error_message IS NOT NULL AND error_message != '') AS error_count,
-		COALESCE(AVG(latency_ms), 0) AS avg_latency,
-		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms), 0) AS p50,
-		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) AS p95,
-		COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms), 0) AS p99,
-		COALESCE(MIN(latency_ms), 0) AS min_lat,
-		COALESCE(MAX(latency_ms), 0) AS max_lat,
-		COALESCE(AVG(confidence_score), 0) AS avg_conf,
+		COALESCE(AVG(latency_ms) FILTER (WHERE ` + inference + `), 0) AS avg_latency,
+		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ` + inference + `), 0) AS p50,
+		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ` + inference + `), 0) AS p95,
+		COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ` + inference + `), 0) AS p99,
+		COALESCE(MIN(latency_ms) FILTER (WHERE ` + inference + `), 0) AS min_lat,
+		COALESCE(MAX(latency_ms) FILTER (WHERE ` + inference + `), 0) AS max_lat,
+		COALESCE(AVG(NULLIF(confidence_score, 0)) FILTER (WHERE ` + inference + `), 0) AS avg_conf,
 		COALESCE(AVG(memory_usage_mb), 0) AS avg_mem
 		FROM telemetry_events
 		WHERE model_version_id = $1 AND recorded_at >= $2 AND recorded_at <= $3`
@@ -276,13 +284,13 @@ func (r *Repository) GetSummaryByDeviceClass(ctx context.Context, modelVersionID
 		COALESCE(dc.name, 'unknown') AS device_class,
 		COUNT(*) AS total_events,
 		COUNT(*) FILTER (WHERE te.error_message IS NOT NULL AND te.error_message != '') AS error_count,
-		COALESCE(AVG(te.latency_ms), 0) AS avg_latency,
-		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY te.latency_ms), 0) AS p50,
-		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY te.latency_ms), 0) AS p95,
-		COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY te.latency_ms), 0) AS p99,
-		COALESCE(MIN(te.latency_ms), 0) AS min_lat,
-		COALESCE(MAX(te.latency_ms), 0) AS max_lat,
-		COALESCE(AVG(te.confidence_score), 0) AS avg_conf,
+		COALESCE(AVG(te.latency_ms) FILTER (WHERE ` + teInference + `), 0) AS avg_latency,
+		COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY te.latency_ms) FILTER (WHERE ` + teInference + `), 0) AS p50,
+		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY te.latency_ms) FILTER (WHERE ` + teInference + `), 0) AS p95,
+		COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY te.latency_ms) FILTER (WHERE ` + teInference + `), 0) AS p99,
+		COALESCE(MIN(te.latency_ms) FILTER (WHERE ` + teInference + `), 0) AS min_lat,
+		COALESCE(MAX(te.latency_ms) FILTER (WHERE ` + teInference + `), 0) AS max_lat,
+		COALESCE(AVG(NULLIF(te.confidence_score, 0)) FILTER (WHERE ` + teInference + `), 0) AS avg_conf,
 		COALESCE(AVG(te.memory_usage_mb), 0) AS avg_mem
 		FROM telemetry_events te
 		LEFT JOIN devices d ON d.id = te.device_id
@@ -327,8 +335,8 @@ func (r *Repository) GetTimeSeries(ctx context.Context, modelVersionID uuid.UUID
 
 	query := fmt.Sprintf(`SELECT
 		time_bucket('%s', recorded_at) AS bucket,
-		COALESCE(AVG(latency_ms), 0),
-		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms), 0),
+		COALESCE(AVG(latency_ms) FILTER (WHERE `+inference+`), 0),
+		COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE `+inference+`), 0),
 		COUNT(*),
 		COUNT(*) FILTER (WHERE error_message IS NOT NULL AND error_message != '')
 		FROM telemetry_events

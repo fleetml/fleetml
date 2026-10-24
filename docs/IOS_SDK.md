@@ -22,9 +22,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.7.0, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.7.0")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.7.0` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.8.0, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.8.0")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.8.0` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -47,7 +47,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.7.0        # or path: ../fleetml for a clone
+    from: 0.8.0        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -285,20 +285,30 @@ struct MyApp: App {
 1. **The phone.** Turn on Developer Mode (Settings, Privacy & Security,
    Developer Mode) and restart it when asked. In Xcode, add your Apple ID
    (Settings, Accounts); a free one gives a personal team. Your team's ID is
-   on developer.apple.com under Membership, or in Xcode's Signing &
-   Capabilities tab once a project uses the team. Put the phone and the Mac
-   on the same Wi-Fi network.
+   on developer.apple.com under Membership, in Xcode's Signing & Capabilities
+   tab once a project uses the team, or, from a terminal, in your
+   development certificate (once Xcode has made one):
+
+   ```bash
+   security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject | grep -o 'OU=[A-Z0-9]*'
+   ```
+
+   The team ID is the 10 characters after `OU=`. The ID in parentheses that
+   `security find-identity -v -p codesigning` prints is another one, and
+   with it `xcodebuild` stops with `No Account for Team "<ID>"`. Put the
+   phone and the Mac on the same Wi-Fi network.
 
 2. **The server, with its object store on the Mac's LAN address.** The phone
    reaches the server at the Mac's LAN address (`ipconfig getifaddr en0`,
    `en1` on some Macs), and every model download is a presigned URL for the
-   server's `S3_PUBLIC_ENDPOINT`, so that must be the same address. In the
-   quickstart's clone, in a new shell (the file brings back the secrets
-   Compose needs):
+   server's `S3_PUBLIC_ENDPOINT`, so that must be the same address. Save it
+   in the quickstart's `~/.fleetml.env` (so every later compose command
+   keeps it) and restart the server, in the quickstart's clone:
 
    ```bash
+   sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):19100/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
-   S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100 docker compose -f deploy/docker-compose.prod.yml up -d
+   docker compose -f deploy/docker-compose.prod.yml up -d
    ```
 
    If someone else runs the server, ask them to start it this way. A phone
@@ -309,7 +319,7 @@ struct MyApp: App {
    with the key your team gave you or the quickstart's `$FLEETML_ADMIN_KEY`
    (which key does what: [Android's list](ANDROID_SDK.md#publish-and-deploy-with-the-cli)
    applies here too). Project names are unique on a server:
-   `already exists: slug "myapp-ios"` means the project is there from an
+   `project already exists: slug "myapp-ios"` means the project is there from an
    earlier run, so pick another name.
 
    ```bash
@@ -340,7 +350,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.7.0        # or path: ../fleetml for a clone
+       from: 0.8.0        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
@@ -359,6 +369,7 @@ struct MyApp: App {
            FleetMLUseTLS: $(FLEETML_USE_TLS)
            FleetMLEnrollmentKey: $(FLEETML_ENROLLMENT_KEY)
            UILaunchScreen: {}
+           UIRequiresFullScreen: true
            NSAppTransportSecurity:
              NSAllowsLocalNetworking: true
            NSLocalNetworkUsageDescription: Connects to the FleetML server on your network.
@@ -371,6 +382,10 @@ struct MyApp: App {
            CODE_SIGN_STYLE: Automatic
    ```
 
+   - `UIRequiresFullScreen` keeps the build free of the warning
+     `All interface orientations must be supported unless the app requires full screen`;
+     list every orientation in `UISupportedInterfaceOrientations` instead if
+     the app should run in iPad split view.
    - `NSAllowsLocalNetworking` lets the SDK download models over plain HTTP
      from the Mac, which App Transport Security blocks otherwise; it does not
      loosen ATS for any other host.
@@ -395,7 +410,7 @@ struct MyApp: App {
    from `xcrun devicectl list devices`:
 
    ```bash
-   printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = 19090\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "$EK" > Secrets.xcconfig
+   (umask 077; printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = 19090\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "$EK" > Secrets.xcconfig)
    xcodegen generate
    xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates ENABLE_PREVIEWS=NO build
    xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/MyApp.app
@@ -404,24 +419,45 @@ struct MyApp: App {
 
    Command-line builds for a device fail at codesign with
    `errSecInternalComponent` on `__preview.dylib` unless `ENABLE_PREVIEWS=NO`
-   is passed. The first launch of a personally signed app stops at a trust
-   prompt: trust the developer in Settings, General, VPN & Device Management,
-   then launch again. iOS then asks whether the app may find and connect to
-   devices on the local network: allow it.
+   is passed. `Secrets.xcconfig` holds the enrollment key, so the subshell
+   with `umask 077` writes it readable only by you. The first launch of a
+   personally signed app stops at a trust prompt: trust the developer in
+   Settings, General, VPN & Device Management, then launch again. iOS then
+   asks whether the app may find and connect to devices on the local
+   network: allow it. After a rebuild with a free team, a launch can be
+   refused once more with an error about an invalid code signature,
+   inadequate entitlements or a profile that "has not been explicitly
+   trusted", although the developer is trusted: the new build came with a
+   new 7-day profile, and the same launch line works a few minutes later.
 
    **Wirelessly:** once the phone has been connected by cable, Xcode's
    Devices and Simulators window (Shift-Command-2) has **Connect via
    network** for it; after that `xcrun devicectl list devices` lists it as
    available without the cable, and the same `install` and `launch` lines
-   work.
+   work. A phone that is asleep or out of reach is listed as `unavailable`,
+   and `install` fails with `Connection interrupted`: wake and unlock it, or
+   use the cable.
+
+   **Keep the phone unlocked with the app in front for steps 6 to 8** (for
+   the test, Settings, Display & Brightness, Auto-Lock, Never). iOS refuses
+   to launch an app on a locked phone (`Unable to launch com.example.myapp
+   because the device was not, or could not be, unlocked`), and an app that
+   nobody looks at is suspended within about a minute, which stops the SDK's
+   timers until it is in front again ([Battery and data](#battery-and-data)):
+   an update then waits for the next launch, which the `launch` line gives.
 
 6. **What it prints.** `--console` shows the app's `print` lines:
-   `FleetML registered as <device ID>`, `FleetML connected: true` and
-   `FleetML model ready: iris 1.0.0`. The SDK's own lines (the five in [When
-   it does not connect](#when-it-does-not-connect)) are in Console.app with
-   the phone selected, or in a log archive from the phone. `log` is a
-   built-in command in zsh, macOS's default shell, so call `/usr/bin/log` to
-   read the archive:
+   `FleetML registered as <device ID>` (on the launch that registers; later
+   launches start with the next two), `FleetML connected: true` and
+   `FleetML model ready: iris 1.0.0`, which are enough to follow the steps
+   below. The SDK's own lines (the five in [When it does not
+   connect](#when-it-does-not-connect)) are in Console.app with the phone
+   selected, without a password, or in a log archive from the phone, which
+   `log collect` writes only as root (it asks for your administrator
+   password; without `sudo` it stops with
+   `Must be root to collect logs from attached device`). `log` is a built-in
+   command in zsh, macOS's default shell, so call `/usr/bin/log` to read the
+   archive:
 
    ```bash
    sudo log collect --device-name '<device>' --last 10m --output fleetml.logarchive
@@ -462,7 +498,13 @@ struct MyApp: App {
    swipe the app away and open it again from the home screen: the cached
    2.0.0 is ready at once (`fleetML(modelReady:)`), and
    `fleetML(connectionChanged: false)` follows within about ten seconds.
-   Turn airplane mode off: the next heartbeat reconnects.
+   Turn airplane mode off: the next heartbeat reconnects. Without touching
+   the phone, the closed port from [the simulator's offline
+   test](#the-same-on-the-simulator) works here too: `FLEETML_SERVER_PORT = 19999`
+   in `Secrets.xcconfig`, then the `xcodebuild`, `install` and `launch`
+   lines of step 5; the cached 2.0.0 is ready at once
+   (`FleetML model ready: iris 2.0.0`). Set the port back and rebuild to
+   reconnect.
 
 9. **Background refresh** (with the three settings of step 4 and
    `FleetML.registerBackgroundTask()`). The simulator cannot run background
@@ -491,10 +533,12 @@ phone are few:
   without a team.
 
 Steps 3 and 4 as above, then build, install and launch on the first
-available iPhone simulator:
+available iPhone simulator (on a Mac with several, a simulator of your own,
+`SIM=$(xcrun simctl create fleetml-test "iPhone 17 Pro")`, keeps the test
+apart; `xcrun simctl delete fleetml-test` removes it):
 
 ```bash
-printf 'FLEETML_SERVER_HOST = localhost\nFLEETML_SERVER_PORT = 19090\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$EK" > Secrets.xcconfig
+(umask 077; printf 'FLEETML_SERVER_HOST = localhost\nFLEETML_SERVER_PORT = 19090\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$EK" > Secrets.xcconfig)
 xcodegen generate
 SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
 xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
@@ -695,6 +739,11 @@ if let model = FleetML.activeModel(named: "iris") {
 }
 ```
 
+On the server, `fleetml telemetry events --device <device ID>` lists the
+device's events (type, latency, confidence, error) once the SDK has flushed
+them (30 seconds by default), and `fleetml telemetry summary <version ID>`
+sums up a version's.
+
 Events go into a persistent queue (bounded to 10,000; oldest dropped first):
 they survive app termination and are kept while offline or before
 registration. They are sent in batches every flush interval, with exponential
@@ -798,7 +847,8 @@ key from `.env` instead.
 The sample app runs on an iPhone too, over Wi-Fi, with the same server and
 models, after steps 1 and 2 of [Your own app on an
 iPhone](#your-own-app-on-an-iphone) (Developer Mode, Apple ID, the server
-with `S3_PUBLIC_ENDPOINT=<Mac LAN IP>:19100`). Its `Info.plist` already has
+with `S3_PUBLIC_ENDPOINT` on the Mac's LAN address in `~/.fleetml.env`), and
+with the phone unlocked and the app in front (step 5). Its `Info.plist` already has
 the keys a phone needs. After `xcodegen generate`, open
 `ios/SampleApp/FleetMLSample.xcodeproj` and, on the FleetMLSample target's
 Signing & Capabilities tab, turn on **Automatically manage signing** with
@@ -873,3 +923,4 @@ test is skipped.
 - Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
 - A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
 - Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
+- Bugs: [GitHub Issues](https://github.com/fleetml/fleetml/issues/new/choose), with the FleetML version and the command or log line that shows the problem.

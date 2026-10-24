@@ -157,13 +157,42 @@ func (r *ProjectRepo) Update(ctx context.Context, p *Project) error {
 	return nil
 }
 
+// projectVersions selects the IDs of every version of project $1.
+const projectVersions = `SELECT mv.id FROM model_versions mv JOIN models m ON m.id = mv.model_id WHERE m.project_id = $1`
+
+// Delete removes a project and everything in it, in one transaction: its
+// models, versions and variants, deployments, experiments, enrollment keys and
+// signing keys (by foreign key), its devices, and the telemetry, drift results
+// and feature histograms of its versions.
 func (r *ProjectRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("project.Delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	for _, q := range []string{
+		// The telemetry first, so deleting the devices does not rewrite it.
+		`DELETE FROM telemetry_events WHERE model_version_id IN (` + projectVersions + `)`,
+		// These keep a version ID without a foreign key.
+		`DELETE FROM drift_results WHERE model_version_id IN (` + projectVersions + `)`,
+		`DELETE FROM drift_points WHERE model_version_id IN (` + projectVersions + `)`,
+		`DELETE FROM feature_histograms WHERE model_version_id IN (` + projectVersions + `)`,
+		// Without this, the project's devices would stay, enrolled in no project.
+		`DELETE FROM devices WHERE project_id = $1`,
+	} {
+		if _, err := tx.Exec(ctx, q, id); err != nil {
+			return fmt.Errorf("project.Delete: %w", err)
+		}
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("project.Delete: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("project.Delete: %w", ErrNotFound)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("project.Delete: %w", err)
 	}
 	return nil
 }

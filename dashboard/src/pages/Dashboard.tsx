@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getProjects, getDevices, getDeployments, getExperiments } from '../api/client'
+import { getTotals } from '../api/client'
 import { UnauthorizedError } from '../api/auth'
 import { Layers, Cpu, Rocket, FlaskConical } from 'lucide-react'
 
@@ -9,8 +9,8 @@ export default function Dashboard() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([getProjects(), getDevices(), getDeployments(), getExperiments()])
-      .then(([p, d, dep, exp]) => setStats({ projects: p?.length || 0, devices: d?.length || 0, deployments: dep?.length || 0, experiments: exp?.length || 0 }))
+    getTotals()
+      .then(([projects, devices, deployments, experiments]) => setStats({ projects, devices, deployments, experiments }))
       .catch(e => { if (!(e instanceof UnauthorizedError)) setError(e.message) })
   }, [])
 

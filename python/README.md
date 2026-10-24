@@ -12,8 +12,8 @@ with the same words as the `fleetml` CLI, and depends only on `httpx`.
 pip install fleetml
 ```
 
-`pip install fleetml` works from 0.6.0; until then, `pip install ./python`
-from a clone of the repository.
+Python 3.9 or later. The package is typed (`py.typed`; its own code passes
+`mypy --strict`).
 
 ```python
 from fleetml import FleetML
@@ -33,3 +33,4 @@ License: Apache-2.0.
 - Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
 - A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](https://github.com/fleetml/fleetml/blob/main/SECURITY.md).
 - Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
+- Bugs: [GitHub Issues](https://github.com/fleetml/fleetml/issues/new/choose), with the FleetML version and the command or log line that shows the problem.

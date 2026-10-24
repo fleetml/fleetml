@@ -75,6 +75,11 @@ func TestRepository_Integration(t *testing.T) {
 	assert.Equal(t, int64(4), sum.TotalEvents)
 	assert.Equal(t, int64(1), sum.ErrorCount)
 	assert.InDelta(t, 30, sum.MaxLatency, 0.01)
+	// Latency and confidence are over the two INFERENCE events, not the ERROR
+	// and OOM ones.
+	assert.InDelta(t, 20, sum.AvgLatency, 0.01)
+	assert.InDelta(t, 10, sum.MinLatency, 0.01)
+	assert.InDelta(t, 0.8, sum.AvgConfidence, 0.001)
 
 	byClass, err := repo.GetSummaryByDeviceClass(ctx, fx.VersionID, now.Add(-3*time.Hour), now.Add(time.Minute))
 	require.NoError(t, err)

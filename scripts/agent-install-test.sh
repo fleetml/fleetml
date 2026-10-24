@@ -35,7 +35,7 @@ cp -r /src/agent /tmp/agent
 out=$(/tmp/agent/install.sh /src/fleetml-agent)
 echo "$out"
 grep -q "No running systemd on this machine" <<<"$out"
-grep -q "su -s /bin/sh fleetml-agent -c" <<<"$out"
+grep -q "exec su -s /bin/sh fleetml-agent -c '"'"'exec /usr/local/bin/fleetml-agent" <<<"$out"
 ! grep -q "systemctl" <<<"$out"
 [ ! -e /etc/systemd/system/fleetml-agent.service ]
 [ "$(stat -c "%U %a" /var/lib/fleetml-agent)" = "fleetml-agent 755" ]
@@ -45,6 +45,17 @@ echo "$log"
 grep -q "fleetml-agent starting" <<<"$log"
 ! grep -q "permission denied" <<<"$log"
 [ -f /var/lib/fleetml-agent/state.json ]
+# The printed command, as a supervisor runs it: its SIGTERM stops the agent
+# (without the inner exec, su killed only its shell and the agent ran on).
+agents() { for p in /proc/[0-9]*; do tr "\0" " " <"$p/cmdline" 2>/dev/null | grep -q "^/usr/local/bin/fleetml-agent " && echo "$p"; done; true; }
+cmd=$(grep "^  exec su " <<<"$out" | sed "s/^  //")
+sh -c "$cmd" >/tmp/agent.log 2>&1 &
+pid=$!
+for _ in $(seq 20); do [ -n "$(agents)" ] && break; sleep 0.25; done
+[ -n "$(agents)" ]
+kill -TERM "$pid"
+for _ in $(seq 40); do [ -z "$(agents)" ] && break; sleep 0.25; done
+[ -z "$(agents)" ]
 '
 
 # The systemd package without systemd as PID 1 (a Docker image derived from
@@ -75,7 +86,12 @@ grep -q "Service installed but not started" <<<"$out"
 [ "$(cat /tmp/systemctl.log)" = "daemon-reload" ]
 sed -i "s/<project enrollment key>/test-key/" /etc/fleetml-agent/config.yaml
 /tmp/agent/install.sh /src/fleetml-agent
-grep -qx "enable --now fleetml-agent" /tmp/systemctl.log
+grep -qx "enable fleetml-agent" /tmp/systemctl.log
+grep -qx "restart fleetml-agent" /tmp/systemctl.log
+# A re-run (an upgrade) restarts the running service with the new binary.
+: > /tmp/systemctl.log
+/tmp/agent/install.sh /src/fleetml-agent
+[ "$(grep -c "restart fleetml-agent" /tmp/systemctl.log)" = 1 ]
 '
 
 # BusyBox: install.sh runs under ash and creates the user with addgroup and

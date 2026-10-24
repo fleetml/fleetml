@@ -27,6 +27,7 @@ missing or invalid variable.
 | `GRPC_PORT` | `19090` | Device gRPC API and `grpc.health.v1`; must differ from `REST_PORT` |
 | `S3_ENDPOINT` | `localhost:19000` | Object store as `host:port`, without a scheme (the dev stack runs SeaweedFS) |
 | `S3_USE_SSL` | `false` | Reach the object store over HTTPS |
+| `S3_PUBLIC_USE_SSL` | *(`S3_USE_SSL`)* | Whether the presigned URLs for `S3_PUBLIC_ENDPOINT` are `https`. Set it when only one side has TLS: `true` with a TLS proxy (an Ingress) in front of a store the server reaches over plain HTTP, as with the Helm chart's bundled SeaweedFS (`s3.publicUseSSL`) |
 | `S3_BUCKET` | `fleetml-models` | Bucket for model files; created at start-up if missing |
 | `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100`. A Linux agent that cannot reach it can send its downloads elsewhere with `download_host_override` ([LINUX_AGENT.md](LINUX_AGENT.md#server-on-another-machine)) |
 | `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline and alerts. JetStream must be enabled (`nats-server --jetstream`, as in both compose files): the server creates the `FLEETML_TELEMETRY` stream at startup and refuses to start without it. Servers that share a NATS share the stream, so they must also share the database |
@@ -140,7 +141,9 @@ run next to the dev stack). It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
 (required),
 `FLEETML_ADMIN_KEY` (optional) and `S3_PUBLIC_ENDPOINT` (default
 `localhost:19100`; set it to the object store's public `host:port` when
-devices are not on this machine) from the shell.
+devices are not on this machine) from the shell: the quickstart saves all
+four in `~/.fleetml.env`, which every compose command on the stack needs
+sourced first ([Run FleetML](QUICKSTART.md#run-fleetml)).
 
 ## CLI
 

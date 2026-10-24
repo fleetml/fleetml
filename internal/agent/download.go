@@ -12,7 +12,44 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 )
+
+// downloadStall is how long a download may receive nothing before it is cut
+// off; the next attempt resumes the partial file.
+var downloadStall = 60 * time.Second
+
+// downloadClient fetches models. A download may take up to 30 minutes, but
+// the object store must answer within callTimeout, and stallReader cuts a
+// download that stops receiving.
+func downloadClient() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = callTimeout
+	return &http.Client{Timeout: 30 * time.Minute, Transport: t}
+}
+
+// stallReader cancels the request when no bytes arrive for d.
+type stallReader struct {
+	r       io.Reader
+	d       time.Duration
+	timer   *time.Timer
+	stalled atomic.Bool
+}
+
+func newStallReader(r io.Reader, d time.Duration, cancel context.CancelFunc) *stallReader {
+	s := &stallReader{r: r, d: d}
+	s.timer = time.AfterFunc(d, func() { s.stalled.Store(true); cancel() })
+	return s
+}
+
+func (s *stallReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.timer.Reset(s.d)
+	}
+	return n, err
+}
 
 // download fetches url into part, resuming a partial file with an HTTP Range
 // request (a server that ignores Range sends everything and the file
@@ -27,6 +64,8 @@ func download(ctx context.Context, client *http.Client, url, part, wantSHA, host
 	if fi, err := os.Stat(part); err == nil {
 		offset = fi.Size()
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return err
@@ -61,7 +100,12 @@ func download(ctx context.Context, client *http.Client, url, part, wantSHA, host
 		if err != nil {
 			return err
 		}
-		_, cerr := io.Copy(f, resp.Body)
+		body := newStallReader(resp.Body, downloadStall, cancel)
+		_, cerr := io.Copy(f, body)
+		body.timer.Stop()
+		if body.stalled.Load() {
+			cerr = fmt.Errorf("no data for %s", downloadStall)
+		}
 		if err := errors.Join(cerr, f.Close()); err != nil {
 			return fmt.Errorf("interrupted after a partial download (the next attempt resumes): %w", err)
 		}

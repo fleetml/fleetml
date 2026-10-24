@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { cancelExperiment, concludeExperiment, createExperiment, getExperimentResults, getExperiments, pauseExperiment, resumeExperiment, startExperiment } from '../api/client'
+import { cancelExperiment, concludeExperiment, createExperiment, getExperimentResults, getExperiments, pauseExperiment, resumeExperiment, startExperiment, PAGE_SIZE } from '../api/client'
 import type { CohortStats, Experiment, ExperimentResult } from '../types/api'
 import { useCatalog, type Catalog } from '../hooks/useCatalog'
-import { Button, Card, ConfirmDialog, Field, Modal, PageHeader, RowAction, Select, StatusBadge, Table, TextInput, errorMessage, formatLabels, parseLabels } from '../components/ui'
+import { Button, Card, ConfirmDialog, Field, Modal, PageHeader, Pager, RowAction, Select, StatusBadge, Table, TextInput, errorMessage, formatLabels, parseLabels } from '../components/ui'
 
 function NewExperimentForm({ catalog, onClose, onCreated }: { catalog: Catalog; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('')
@@ -111,6 +111,8 @@ type Pending = { kind: 'conclude' | 'cancel'; e: Experiment }
 export default function Experiments() {
   const catalog = useCatalog()
   const [exps, setExps] = useState<Experiment[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<{ exp: Experiment; r: ExperimentResult } | null>(null)
   const [creating, setCreating] = useState(false)
   const [pending, setPending] = useState<Pending | null>(null)
@@ -119,8 +121,8 @@ export default function Experiments() {
   const [error, setError] = useState('')
   const [dialogError, setDialogError] = useState('')
 
-  const reload = () => getExperiments().then(e => setExps(e || [])).catch(e => setError(errorMessage(e)))
-  useEffect(() => { reload() }, [])
+  const reload = () => getExperiments(offset).then(p => { setExps(p.items); setTotal(p.total) }).catch(e => setError(errorMessage(e)))
+  useEffect(() => { reload() }, [offset])
   const label = (id: string) => catalog.byVersionId[id]?.label || id.slice(0, 8)
   const act = (fn: () => Promise<unknown>) => fn().then(reload).catch(e => setError(errorMessage(e)))
   const arm = (e: Experiment, id: string) => `${label(id)}${e.winner_version_id === id ? ' (winner)' : ''}`
@@ -177,6 +179,7 @@ export default function Experiments() {
           </tr>
         ))}
       </Table>
+      <Pager offset={offset} pageSize={PAGE_SIZE} total={total} onChange={setOffset} />
       {selected && <Results exp={selected.exp} r={selected.r} label={label} />}
 
       {creating && <NewExperimentForm catalog={catalog} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); reload() }} />}

@@ -19,11 +19,12 @@ Every release, in this order; the numbered sections below have the details.
       (dashboard, `__version__` of the Python client and its test in
       `python/tests/test_client.py`, `sdkVersion` in
       `android/gradle.properties`, `FleetML.sdkVersion` in the iOS package
-      and its test in `ios/FleetMLSDK/Tests/FleetMLSDKTests/VersionTests.swift`);
-      the CLI and the agent take theirs from the tag.
+      and its test in `ios/FleetMLSDK/Tests/FleetMLSDKTests/VersionTests.swift`,
+      the Helm chart's `version` and `appVersion`, and the version the
+      guides show); the CLI and the agent take theirs from the tag.
 - [ ] CI green on `main` at the release commit (Go, CLI on Windows, Python
-      client, Dashboard, Android SDK, Docs site, Helm chart, Shell scripts,
-      iOS).
+      client, Dashboard, Android SDK, Android sample app on Windows, Docs
+      site, Helm chart, Shell scripts, iOS).
 - [ ] Annotated tag `vX.Y.Z` on that commit, pushed; tags are never moved.
 - [ ] GitHub release from the tag, with the changelog section as its body.
 - [ ] Binaries: the **Release** workflow attached the eight archives and

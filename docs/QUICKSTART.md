@@ -17,26 +17,36 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell, see [On Windows](#on-wind
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-export JWT_SECRET=$(openssl rand -base64 32) SIGNING_MASTER_KEY=$(openssl rand -base64 32) FLEETML_ADMIN_KEY=$(openssl rand -hex 32)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' S3_PUBLIC_ENDPOINT=localhost:19100\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" > ~/.fleetml.env)
+source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
 curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (log in with the admin API key: $FLEETML_ADMIN_KEY)"
+echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
 ```
 
-**Save the three values now.** They exist only in this shell. The admin key
-is how you log in to the dashboard and how the CLI and the REST API reach the
-server, and the server stores it on the first start only: later starts
+The second line generates the stack's three secrets and saves them in
+`~/.fleetml.env`, a file only you can read, before anything starts, with
+`S3_PUBLIC_ENDPOINT`, the address devices download models from (a phone or a
+second machine needs your LAN address there instead; the device guides
+change it in this file). It leaves an existing file alone, so running the
+block again reuses the saved values. **Keep the file.** The admin key in it
+is how you log in to the dashboard and how the CLI and the REST API reach
+the server, and the server stores it on the first start only: later starts
 ignore `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a
-new one (the way back is `down -v` and a fresh start, which deletes the data).
-Compose reads `JWT_SECRET` and `SIGNING_MASTER_KEY` for every command on this
-stack, `down` included. In bash or zsh, this writes them to a file only you
-can read, and `source ~/.fleetml.env` brings them back in a new shell
-(the [tour](#tour) adds its own values to the same file):
+new one (the way back is `down -v` and a fresh start, which deletes the
+data). `SIGNING_MASTER_KEY` encrypts the signing keys, so a new one breaks
+publishing. Compose reads the file's values for every command on this
+stack, `down` included: in a new shell, `source ~/.fleetml.env` first (the
+[tour](#tour) adds its own values to the same file).
 
-```bash
-(umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s'\n" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" > ~/.fleetml.env)
-```
+The block prints no secret. To log in, paste `FLEETML_ADMIN_KEY` from the
+file; `printf %s "$FLEETML_ADMIN_KEY" | pbcopy` puts it on the clipboard
+without printing it on macOS (`| clip.exe` in WSL, `| xclip -selection
+clipboard` on Linux).
+
+On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
+server instead, and the tour runs against it.
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
 once Postgres, the object store and NATS are reachable, and the project list
@@ -58,9 +68,13 @@ dashboard to any free port with an override file and open it on that port,
 here http://localhost:8081. `!override` needs Compose 2.24 or later:
 `docker compose version` prints the version (for example
 `Docker Compose version v2.39.4-desktop.1`); older versions do not know the
-tag. This override is not exercised by CI:
+tag. This override is not exercised by CI. `source ~/.fleetml.env` first
+in a new shell: it brings the secrets back and keeps the saved
+`S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset to
+`localhost:19100`:
 
 ```bash
+source ~/.fleetml.env
 printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
 docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
 ```
@@ -78,7 +92,9 @@ How it fits together:
   you paste it once into `fleetml config set-key`.
 - **Two clones** when you build the Android sample app: the one in Ubuntu
   for the stack, and one on the Windows side for Gradle, which is slow on a
-  `\\wsl.localhost` path.
+  `\\wsl.localhost` path. [From Windows](ANDROID_SDK.md#from-windows) in the
+  Android guide takes the sample app onto a phone from PowerShell, step by
+  step.
 
 The server, Postgres, NATS and the object store are Linux containers, and the
 quickstart, the tour and the scripts are bash, so on Windows they run in a
@@ -88,7 +104,15 @@ editions run only Linux containers, which is all FleetML uses. See Docker's
 [system requirements](https://docs.docker.com/desktop/setup/install/windows-install/)
 for the current list.
 Docker labels Docker Desktop for Windows on Arm early access, so Arm laptops
-are not a tested path.
+are not a tested path. Docker Desktop is free for personal use, education,
+non-commercial open source and small businesses; a larger company needs a
+paid Docker subscription ([Docker's terms](https://www.docker.com/pricing/faq/)).
+Without it, Docker Engine installed inside Ubuntu runs the same stack: that
+is what the Windows run on GitHub does (`.github/windows-run/wsl-setup.sh`),
+and WSL forwards `localhost` to Windows, so PowerShell and a Windows browser
+reach it. A phone over Wi-Fi then reaches WSL only with its mirrored
+networking (`networkingMode=mirrored` in `.wslconfig`) or a port proxy,
+which CI does not exercise.
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
    and keep **Use the WSL 2 based engine** on (Settings → General). The
@@ -112,8 +136,8 @@ are not a tested path.
    shell opened (open a new Ubuntu shell).
 4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
    (`curl` and `openssl` are already there), then `cd ~` and run the
-   [Run FleetML](#run-fleetml) block as it is, then the "Save the three
-   values" block under it. Keep the clone in the Linux file system (`~`), not
+   [Run FleetML](#run-fleetml) block as it is (it saves the secrets in
+   `~/.fleetml.env` there). Keep the clone in the Linux file system (`~`), not
    under `/mnt/c`: files under `/mnt/c` are much slower to read from WSL.
 5. For the tour, install the Linux CLI in the same shell with the first block
    of [Get the CLI](#get-the-cli). To build it from source instead, install
@@ -216,7 +240,9 @@ but those entries are stored expanded from then on.
 
 If the first `Invoke-WebRequest` fails with a secure-channel (SSL/TLS) error
 on an older Windows, run `[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`
-first.
+first. In Windows PowerShell 5.1, `Invoke-WebRequest` downloads slowly while
+it draws its progress bar; `$ProgressPreference = 'SilentlyContinue'` first
+turns the bar off.
 
 Both binaries and this block are exercised in Windows PowerShell 5.1 on
 GitHub's Windows runners by the
@@ -227,11 +253,12 @@ on Arm).
 `fleetml.exe` is not code-signed. Started from a terminal as above, it runs
 like any console program; a copy downloaded with a browser and started from
 Explorer may get SmartScreen's "Windows protected your PC" prompt (More info,
-Run anyway), and antivirus or a company policy may scan or block an unsigned
-program. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
+Run anyway), and antivirus, Smart App Control (on a clean install of
+Windows 11) or a company's application control may scan or block an unsigned
+program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.7.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.8.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -258,7 +285,8 @@ is created: unescaped in 5.1 with
 escaped in 7.3 with
 `Error: invalid --target JSON: invalid character '\\' looking for beginning of object key string`.
 In Windows PowerShell 5.1 with a console code page other than UTF-8, the
-`✓` of `fleetml version` may show as `?`; the program is the same.
+`✓` of `fleetml version` shows as `?` in the console, or as `Γ£ô` when the
+output is captured or redirected; the program is the same.
 
 From source, with Go 1.26 or later: `go build -o bin/fleetml ./cmd/fleetml`
 in the repository (it reports its version as `dev`).
@@ -311,9 +339,8 @@ If the simulator's shell was closed, start the simulator again there with the
 `SIM=$!` and that section's last line; `pgrep -f 'fleetml simulate'` shows
 whether one runs.
 
-From Python, the same steps run with the Python client (`pip install fleetml`
-from 0.6.0; until then `pip install ./python` from a clone); sections 1 to 3
-are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
+From Python, the same steps run with the Python client (`pip install fleetml`);
+sections 1 to 3 are written out in the [Python client](PYTHON_CLIENT.md#the-tour-in-python)
 page.
 
 ### 1. Publish a model
@@ -339,7 +366,13 @@ then `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and a
 `Variant ID:` line: the ID of the file just uploaded (one version can have
 several variants, for example INT8 and FP16). If an upload fails (the object
 store unreachable, say), run the same push again: a variant that was never
-verified is replaced.
+verified is replaced. A new version starts as `DRAFT`, and stays so in the
+CLI and the dashboard while it is deployed: the status (DRAFT, STAGED,
+ACTIVE, ARCHIVED) is a label for you, and deployments do not need it.
+`fleetml push --promote` sets ACTIVE; for a version pushed without it,
+`fleetml ver promote <version ID> --status STAGED` and then
+`fleetml ver promote <version ID>` (ACTIVE is the default; the server
+allows DRAFT to STAGED to ACTIVE, one step at a time).
 
 An upload that does not match its declared sha256 is refused and never
 reaches a device. This one step uses the REST API with curl, because
@@ -350,9 +383,9 @@ refuses it (`ZEROS` is 64 zeros, a well-formed sha256 that no file has).
 ```bash
 H="Authorization: Bearer $FLEETML_API_KEY"
 ZEROS=0000000000000000000000000000000000000000000000000000000000000000
-OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$ZEROS\"}" localhost:18080/api/v1/versions/$V2/variants)
+OUT=$(curl -s -H "$H" -H 'Content-Type: application/json' -d "{\"quantization\":\"FP16\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < models/iris/iris_v1.tflite | tr -d ' '),\"blob_sha256\":\"$ZEROS\"}" $FLEETML_SERVER/api/v1/versions/$V2/variants)
 curl -s -o /dev/null -X PUT --data-binary @models/iris/iris_v1.tflite "$(echo "$OUT" | jq -r .data.upload_url)"
-curl -s -X POST -H "$H" localhost:18080/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
+curl -s -X POST -H "$H" $FLEETML_SERVER/api/v1/variants/$(echo "$OUT" | jq -r .data.variant.id)/finalize | jq -c .error
 ```
 
 The finalize call answers `{"code":"INTEGRITY_ERROR","message":"..."}`.
@@ -497,8 +530,10 @@ shows the latest result per metric. The drift loop runs every 5 minutes
 
 ### 6. Dashboard
 
-Open <http://localhost> and log in with the admin key
-(`echo $FLEETML_ADMIN_KEY`); the dashboard keeps a session cookie, not the key. **Models** shows iris with its three versions and
+Open <http://localhost> and log in with the admin key, `FLEETML_ADMIN_KEY`
+in `~/.fleetml.env` (`printf %s "$FLEETML_ADMIN_KEY" | pbcopy` copies it on
+macOS, see [Run FleetML](#run-fleetml)); the dashboard keeps a session
+cookie, not the key. **Models** shows iris with its three versions and
 their variants (one FAILED from step 1), **Deployments** the rolled-back
 canary with its reason, **Experiments** the concluded A/B test with per-arm
 results, and **Drift** the history for 1.0.0. Deployments and experiments can
@@ -509,9 +544,9 @@ be created, rolled back, cancelled and concluded there too.
 ### 7. Operations
 
 ```bash
-curl -s localhost:18080/livez; echo
-curl -s localhost:18080/readyz; echo
-curl -s localhost:18080/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
+curl -s $FLEETML_SERVER/livez; echo
+curl -s $FLEETML_SERVER/readyz; echo
+curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
 `/livez` answers `{"status":"ok"}`. The gRPC port also serves the standard
@@ -521,6 +556,7 @@ Prometheus and Grafana with the FleetML dashboard (telemetry lag,
 redeliveries, request rates, deployments, alerts) run as a compose profile:
 
 ```bash
+source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
@@ -528,28 +564,90 @@ Open http://localhost:13000 in a browser: Grafana shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
 
-Run it in the same shell as the stack, since compose needs the same secrets.
-It runs the one-shot `migrate` service again, which finds nothing to do; the
-server keeps running and the data stays.
+`source ~/.fleetml.env` gives compose the stack's secrets and its saved
+`S3_PUBLIC_ENDPOINT`: without that variable, `up -d` would recreate the
+server with `localhost:19100`, and a phone or second machine set up through
+a device guide would then fail its downloads. The command runs the one-shot
+`migrate` service again, which finds nothing to do; the server keeps
+running and the data stays.
 
 With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;
 Prometheus is then on `:19091` and scrapes the server on `:18080`.
+
+### Next: a real device
+
+The stack and the tour's project can stay: a real device enrolls into the
+same server, with an enrollment key of the project.
+
+- **An Android phone:** [On your phone](ANDROID_SDK.md#on-your-phone), over
+  USB first, with your own app or the sample app; from Windows,
+  [From Windows](ANDROID_SDK.md#from-windows).
+- **An iPhone:** [Your own app on an iPhone](IOS_SDK.md#your-own-app-on-an-iphone).
+- **A Linux machine**, or a container on this one: the
+  [Linux device agent](LINUX_AGENT.md), with
+  [Server on another machine](LINUX_AGENT.md#server-on-another-machine) for
+  what it needs from this stack.
+- **A notebook or CI:** the same steps with the [Python client](PYTHON_CLIENT.md).
+
+A phone or a second machine downloads models from `S3_PUBLIC_ENDPOINT`,
+`localhost:19100` in `~/.fleetml.env`: the guides set it to the machine's
+LAN address there.
 
 ### Clean up
 
 ```bash
 kill $SIM
 docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
+rm -f ~/.fleetml.env /tmp/fleetml-sim.log
 ```
 
+`down -v` deletes the data: every project, model and device, and the admin
+key. Without `-v` only the containers go, and the next `up` finds the data
+again (keep `~/.fleetml.env` then: the stack needs the same secrets).
 `--profile observability` also removes Prometheus and Grafana from step 7;
-without it they keep running, and so do their network and Grafana's volume.
-Compose needs the two secrets for `down` too: from a new shell,
-`source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
+without it they keep running, and so does their network. The `rm` deletes
+the saved secrets and the simulator's log. The CLI (`~/.local/bin/fleetml`)
+and the two images (`docker image rm fleetml-prod-server fleetml-prod-dashboard`)
+stay until you remove them. Compose needs the secrets for `down` too: from a
+new shell, `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
+
+## Upgrading
+
+Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.7.0
+to 0.8.0 there are no breaking API changes (each version's "Changed" section
+lists what behaves differently), and the server applies new database
+migrations itself when it starts. Upgrade the server first, then the
+devices and the tools; each moves on its own:
+
+- **The compose stack**, in its clone, with the saved values:
+
+  ```bash
+  git fetch --tags && git checkout v0.8.0
+  source ~/.fleetml.env
+  docker compose -f deploy/docker-compose.prod.yml up -d --build
+  until curl -sf localhost:18080/readyz; do sleep 2; done; echo
+  ```
+
+  The projects, devices, telemetry and the admin key stay, and devices
+  reconnect by themselves. `git checkout main` instead follows the newest
+  code, ahead of the last release.
+- **The CLI:** the [Get the CLI](#get-the-cli) block again (it fetches the
+  latest release); `fleetml version` prints the version.
+- **An Android app:** the new version in
+  `implementation("dev.fleetml:fleetml-sdk:<version>")` ([Install](ANDROID_SDK.md#install)).
+- **An iOS app:** Xcode's File, Packages, Update to Latest Package Versions
+  (the rule "Up to Next Major Version" takes every 0.x release), or
+  `from: "<version>"` in `Package.swift` ([Install](IOS_SDK.md#install)).
+- **The Python client:** `pip install -U fleetml`.
+- **A Linux agent:** the new archive and `install.sh` again
+  ([Upgrade](LINUX_AGENT.md#upgrade)): it keeps the config and restarts the
+  running service.
+- **The Helm chart:** [Upgrading](../deploy/helm/fleetml/README.md#upgrading).
 
 ## Contact
 
 - Anything about FleetML: [hello@fleetml.dev](mailto:hello@fleetml.dev).
 - A security problem: [security@fleetml.dev](mailto:security@fleetml.dev), see [SECURITY.md](../SECURITY.md).
 - Questions in public: [GitHub Discussions](https://github.com/fleetml/fleetml/discussions).
+- Bugs: [GitHub Issues](https://github.com/fleetml/fleetml/issues/new/choose), with the FleetML version and the command or log line that shows the problem.

@@ -4,10 +4,13 @@
 *.py      text eol=lf
 Makefile  text eol=lf
 gradlew   text eol=lf
+# Windows batch files (android/gradlew.bat) need CRLF to run in cmd.exe.
+*.bat     text eol=crlf
 
 # Models and images are binary: git never converts their line endings.
 *.tflite  binary
 *.onnx    binary
 *.mlmodel binary
 *.bin     binary
+*.jar     binary
 *.png     binary

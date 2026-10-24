@@ -114,13 +114,13 @@ func run() error {
 	// Upload and download URLs are signed for the address clients use.
 	if cfg.S3PublicEndpoint != "" {
 		signer, err := storage.NewPublicSigner(storage.S3Config{
-			AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.S3UseSSL, Bucket: cfg.S3Bucket,
+			AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, UseSSL: cfg.PublicUseSSL(), Bucket: cfg.S3Bucket,
 		}, cfg.S3PublicEndpoint)
 		if err != nil {
 			return fmt.Errorf("creating s3 public signer: %w", err)
 		}
 		s3Client.SetPublicSigner(signer)
-		slog.Info("presigned URLs use S3_PUBLIC_ENDPOINT", "endpoint", cfg.S3PublicEndpoint)
+		slog.Info("presigned URLs use S3_PUBLIC_ENDPOINT", "endpoint", cfg.S3PublicEndpoint, "https", cfg.PublicUseSSL())
 	}
 
 	var nc *nats.Conn

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # FleetML on edge boxes, in under a minute: four Linux device agents run
-# 1.0.0; a canary of 2.0.0 reaches half of them, their inference process
+# 1.0.0; a canary of 2.0.0 reaches some of them, their inference process
 # reports errors with it, the health gate rolls the release back, and the
 # canary boxes switch their `current` link back to 1.0.0.
 #
@@ -120,7 +120,7 @@ wait_for 30 "the boxes to load 1.0.0" all_on 1.0.0
 note "fleet: $(fleet)"
 note "each agent verified the sha256, ran its validator and switched models/iris/current"
 
-say "2. A canary of 2.0.0 on half of them, with a health gate"
+say "2. A canary of 2.0.0 on some of them, with a health gate"
 show "POST /api/v1/deployments  {2.0.0, CANARY 50% -> 100%, gate: errors <= 5% over 20 events, else ROLLBACK}"
 canary_boxes() { local i n=0; for i in "${!BOXES[@]}"; do [ "$(active "$i")" = 2.0.0 ] && n=$((n + 1)); done; echo $n; }
 canary() {

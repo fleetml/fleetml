@@ -185,6 +185,21 @@ export function Table({ head, children, empty, mobile }: { head: string[]; child
   )
 }
 
+/** "21–40 of 42" with Previous and Next, under a list that pages through the server. */
+export function Pager({ offset, pageSize, total, onChange }: { offset: number; pageSize: number; total: number; onChange: (offset: number) => void }) {
+  if (total <= pageSize && offset === 0) return null
+  const last = Math.min(offset + pageSize, total)
+  return (
+    <div className="mt-3 flex items-center justify-between gap-4 text-sm text-gray-500">
+      <span>{total === 0 ? 'None' : `${offset + 1}–${last} of ${total}`}</span>
+      <div className="flex gap-2">
+        <Button variant="secondary" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - pageSize))}>Previous</Button>
+        <Button variant="secondary" disabled={last >= total} onClick={() => onChange(offset + pageSize)}>Next</Button>
+      </div>
+    </div>
+  )
+}
+
 /** Parses "key=value, key2=value2" into a label map. */
 export function parseLabels(text: string): Record<string, string> {
   const out: Record<string, string> = {}

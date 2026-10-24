@@ -7,10 +7,11 @@ Dashboard: service {{ include "fleetml.fullname" . }}-dashboard, port {{ .Values
 Devices download models from {{ .Values.s3.publicEndpoint }}; make sure they can reach it.
 
 Try it from your machine:
-  kubectl port-forward svc/{{ include "fleetml.fullname" . }}-server {{ .Values.server.service.restPort }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "fleetml.fullname" . }}-server {{ .Values.server.service.restPort }} {{ .Values.server.service.grpcPort }}
   curl -s localhost:{{ .Values.server.service.restPort }}/readyz
-{{- if not .Values.secrets.adminKey }}
+{{- if and (not .Values.secrets.adminKey) (not .Values.secrets.existingSecret) }}
 
-No admin API key was set: the server generated one on first start and logged it once:
-  kubectl logs deploy/{{ include "fleetml.fullname" . }}-server | grep admin_api_key
+No admin API key was set: the server generated one on its first start and
+logged it once (set secrets.adminKey to choose it instead):
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "fleetml.fullname" . }}-server | grep admin_api_key
 {{- end }}

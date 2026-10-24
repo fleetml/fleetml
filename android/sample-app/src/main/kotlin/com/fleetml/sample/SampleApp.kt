@@ -22,6 +22,8 @@ class SampleApp : Application(), FleetMLCallback {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile var deviceId: String? = null
     @Volatile var connected: Boolean? = null
+    /** The assigned model that last failed to download or validate, with the reason; null once a model is ready. */
+    @Volatile var failing: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -57,9 +59,15 @@ class SampleApp : Application(), FleetMLCallback {
         listeners.forEach { it() }
     }
 
-    override fun onModelReady(model: ActiveModel) = note("Model ready: ${model.modelName} ${model.version} (${model.file.length()} bytes)")
+    override fun onModelReady(model: ActiveModel) {
+        failing = null
+        note("Model ready: ${model.modelName} ${model.version} (${model.file.length()} bytes)")
+    }
     override fun onModelUnload(modelId: String, modelName: String, variantId: String) = note("Model unloaded: $modelName")
-    override fun onModelLoadFailed(modelName: String, version: String, reason: String) = note("Model failed: $modelName $version: $reason")
+    override fun onModelLoadFailed(modelName: String, version: String, reason: String) {
+        failing = "$modelName $version: $reason"
+        note("Model failed: $modelName $version: $reason")
+    }
     override fun onRegistered(deviceId: String) {
         this.deviceId = deviceId
         note("Registered as $deviceId")

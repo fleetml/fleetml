@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -8,13 +10,44 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/fleetml/fleetml/internal/registry"
 	"github.com/fleetml/fleetml/internal/telemetry"
 )
 
 // TelemetryHandler handles REST endpoints for telemetry queries.
 type TelemetryHandler struct {
-	service *telemetry.Service
-	logger  *slog.Logger
+	service  *telemetry.Service
+	versions versionLookup
+	logger   *slog.Logger
+}
+
+// versionLookup finds a model version; *registry.Service implements it.
+type versionLookup interface {
+	GetVersion(ctx context.Context, id uuid.UUID) (*registry.RegistryVersion, error)
+}
+
+// requireVersion answers 404 NOT_FOUND when :model_version_id names no
+// version, so a mistyped ID does not read as "no telemetry yet". With no
+// lookup it lets every request through.
+func requireVersion(versions versionLookup) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if versions == nil {
+			return
+		}
+		id, ok := parseUUID(c, "model_version_id")
+		if !ok {
+			c.Abort()
+			return
+		}
+		if _, err := versions.GetVersion(c.Request.Context(), id); err != nil {
+			if errors.Is(err, registry.ErrNotFound) {
+				respondError(c, http.StatusNotFound, "NOT_FOUND", "model version not found")
+			} else {
+				internalError(c, err, "An internal error occurred")
+			}
+			c.Abort()
+		}
+	}
 }
 
 // NewTelemetryHandler creates a new TelemetryHandler.
@@ -22,12 +55,19 @@ func NewTelemetryHandler(svc *telemetry.Service, logger *slog.Logger) *Telemetry
 	return &TelemetryHandler{service: svc, logger: logger}
 }
 
+// WithVersions makes the per-version routes answer 404 for an unknown version.
+func (h *TelemetryHandler) WithVersions(v versionLookup) *TelemetryHandler {
+	h.versions = v
+	return h
+}
+
 // RegisterRoutes registers telemetry routes.
 func (h *TelemetryHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	known := requireVersion(h.versions)
 	rg.GET("/telemetry/events", h.queryEvents)
-	rg.GET("/telemetry/summary/:model_version_id", h.getSummary)
-	rg.GET("/telemetry/summary/:model_version_id/by-class", h.getSummaryByClass)
-	rg.GET("/telemetry/timeseries/:model_version_id", h.getTimeSeries)
+	rg.GET("/telemetry/summary/:model_version_id", known, h.getSummary)
+	rg.GET("/telemetry/summary/:model_version_id/by-class", known, h.getSummaryByClass)
+	rg.GET("/telemetry/timeseries/:model_version_id", known, h.getTimeSeries)
 }
 
 func (h *TelemetryHandler) queryEvents(c *gin.Context) {

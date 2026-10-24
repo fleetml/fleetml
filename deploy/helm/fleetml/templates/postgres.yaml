@@ -12,6 +12,8 @@ spec:
   template:
     metadata:
       labels: {{- include "fleetml.selector" (dict "root" . "component" "postgres") | nindent 8 }}
+      # No checksum of the Secret: Postgres reads POSTGRES_PASSWORD only when
+      # it creates its volume, so a restart would not apply a new password.
     spec:
       containers:
         - name: postgres

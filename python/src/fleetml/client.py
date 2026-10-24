@@ -13,6 +13,7 @@ import httpx
 from fleetml.errors import FleetMLError
 from fleetml.types import (
     Deployment,
+    DeploymentHealth,
     Device,
     DriftResult,
     EnrollmentKey,
@@ -20,6 +21,7 @@ from fleetml.types import (
     ExperimentResults,
     Model,
     Project,
+    TelemetryEvent,
     TelemetrySummary,
     Version,
     from_list,
@@ -39,9 +41,10 @@ class FleetML:
 
     ``server`` defaults to ``FLEETML_SERVER``, then ``http://localhost:18080``;
     ``api_key`` (an admin API key, sent as ``Authorization: Bearer``) defaults
-    to ``FLEETML_API_KEY``. Every call raises :class:`FleetMLError` when the
-    server refuses it or cannot be reached. Use it as a context manager, or
-    call :meth:`close`.
+    to ``FLEETML_API_KEY``. Every call to the server raises
+    :class:`FleetMLError` when the server refuses it or cannot be reached; a
+    local file that :meth:`push` cannot read raises Python's own ``OSError``.
+    Use it as a context manager, or call :meth:`close`.
     """
 
     def __init__(
@@ -111,8 +114,10 @@ class FleetML:
         return payload.get("data")
 
     @staticmethod
-    def _page(limit: Optional[int], offset: Optional[int]) -> Json:
-        return {k: v for k, v in (("limit", limit), ("offset", offset)) if v is not None}
+    def _page(limit: Optional[int], offset: Optional[int], project: Optional[str] = None) -> Json:
+        """List parameters; ``project`` filters by project ID (``project_id``)."""
+        q = (("limit", limit), ("offset", offset), ("project_id", project))
+        return {k: v for k, v in q if v is not None}
 
     def push(
         self,
@@ -222,6 +227,12 @@ class Projects(_API):
     def get(self, project_id: str) -> Project:
         return Project.from_api(self._c._request("GET", f"/projects/{project_id}"))
 
+    def delete(self, project_id: str) -> None:
+        """Deletes the project with everything in it: its models, versions,
+        deployments, experiments, enrollment keys and devices, and the
+        telemetry of its versions (``fleetml project delete``)."""
+        self._c._request("DELETE", f"/projects/{project_id}")
+
 
 class Models(_API):
     """``fleetml model``."""
@@ -233,6 +244,9 @@ class Models(_API):
     def list(self, project: str, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Model]:
         data = self._c._request("GET", f"/projects/{project}/models", params=self._c._page(limit, offset))
         return from_list(data, Model.from_api)
+
+    def get(self, model_id: str) -> Model:
+        return Model.from_api(self._c._request("GET", f"/models/{model_id}"))
 
 
 class Versions(_API):
@@ -250,6 +264,14 @@ class Versions(_API):
 
     def get(self, version_id: str) -> Version:
         return Version.from_api(self._c._request("GET", f"/versions/{version_id}"))
+
+    def promote(self, version_id: str, status: str = "ACTIVE") -> Version:
+        """Moves a version to ``status`` (STAGED, ACTIVE or ARCHIVED), like
+        ``fleetml ver promote``. To ACTIVE, a DRAFT version goes through
+        STAGED first, as the server's lifecycle requires."""
+        if status == "ACTIVE" and self.get(version_id).status == "DRAFT":
+            self._c._request("PATCH", f"/versions/{version_id}/status", {"status": "STAGED"})
+        return Version.from_api(self._c._request("PATCH", f"/versions/{version_id}/status", {"status": status}))
 
 
 class EnrollmentKeys(_API):
@@ -293,14 +315,36 @@ class Deployments(_API):
     def get(self, deployment_id: str) -> Deployment:
         return Deployment.from_api(self._c._request("GET", f"/deployments/{deployment_id}"))
 
-    def list(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Deployment]:
-        return from_list(
-            self._c._request("GET", "/deployments", params=self._c._page(limit, offset)), Deployment.from_api
-        )
+    def list(
+        self, limit: Optional[int] = None, offset: Optional[int] = None, project: Optional[str] = None
+    ) -> List[Deployment]:
+        """Lists deployments, newest first; with ``project``, that project's only."""
+        params = self._c._page(limit, offset, project)
+        return from_list(self._c._request("GET", "/deployments", params=params), Deployment.from_api)
 
     def rollback(self, deployment_id: str, reason: str = "manual rollback") -> Deployment:
         data = self._c._request("POST", f"/deployments/{deployment_id}/rollback", {"reason": reason})
         return Deployment.from_api(data)
+
+    def pause(self, deployment_id: str) -> Deployment:
+        """Pauses a rolling-out deployment where it is."""
+        return Deployment.from_api(self._c._request("POST", f"/deployments/{deployment_id}/pause"))
+
+    def resume(self, deployment_id: str) -> Deployment:
+        return Deployment.from_api(self._c._request("POST", f"/deployments/{deployment_id}/resume"))
+
+    def cancel(self, deployment_id: str) -> Deployment:
+        """Stops a rollout; the devices it reached return to the deployment before it."""
+        return Deployment.from_api(self._c._request("POST", f"/deployments/{deployment_id}/cancel"))
+
+    def progress(self, deployment_id: str) -> Deployment:
+        """Moves a canary or rolling deployment to its next stage now, if its
+        health gate allows it."""
+        return Deployment.from_api(self._c._request("POST", f"/deployments/{deployment_id}/progress"))
+
+    def health(self, deployment_id: str) -> DeploymentHealth:
+        """The health gate of the deployment's current stage."""
+        return DeploymentHealth.from_api(self._c._request("GET", f"/deployments/{deployment_id}/health"))
 
 
 class Devices(_API):
@@ -311,19 +355,41 @@ class Devices(_API):
         labels: Optional[Mapping[str, str]] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
+        project: Optional[str] = None,
     ) -> List[Device]:
-        """Lists devices; with ``labels``, only those that have all of them."""
-        params = self._c._page(limit, offset)
+        """Lists devices; with ``project``, that project's only, and with
+        ``labels``, only those that have all of them."""
+        params = self._c._page(limit, offset, project)
         for k, v in (labels or {}).items():
             params[f"label.{k}"] = v
         return from_list(self._c._request("GET", "/devices", params=params), Device.from_api)
+
+    def get(self, device_id: str) -> Device:
+        return Device.from_api(self._c._request("GET", f"/devices/{device_id}"))
 
 
 class Telemetry(_API):
     """``fleetml telemetry``."""
 
     def summary(self, version_id: str) -> TelemetrySummary:
+        """The last day's telemetry of a version: latency and confidence over
+        its INFERENCE events, counts over every event."""
         return TelemetrySummary.from_api(self._c._request("GET", f"/telemetry/summary/{version_id}"))
+
+    def events(
+        self,
+        version_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        event_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> List[TelemetryEvent]:
+        """The last day's events, newest first, of a version, a device or a type."""
+        params = self._c._page(limit, offset)
+        for k, v in (("model_version_id", version_id), ("device_id", device_id), ("event_type", event_type)):
+            if v is not None:
+                params[k] = v
+        return from_list(self._c._request("GET", "/telemetry/events", params=params), TelemetryEvent.from_api)
 
 
 class Experiments(_API):
@@ -361,6 +427,32 @@ class Experiments(_API):
     def start(self, experiment_id: str) -> Experiment:
         return Experiment.from_api(self._c._request("POST", f"/experiments/{experiment_id}/start"))
 
+    def get(self, experiment_id: str) -> Experiment:
+        return Experiment.from_api(self._c._request("GET", f"/experiments/{experiment_id}"))
+
+    def list(
+        self, limit: Optional[int] = None, offset: Optional[int] = None, project: Optional[str] = None
+    ) -> List[Experiment]:
+        """Lists experiments; with ``project``, that project's only."""
+        params = self._c._page(limit, offset, project)
+        return from_list(self._c._request("GET", "/experiments", params=params), Experiment.from_api)
+
+    def pause(self, experiment_id: str) -> Experiment:
+        return Experiment.from_api(self._c._request("POST", f"/experiments/{experiment_id}/pause"))
+
+    def resume(self, experiment_id: str) -> Experiment:
+        return Experiment.from_api(self._c._request("POST", f"/experiments/{experiment_id}/resume"))
+
+    def conclude(self, experiment_id: str, winner: str, note: str = "") -> Experiment:
+        """Ends the experiment with ``winner``, the control's or the
+        treatment's version ID."""
+        body = {"winner_version_id": winner, "note": note}
+        return Experiment.from_api(self._c._request("POST", f"/experiments/{experiment_id}/conclude", body))
+
+    def cancel(self, experiment_id: str) -> Experiment:
+        """Ends the experiment without a winner."""
+        return Experiment.from_api(self._c._request("POST", f"/experiments/{experiment_id}/cancel"))
+
     def results(self, experiment_id: str) -> ExperimentResults:
         return ExperimentResults.from_api(self._c._request("GET", f"/experiments/{experiment_id}/results"))
 
@@ -369,8 +461,13 @@ class Drift(_API):
     """``fleetml drift``."""
 
     def check(self, version_id: str) -> List[DriftResult]:
-        """Runs a drift check now: one result per metric."""
+        """Runs a drift check now: one result per metric, once a baseline
+        exists (telemetry from the 7 days before the last day); none before."""
         return from_list(self._c._request("POST", f"/drift/{version_id}/check"), DriftResult.from_api)
+
+    def status(self, version_id: str) -> List[DriftResult]:
+        """The latest result per metric (``fleetml drift status``)."""
+        return from_list(self._c._request("GET", f"/drift/{version_id}"), DriftResult.from_api)
 
     def history(self, version_id: str) -> List[DriftResult]:
         """The last 50 drift results, newest first."""

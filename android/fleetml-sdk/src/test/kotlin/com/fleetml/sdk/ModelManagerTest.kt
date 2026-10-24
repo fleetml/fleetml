@@ -103,7 +103,7 @@ class ModelManagerTest {
             Logger.sink = saved
         }
         assertEquals(
-            listOf("Downloaded model good-v1 (0KB)", "Model iris 1.0.0 passed validation", "Model iris 1.0.0 is active"),
+            listOf("Downloaded model good-v1 (9 bytes)", "Model iris 1.0.0 passed validation", "Model iris 1.0.0 is active"),
             lines,
         )
     }

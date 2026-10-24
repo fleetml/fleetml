@@ -23,25 +23,34 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "fleetml.secretName" . }}
+          {{- /* The chart's settings, then server.env: a name in both is set once, to server.env's value. */}}
+          {{- $env := dict
+            "DATABASE_URL" (include "fleetml.databaseURL" .)
+            "NATS_URL" (include "fleetml.natsURL" .)
+            "S3_ENDPOINT" (include "fleetml.s3Endpoint" .)
+            "S3_PUBLIC_ENDPOINT" (required "s3.publicEndpoint is required: the host:port devices download models from" .Values.s3.publicEndpoint)
+            "S3_BUCKET" .Values.s3.bucket
+            "S3_USE_SSL" .Values.s3.useSSL
+            "S3_PUBLIC_USE_SSL" .Values.s3.publicUseSSL
+            "REST_PORT" "18080"
+            "GRPC_PORT" "19090"
+            "MIGRATE_ON_START" "true" }}
           env:
-            - {name: DATABASE_URL, value: {{ include "fleetml.databaseURL" . | quote }}}
-            - {name: NATS_URL, value: {{ include "fleetml.natsURL" . | quote }}}
-            - {name: S3_ENDPOINT, value: {{ include "fleetml.s3Endpoint" . | quote }}}
-            - {name: S3_PUBLIC_ENDPOINT, value: {{ required "s3.publicEndpoint is required: the host:port devices download models from" .Values.s3.publicEndpoint | quote }}}
-            - {name: S3_BUCKET, value: {{ .Values.s3.bucket | quote }}}
-            - {name: S3_USE_SSL, value: {{ .Values.s3.useSSL | quote }}}
-            - {name: REST_PORT, value: "18080"}
-            - {name: GRPC_PORT, value: "19090"}
-            - {name: MIGRATE_ON_START, value: "true"}
-            {{- range $k, $v := .Values.server.env }}
-            - {name: {{ $k }}, value: {{ $v | quote }}}
+            {{- range $k, $v := mergeOverwrite $env .Values.server.env }}
+            - {name: {{ $k }}, value: {{ $v | toString | quote }}}
             {{- end }}
           readinessProbe:
             httpGet: {path: /readyz, port: rest}
             periodSeconds: 5
+          # /livez answers once Postgres, the object store and NATS are
+          # reachable; the server waits up to 60 s for each, so the startup
+          # probe allows 200 s before the liveness probe takes over.
+          startupProbe:
+            httpGet: {path: /livez, port: rest}
+            periodSeconds: 5
+            failureThreshold: 40
           livenessProbe:
             httpGet: {path: /livez, port: rest}
-            initialDelaySeconds: 30
             periodSeconds: 10
           {{- with .Values.server.resources }}
           resources: {{- toYaml . | nindent 12 }}
