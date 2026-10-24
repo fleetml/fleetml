@@ -40,7 +40,7 @@ Documentation = "https://github.com/fleetml/fleetml/blob/main/docs/PYTHON_CLIENT
 Repository = "https://github.com/fleetml/fleetml"
 Changelog = "https://github.com/fleetml/fleetml/blob/main/CHANGELOG.md"
 Issues = "https://github.com/fleetml/fleetml/issues"
-Contact = "mailto:hello@fleetml.dev"
+Contact = "https://github.com/fleetml/fleetml/blob/main/SUPPORT.md"
 
 [tool.hatch.version]
 path = "src/fleetml/__init__.py"
