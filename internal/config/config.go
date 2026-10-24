@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,8 +22,12 @@ type Config struct {
 	// object store at, if it differs from S3_ENDPOINT; presigned upload and
 	// download URLs are signed for it.
 	S3PublicEndpoint string `envconfig:"S3_PUBLIC_ENDPOINT"`
-	NatsURL          string `envconfig:"NATS_URL" default:"nats://localhost:14222"`
-	GRPCPort         int    `envconfig:"GRPC_PORT" default:"19090"`
+	// S3PublicUseSSL is whether those URLs are https; unset, it is S3_USE_SSL.
+	// They differ when TLS is terminated in front of the store (an Ingress
+	// before the bundled SeaweedFS) or only on the internal connection.
+	S3PublicUseSSL string `envconfig:"S3_PUBLIC_USE_SSL"`
+	NatsURL        string `envconfig:"NATS_URL" default:"nats://localhost:14222"`
+	GRPCPort       int    `envconfig:"GRPC_PORT" default:"19090"`
 	// GRPCReflection registers gRPC server reflection (for grpcurl); off by default.
 	GRPCReflection bool `envconfig:"GRPC_REFLECTION" default:"false"`
 	RESTPort       int  `envconfig:"REST_PORT" default:"18080"`
@@ -67,6 +72,15 @@ type Config struct {
 	DeltaMaxSizeMB int `envconfig:"DELTA_MAX_SIZE_MB" default:"128"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
+}
+
+// PublicUseSSL is whether presigned URLs are https: S3_PUBLIC_USE_SSL, or
+// S3_USE_SSL when it is unset.
+func (c Config) PublicUseSSL() bool {
+	if v, err := strconv.ParseBool(c.S3PublicUseSSL); err == nil {
+		return v
+	}
+	return c.S3UseSSL
 }
 
 func (c Config) GRPCAddr() string {
@@ -120,6 +134,11 @@ func (c Config) validate() error {
 	}
 	if c.S3Endpoint == "" {
 		fail("S3_ENDPOINT must not be empty")
+	}
+	if c.S3PublicUseSSL != "" {
+		if _, err := strconv.ParseBool(c.S3PublicUseSSL); err != nil {
+			fail("S3_PUBLIC_USE_SSL must be true or false, got %q", c.S3PublicUseSSL)
+		}
 	}
 	for name, d := range map[string]time.Duration{
 		"DEPLOY_TICK_INTERVAL": c.DeployTickInterval, "EXPERIMENT_TICK_INTERVAL": c.ExperimentTickInterval, "DRIFT_TICK_INTERVAL": c.DriftTickInterval,

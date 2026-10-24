@@ -81,13 +81,30 @@ func TestLoad_Invalid(t *testing.T) {
 		"DASHBOARD_URL":                        "fleet.example.com",
 		"SIGNING_MASTER_KEY":                   "short",
 		"SMTP_HOST":                            "smtp.example.com",
+		"S3_PUBLIC_USE_SSL":                    "maybe",
 	})
 	_, err := Load()
 	require.Error(t, err)
 	for _, name := range []string{"JWT_SECRET must be at least 32", "S3_ENDPOINT must be host:port", "S3_PUBLIC_ENDPOINT must be host:port",
 		"LOG_LEVEL", "LOG_FORMAT", "ALERT_WEBHOOK_URL", "DEVICE_BACKGROUND_HEARTBEAT_INTERVAL", "DEVICE_DOWNLOAD_POLICY",
-		"DASHBOARD_URL", "SMTP_HOST and SMTP_FROM", "SIGNING_MASTER_KEY must be at least"} {
+		"DASHBOARD_URL", "SMTP_HOST and SMTP_FROM", "SIGNING_MASTER_KEY must be at least", "S3_PUBLIC_USE_SSL must be true or false"} {
 		assert.ErrorContains(t, err, name)
+	}
+}
+
+// The public URLs follow S3_USE_SSL unless S3_PUBLIC_USE_SSL says otherwise,
+// as with a TLS proxy in front of a store reached over plain HTTP.
+func TestLoad_PublicUseSSL(t *testing.T) {
+	for _, c := range []struct {
+		useSSL, publicUseSSL string
+		want                 bool
+	}{{"false", "", false}, {"true", "", true}, {"false", "true", true}, {"true", "false", false}} {
+		minimalEnv(t)
+		t.Setenv("S3_USE_SSL", c.useSSL)
+		t.Setenv("S3_PUBLIC_USE_SSL", c.publicUseSSL)
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, c.want, cfg.PublicUseSSL(), "S3_USE_SSL=%s S3_PUBLIC_USE_SSL=%q", c.useSSL, c.publicUseSSL)
 	}
 }
 

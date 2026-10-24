@@ -84,6 +84,21 @@ change APIs).
   download or validation fails, instead of `online` and
   `no assignment yet`. The SDK logs a download under 1 KB in bytes
   (`(603 bytes)`), not `(0KB)` (review 4, cosmetic).
+- Helm: `s3.publicUseSSL` (the server's `S3_PUBLIC_USE_SSL`, which defaults
+  to `S3_USE_SSL`) sets whether the download URLs are `https`, apart from
+  `s3.useSSL`, the server's own connection to the store. The chart README's
+  first block (`s3.useSSL=true` with the bundled SeaweedFS) never became
+  ready, and `false` signed `http://...:443` URLs (review 4, bug 2).
+- Helm: SeaweedFS restarts when its S3 credentials change (it read them only
+  at start, so `helm upgrade` with a new `s3SecretKey` crash-looped the
+  server); the server has a startup probe that covers its 60-second wait for
+  each dependency, where the liveness probe could restart it on a cold
+  install (review 4, bug 9).
+- Helm: a `server.env` name the chart sets itself (`S3_BUCKET`, say) is set
+  once, to the `server.env` value, instead of twice; a `jwtSecret` or
+  `signingMasterKey` shorter than 32 characters, or the two equal, is
+  refused at install; `NOTES.txt` names the release's namespace (review 4,
+  bug 12).
 - A failed `fleetml push` upload says `upload failed:` once, and
   `fleetml telemetry events` prints confidence with 3 decimals instead of
   float32 noise such as `0.9700000286102295` (review 4, cosmetic).
@@ -109,6 +124,14 @@ change APIs).
 
 ### Docs
 
+- The Helm chart's README is rewritten and was run as written on kind: the
+  published images (no build or `kind load`), the secrets generated once
+  into a 0600 file with what may and may not change, the install with the
+  bundled store and `s3.publicEndpoint` explained, a try-it block with
+  `fleetml simulate --grpc`, Upgrading (`helm upgrade --reuse-values`, what
+  restarts), Production (TLS in front, `s3.publicUseSSL`, TimescaleDB for an
+  external Postgres, what the chart does not set, backups), every value, and
+  Uninstall (review 4, docs gap 7).
 - Linux agent: "Identity and offline behaviour" gives the measured bound (a
   3-minute server pause: the warning after 32 s, the first heartbeat 42 s
   after the server was back) and the two log lines; the container one-liner

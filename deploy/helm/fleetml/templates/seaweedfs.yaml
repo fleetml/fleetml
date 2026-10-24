@@ -12,6 +12,10 @@ spec:
   template:
     metadata:
       labels: {{- include "fleetml.selector" (dict "root" . "component" "s3") | nindent 8 }}
+      annotations:
+        # The store reads its S3 credentials at start: restart it when they
+        # change (and only then; the server rolls for every secret).
+        checksum/s3-credentials: {{ printf "%s:%s" .Values.secrets.s3AccessKey .Values.secrets.s3SecretKey | sha256sum }}
     spec:
       containers:
         - name: seaweedfs
