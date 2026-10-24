@@ -144,14 +144,14 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Model runtimes used by the default validators when the app includes them.
-    compileOnly("org.tensorflow:tensorflow-lite:2.16.1")
-    compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+    compileOnly("org.tensorflow:tensorflow-lite:2.17.0")
+    compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     // JSON (for metadata)
     implementation("org.json:json:20240303")
 
     // ed25519 artifact signatures (the platform API needs API 33)
-    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -164,5 +164,5 @@ dependencies {
     // Instrumented test against a live dev stack (scripts/android-e2e.sh)
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("org.tensorflow:tensorflow-lite:2.16.1")
+    androidTestImplementation("org.tensorflow:tensorflow-lite:2.17.0")
 }
