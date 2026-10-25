@@ -8,7 +8,8 @@ was run as written, in order.
 
 Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
 APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100
-(`FLEETML_S3_PUBLIC_PORT` moves it, see [CONFIG.md](CONFIG.md#docker-compose)).
+(`export FLEETML_S3_PUBLIC_PORT=<port>` before the block moves it, see
+[CONFIG.md](CONFIG.md#docker-compose)).
 The first start takes a few minutes on a cold Docker cache, to pull the base
 images and build the server and dashboard, and well under a minute when the
 images are cached.
@@ -17,7 +18,7 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell, see [On Windows](#on-wind
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' S3_PUBLIC_ENDPOINT=localhost:19100\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" > ~/.fleetml.env)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
 source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
@@ -27,7 +28,9 @@ echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetm
 
 The second line generates the stack's three secrets and saves them in
 `~/.fleetml.env`, a file only you can read, before anything starts, with
-`S3_PUBLIC_ENDPOINT`, the address devices download models from (a phone or a
+the model files' port (`FLEETML_S3_PUBLIC_PORT`, 19100 unless you set it)
+and `S3_PUBLIC_ENDPOINT`, the address devices download models from,
+`localhost` on that port (a phone or a
 second machine needs your LAN address there instead; the device guides
 change it in this file). It leaves an existing file alone, so running the
 block again reuses the saved values. **Keep the file.** The admin key in it
@@ -62,8 +65,10 @@ Windows, a port can also sit in a range that Hyper-V or WSL reserves: Docker
 then fails with `bind: An attempt was made to access a socket in a way
 forbidden by its access permissions`, and
 `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists the
-reserved ranges; move the port out of them (below for port 80,
-`FLEETML_S3_PUBLIC_PORT` for 19100). More keys and their routes:
+reserved ranges; move the port out of them (below for port 80; for 19100,
+`export FLEETML_S3_PUBLIC_PORT=29100` before the block, which saves the port
+and `S3_PUBLIC_ENDPOINT=localhost:29100` together; for a stack already
+started, change both in `~/.fleetml.env` and run the `up -d` again). More keys and their routes:
 [API keys](CONFIG.md#api-keys).
 
 If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the

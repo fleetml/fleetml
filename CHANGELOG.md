@@ -33,6 +33,10 @@ change APIs).
   PowerShell cuts an unquoted `-PfleetmlDebugHost=<LAN IP>` at the first
   dot (review 5).
 - README: `tensorflow-lite:2.17.0`, as the guide and the sample app.
+- Compose: `FLEETML_S3_PUBLIC_PORT` also moves `S3_PUBLIC_ENDPOINT`'s
+  default (`localhost:<port>`), and the Run block saves the port and the
+  address together; before, a moved port left every upload and download URL
+  on 19100 (review 5).
 - QUICKSTART "Upgrading" keeps `S3_PUBLIC_ENDPOINT` for a `~/.fleetml.env`
   written by 0.7.0 or earlier (which set it on the command line): the block
   copies the running server's value into the file first, so phones and
