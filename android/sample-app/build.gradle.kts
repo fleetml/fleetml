@@ -66,7 +66,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.9.0"
+        versionName = "0.9.1"
 
         buildConfigField("String", "FLEETML_ENROLLMENT_KEY", "\"$enrollmentKey\"")
         buildConfigField("String", "FLEETML_DEBUG_HOST", "\"$debugHost\"")

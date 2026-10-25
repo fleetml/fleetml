@@ -202,12 +202,12 @@ the app needs compileSdk 34 or later and minSdk 26,
 [details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.9.0")
+implementation("dev.fleetml:fleetml-sdk:0.9.1")
 implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.9.0;
+(Dependency Rule **Up to Next Major Version** from 0.9.1;
 [details](docs/IOS_SDK.md#install)):
 
 ```text

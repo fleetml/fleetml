@@ -5,6 +5,81 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.9.1] - 2026-10-25
+
+The fixes from the sixth developer review (seven reviewers on the released
+0.9.0, each rating it 5): one Android crash, one Helm restart, and the
+rest of what they found. A client that sends valid requests needs no
+change. Two refused requests answer differently (under Changed), and
+`DEPENDENCY_TIMEOUT` now counts the whole start-up wait. The upgrade from
+0.9.0 is the [Upgrading](docs/QUICKSTART.md#upgrading) block.
+
+### Changed
+
+- REST: a `limit` outside 1 to 100 (1 to 1000 for `GET /telemetry/events`)
+  or a negative `offset` answers `400 VALIDATION_ERROR` naming the range,
+  for example `limit must be between 1 and 100, got 500`, instead of being
+  clamped without a word (`GET /devices` had no cap at all). A client that
+  asked for more than 100 pages with `offset`; the CLI, the dashboard and
+  the Python client's own calls already do (review 6).
+- `DEPENDENCY_TIMEOUT` is the total time start-up waits for Postgres, the
+  object store and NATS together, not the time for each; the Helm chart's
+  `180s` and the compose default `60s` stay. Meanwhile `/livez` answers 200
+  and `/readyz` 503 with `{"status":"starting","waiting_for":"<dependency>"}`
+  (review 6).
+- Docs: every `fleetml simulate` line (the tour, the chart README, the line
+  the Python tour prints, `scripts/demo.sh`) passes the enrollment key in
+  `FLEETML_ENROLLMENT_KEY` instead of `--enrollment-key` (review 6).
+
+### Added
+
+- Compose: `FLEETML_REST_PORT`, `FLEETML_GRPC_PORT` and
+  `FLEETML_DASHBOARD_PORT` (defaults 18080, 19090, 80) move the published
+  ports, next to `FLEETML_S3_PUBLIC_PORT`; the Run block saves all four in
+  `~/.fleetml.env`. Moving the dashboard off a taken port 80 is one line
+  in that file instead of an override file.
+- Android SDK: backup rules for the registration
+  (`@xml/fleetml_backup_rules`, `@xml/fleetml_data_extraction_rules`) for
+  an app to point at or copy; the SDK does not set them itself, which would
+  break the build of every app with its own rules.
+
+### Fixed
+
+- Android SDK: an app whose stored registration cannot be decrypted (restored
+  from a backup, moved to a new phone, or copied from another install) no
+  longer crashes at every launch with `AEADBadTagException`. The SDK logs
+  `Stored registration unreadable (...); deleted it, registering again with
+  the enrollment key`, deletes the file and registers again with the same
+  device ID (review 6).
+- Helm: a server that waits for its dependencies on a cold node is no
+  longer restarted by the 200 s startup probe; `/livez` answers before the
+  waits (review 6).
+- CLI: `fleetml push --promote` of a further variant into an ACTIVE version
+  succeeds (`vX was already ACTIVE`) instead of failing with `cannot
+  transition from ACTIVE to STAGED`; it takes only the steps a version has
+  not passed. `push` finds an existing model or version past the first 20,
+  and `project delete`'s summary counts past 1000 models.
+- REST: an unknown version status (`"LIVE"`) answers `400 VALIDATION_ERROR`
+  listing DRAFT, STAGED, ACTIVE and ARCHIVED instead of `409
+  INVALID_TRANSITION` (review 6).
+- CLI: `fleetml telemetry events` leaves the confidence blank for an event
+  without one instead of printing `0.000` (review 6).
+- Linux agent: no `heartbeat failed` or `sending telemetry failed` warning
+  for a call its own shutdown cancelled (review 6).
+- Docs: the device guides' `S3_PUBLIC_ENDPOINT` lines keep a moved
+  `FLEETML_S3_PUBLIC_PORT` instead of writing 19100; the Upgrading block
+  finds the server container through compose, so it works with
+  `COMPOSE_PROJECT_NAME` (review 6).
+- `scripts/demo-agent.sh` runs its clean-up on macOS's bash 3.2 when it
+  fails early, and shows why compose did not start (review 6).
+- Dashboard: the Drift chart's time axis shows seconds for a short history
+  instead of repeating a minute; the login page names `~/.fleetml.env`.
+- CI: on `windows-11-arm` the Windows run's WSL row reads `skipped (WSL 2
+  not available on this runner)` instead of `pass`.
+- CHANGELOG 0.9.0: the version label is on the release images; an image
+  built by `docker compose` is labelled `dev` unless `FLEETML_VERSION` is
+  set (the server's own version comes from the clone's tag either way).
+
 ## [0.9.0] - 2026-10-25
 
 The fixes from the fifth developer review (seven reviewers on the released
@@ -936,6 +1011,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.9.1]: https://github.com/fleetml/fleetml/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/fleetml/fleetml/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...v0.7.0

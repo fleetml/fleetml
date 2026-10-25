@@ -41,7 +41,7 @@ first, `shasum -a 256 -c` in place of `sha256sum -c`); in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
-`fleetml-agent 0.9.0`. To build the agent from source instead, `make
+`fleetml-agent 0.9.1`. To build the agent from source instead, `make
 build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
 and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
@@ -279,7 +279,7 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.9.0 server=<server address>:19090 models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.9.1 server=<server address>:19090 models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
