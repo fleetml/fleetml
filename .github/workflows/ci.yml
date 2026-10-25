@@ -227,6 +227,35 @@ jobs:
           name: docs-site
           path: site/
 
+  docs-lint:
+    name: Docs lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Ports, keys on command lines, versions, CHANGELOG, gh writes, golden blocks
+        run: ./scripts/docs-lint.sh
+
+  docs-golden-path:
+    name: Docs golden path
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # The Get started blocks of these four pages, run as a reader pastes
+      # them, against this commit: the release downloads come from a local
+      # build of it and `pip install fleetml` from ./python. Device blocks
+      # (a phone, a simulator) are run by hand; see docs/RELEASING.md.
+      - name: Release binaries of this commit
+        run: OUT="$RUNNER_TEMP/dist" ./scripts/release-binaries.sh 0.0.0-ci
+      - name: README, QUICKSTART, LINUX_AGENT and PYTHON_CLIENT, block by block
+        run: ./scripts/docs-golden-path.sh --local-release "$RUNNER_TEMP/dist" --local-python --timeout 1200 README.md docs/QUICKSTART.md docs/LINUX_AGENT.md docs/PYTHON_CLIENT.md
+
   helm:
     name: Helm chart
     runs-on: ubuntu-latest

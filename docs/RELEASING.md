@@ -77,7 +77,18 @@ Also:
   ([Android runbook](ANDROID_SDK.md#emulator-runbook)); the
   [iOS simulator runbook](IOS_SDK.md#simulator-runbook) works;
 - the README quickstart works from a fresh clone, and the
-  [tour](QUICKSTART.md#tour) runs as written;
+  [tour](QUICKSTART.md#tour) runs as written; CI's `Docs golden path` job
+  runs the Get started blocks of the README, QUICKSTART, LINUX_AGENT and
+  PYTHON_CLIENT on every change, and `Docs lint` checks the ports, keys,
+  versions and CHANGELOG; the blocks that need a device run by hand, with an
+  emulator or a phone attached and a simulator available (`--phones` adds
+  the iPhone block):
+
+  ```bash
+  OUT=/tmp/fleetml-dist ./scripts/release-binaries.sh 0.0.0-rc
+  ./scripts/docs-golden-path.sh --local-release /tmp/fleetml-dist --devices docs/ANDROID_SDK.md docs/IOS_SDK.md
+  ```
+
 - `git grep` finds no credentials, internal hostnames or personal paths.
 
 ## 2. Update the changelog
@@ -245,7 +256,7 @@ free organisation has no branch protection or rulesets). The rule on `main`:
 
 - a pull request before merging, with no required approvals;
 - the CI checks `Go`, `CLI on Windows`, `Dashboard`, `Android SDK`,
-  `Docs site` and `Helm chart` must pass; not `iOS SDK`, which runs only
+  `Docs site`, `Docs lint`, `Docs golden path` and `Helm chart` must pass; not `iOS SDK`, which runs only
   when `ios/` changes and would otherwise block other pull requests;
 - no force pushes and no deletion of the branch;
 - the maintainers' account `fleetml-maintainers` may bypass the rule (for
