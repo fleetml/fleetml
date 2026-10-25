@@ -49,6 +49,19 @@ type Config struct {
 	DownloadHostOverride string `yaml:"download_host_override"`
 }
 
+// PlaceholderEnrollmentKey is the enrollment_key of config.example.yaml, which
+// install.sh writes: it counts as no key.
+const PlaceholderEnrollmentKey = "<project enrollment key>"
+
+// UseEnvEnrollmentKey takes key (from FLEETML_ENROLLMENT_KEY) when the config
+// has no enrollment key of its own, or still the example's placeholder, so a
+// container can pass the key in its environment instead of on a command line.
+func (c *Config) UseEnvEnrollmentKey(key string) {
+	if key != "" && (c.EnrollmentKey == "" || c.EnrollmentKey == PlaceholderEnrollmentKey) {
+		c.EnrollmentKey = key
+	}
+}
+
 // LoadConfig reads a YAML file (if path is not empty) over the defaults.
 func LoadConfig(path string) (*Config, error) {
 	c := &Config{StateDir: "/var/lib/fleetml-agent", HeartbeatInterval: 30 * time.Second}

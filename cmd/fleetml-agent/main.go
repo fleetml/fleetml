@@ -37,12 +37,13 @@ func main() {
 func run() error {
 	configPath := flag.String("config", "", "YAML config file (e.g. /etc/fleetml-agent/config.yaml)")
 	server := flag.String("server", "", "FleetML gRPC address host:port (overrides the config)")
-	key := flag.String("enrollment-key", "", "project enrollment key (overrides the config)")
+	key := flag.String("enrollment-key", "", "project enrollment key (overrides the config); FLEETML_ENROLLMENT_KEY in the environment\nis used when neither this flag nor the config sets one, and keeps the key out of the process list")
 	stateDir := flag.String("state-dir", "", "state directory (overrides the config)")
 	modelsDir := flag.String("models-dir", "", "models directory (overrides the config)")
 	validator := flag.String("validator", "", "validator command; {file} is the model path (overrides the config)")
 	hook := flag.String("post-activate", "", "command run after a model version becomes active (overrides the config)")
 	listen := flag.String("telemetry-listen", "", "local telemetry endpoint, e.g. 127.0.0.1:9601 (overrides the config)")
+	downloadHost := flag.String("download-host-override", "", "host:port that every model download goes to instead of the server's S3_PUBLIC_ENDPOINT (overrides the config)")
 	labels := labelFlags{}
 	flag.Var(labels, "label", "device label key=value (repeatable; added to the config's labels)")
 	retryFailed := flag.Bool("retry-failed", false, "retry the versions that failed validation now instead of after the hour's wait")
@@ -58,7 +59,8 @@ func run() error {
 		return err
 	}
 	for flagValue, field := range map[*string]*string{server: &cfg.Server, key: &cfg.EnrollmentKey, stateDir: &cfg.StateDir,
-		modelsDir: &cfg.ModelsDir, validator: &cfg.Validator, hook: &cfg.PostActivate, listen: &cfg.TelemetryListen} {
+		modelsDir: &cfg.ModelsDir, validator: &cfg.Validator, hook: &cfg.PostActivate, listen: &cfg.TelemetryListen,
+		downloadHost: &cfg.DownloadHostOverride} {
 		if *flagValue != "" {
 			*field = *flagValue
 		}
@@ -69,9 +71,7 @@ func run() error {
 	for k, v := range labels {
 		cfg.Labels[k] = v
 	}
-	if v := os.Getenv("FLEETML_ENROLLMENT_KEY"); v != "" && cfg.EnrollmentKey == "" {
-		cfg.EnrollmentKey = v
-	}
+	cfg.UseEnvEnrollmentKey(os.Getenv("FLEETML_ENROLLMENT_KEY"))
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	a, err := agent.New(cfg, log)

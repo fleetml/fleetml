@@ -27,7 +27,15 @@ class SampleApp : Application(), FleetMLCallback {
 
     override fun onCreate() {
         super.onCreate()
-        settings()?.let { startSdk(it) }
+        // Saved settings win. On the first start of a build that carries an
+        // enrollment key (-PfleetmlEnrollmentKey or ORG_GRADLE_PROJECT_fleetmlEnrollmentKey),
+        // the app connects to the build's host without a tap on Save and connect.
+        val saved = settings()
+        if (saved != null) {
+            startSdk(saved)
+        } else {
+            fromBuild(BuildConfig.FLEETML_ENROLLMENT_KEY, BuildConfig.FLEETML_DEBUG_HOST)?.let { connect(it) }
+        }
     }
 
     fun settings(): Settings? {
@@ -79,5 +87,9 @@ class SampleApp : Application(), FleetMLCallback {
 
     companion object {
         private const val PREFS = "sample_settings"
+
+        /** The settings a build carries: its key and debug host (the emulator's 10.0.2.2 when none), or null without a key. */
+        fun fromBuild(enrollmentKey: String, debugHost: String): Settings? =
+            if (enrollmentKey.isBlank()) null else Settings(debugHost.ifBlank { "10.0.2.2" }, 19090, enrollmentKey.trim())
     }
 }
