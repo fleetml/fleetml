@@ -201,7 +201,8 @@ with FleetML() as fm:
     print(f"1.0.0: {s.total_events} events, p95 {s.p95_latency_ms:.0f} ms")
 ```
 
-It prints the project ID first, then `COMPLETE`, `20 devices` (the
+It prints the project ID first, then the simulator's line and its prompt,
+then `COMPLETE`, `20 devices` (the
 project's own, whatever else the server runs), the rollback with its
 reason, and the summary. **Clean up**:
 stop the simulator (Ctrl-C in its shell), then delete the project with
@@ -230,7 +231,7 @@ status, 0 when the server was not reached), `code` (the server's error code:
 (`telemetry.events` filters, so an unknown version gives an empty list);
 `CONFLICT`, for example a project name that exists;
 `VALIDATION_ERROR`, for example a `limit` that is not an integer or is
-outside 1 to the page cap, or an unknown version status;
+outside 1 to the page cap, a negative `offset`, or an unknown version status;
 `INVALID_TRANSITION` (409), a deployment, experiment or version asked to do
 what its status does not allow, such as starting a COMPLETE deployment,
 progressing one that is not ROLLING_OUT, concluding a CONCLUDED experiment
@@ -277,8 +278,8 @@ parent (a project, a model) by position, and `devices.list` its `labels`.
 | `fm.versions.create(model, version, metadata=None)` | `fleetml ver create --model --version` | Creates a version, with optional metadata |
 | `fm.versions.list(model, *, limit=None, offset=None)` | `fleetml ver list --model` | Lists a model's versions |
 | `fm.versions.get(version_id)` | (REST) | One version |
-| `fm.versions.promote(version_id, status="ACTIVE")` | `fleetml ver promote` | Moves a version to STAGED, ACTIVE (through STAGED from DRAFT) or ARCHIVED |
-| `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. `target_runtime` is the CLI's `--framework` |
+| `fm.versions.promote(version_id, status="ACTIVE")` | `fleetml ver promote` | Moves a version to STAGED, ACTIVE (through STAGED from DRAFT) or ARCHIVED, the status in any case; an ACTIVE version asked for ACTIVE raises `INVALID_TRANSITION` (`push(promote=True)` leaves it ACTIVE) |
+| `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. It finds an existing model and version on any page. With `promote=True` it takes the version to ACTIVE from wherever it is, as `fleetml push --promote` does, and raises when the server refuses (from ARCHIVED). `target_runtime` is the CLI's `--framework` |
 | `fm.enrollment_keys.create(project, name)` | (REST) | A key devices register with; `.key` is shown only now |
 | `fm.deployments.create(project, version, strategy="ALL_AT_ONCE", target_selector=None, health_gate=None, canary_stages=None, rolling_config=None, urgent=False)` | `fleetml deploy create` | Creates a deployment; `target_selector` is the CLI's `--target`, the rest as in [Rollouts](ROLLOUTS.md) |
 | `fm.deployments.start(deployment_id)` | `fleetml deploy start` | Starts it |
@@ -293,7 +294,7 @@ parent (a project, a model) by position, and `devices.list` its `labels`.
 | `fm.devices.list(labels=None, *, project=None, limit=None, offset=None)` | `fleetml device list` | Lists devices, those with all the given labels |
 | `fm.devices.get(device_id)` | `fleetml device get` | One device |
 | `fm.telemetry.summary(version_id)` | `fleetml telemetry summary` | The last day's telemetry of a version: latency and confidence over its INFERENCE events, counts over all |
-| `fm.telemetry.events(version_id=None, device_id=None, event_type=None, *, limit=None, offset=None)` | `fleetml telemetry events` | The last day's events, newest first |
+| `fm.telemetry.events(version_id=None, device_id=None, event_type=None, *, limit=None, offset=None)` | `fleetml telemetry events` | The last day's events, newest first; `confidence_score` is `None` for an event that reported none (a MODEL_LOAD, for example) |
 | `fm.experiments.create(project, name, control, treatment, metric="latency", split=50, auto_conclude=False, target_selector=None, min_sample_size=None)` | `fleetml experiment create` | Creates an A/B experiment between two version IDs |
 | `fm.experiments.start(experiment_id)` | `fleetml experiment start` | Starts it |
 | `fm.experiments.get(experiment_id)`, `.list(*, project=None, limit=None, offset=None)` | `fleetml experiment get`, `list` | One experiment, or the list |
