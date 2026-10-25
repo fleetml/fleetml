@@ -137,7 +137,11 @@ devices than allowed, seen in the last 5 minutes, have not reported the new
 version loaded (0 disables the check).
 
 The deploy loop runs every `DEPLOY_TICK_INTERVAL` (default 30s);
-`POST /deployments/{id}/progress` evaluates one step immediately.
+`POST /deployments/{id}/progress` evaluates one step immediately: it
+advances once the health gate passes and the stage's minimum time
+(`min_duration`, or `batch_interval` for a rolling deployment) has elapsed,
+returns the deployment unchanged before that, and answers
+`409 INVALID_TRANSITION` for a deployment that is not `ROLLING_OUT`.
 
 ## Health gate
 
@@ -164,7 +168,9 @@ Errors from devices outside the cohort never count.
 - `on_failure`: `ROLLBACK` (default) or `PAUSE`.
 
 `GET /deployments/{id}/health` shows the effective gate, cohort size, stats and
-the verdict.
+the verdict; `can_progress` is true when `progress` would advance the stage
+now, and while the stage's minimum time runs `reason` adds how much is left
+(`...; stage 0 holds for its minimum time, 9m12s left`).
 
 ## Urgent deployments and the download policy
 

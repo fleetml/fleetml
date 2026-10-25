@@ -48,7 +48,10 @@ func (h *ProjectHandler) create(c *gin.Context) {
 }
 
 func (h *ProjectHandler) list(c *gin.Context) {
-	limit, offset := parsePagination(c)
+	limit, offset, ok := parsePagination(c)
+	if !ok {
+		return
+	}
 	projects, total, err := h.service.ListProjects(c.Request.Context(), limit, offset)
 	if err != nil {
 		handleServiceError(c, err)

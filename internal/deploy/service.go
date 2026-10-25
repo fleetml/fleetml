@@ -289,10 +289,19 @@ func (s *Service) StartDeployment(ctx context.Context, id uuid.UUID) (*Deploymen
 	return s.engine.StartDeployment(ctx, id)
 }
 
-// ProgressDeployment delegates to the engine.
+// ProgressDeployment advances a rollout now (the ticker does it on its own
+// schedule). Only a ROLLING_OUT deployment progresses: any other status is
+// refused with ErrInvalidTransition, as pause and cancel refuse theirs.
 func (s *Service) ProgressDeployment(ctx context.Context, id uuid.UUID) (*Deployment, error) {
 	if s.engine == nil {
 		return nil, fmt.Errorf("deployment engine not configured")
+	}
+	dep, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if dep.Status != "ROLLING_OUT" {
+		return nil, fmt.Errorf("%w: cannot progress a %s deployment (only ROLLING_OUT progresses)", ErrInvalidTransition, dep.Status)
 	}
 	return s.engine.ProgressDeployment(ctx, id)
 }

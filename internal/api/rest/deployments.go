@@ -78,7 +78,10 @@ func (h *DeploymentHandler) create(c *gin.Context) {
 
 // list filters on the project_id query parameter.
 func (h *DeploymentHandler) list(c *gin.Context) {
-	limit, offset := parsePagination(c)
+	limit, offset, ok := parsePagination(c)
+	if !ok {
+		return
+	}
 	var projectID *uuid.UUID
 	if v := c.Query("project_id"); v != "" {
 		id, err := uuid.Parse(v)

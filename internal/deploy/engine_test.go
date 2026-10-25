@@ -633,3 +633,44 @@ func TestEngine_RollbackSendsOneAlert(t *testing.T) {
 	require.Len(t, alerts.sent, 2)
 	assert.Equal(t, "manual", alerts.sent[1].Rollback.Trigger)
 }
+
+// can_progress waits for the stage's minimum time, as progress does, and the
+// reason says how long is left.
+func TestEngine_GetHealthStatus_StageMinimumTime(t *testing.T) {
+	repo := newMockRepo()
+	engine := NewEngine(repo, &mockTelemetry{stats: &DeploymentStats{TotalEvents: 500, ErrorRate: 0.01}}, newMockFleet(50), nil)
+	stages := []CanaryStage{
+		{Percentage: 50, MinDuration: "10m", Status: "PENDING"},
+		{Percentage: 100, MinDuration: "0s", Status: "PENDING"},
+	}
+	dep := createPendingDep(repo, "CANARY", stages, &HealthGate{MaxErrorRate: 0.05, MinEvents: 100})
+	_, err := engine.StartDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+
+	status, err := engine.GetHealthStatus(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, true, status["healthy"])
+	assert.Equal(t, false, status["can_progress"])
+	assert.Regexp(t, `^all checks passed; stage 0 holds for its minimum time, (9m5\ds|10m0s) left$`, status["reason"])
+
+	result, err := engine.ProgressDeployment(context.Background(), dep.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.CurrentStage, "progress agrees with can_progress")
+}
+
+func TestStageWait(t *testing.T) {
+	now := time.Now()
+	ago := func(d time.Duration) *time.Time { t := now.Add(-d); return &t }
+	canary := func(min string, started *time.Time) *Deployment {
+		return &Deployment{Strategy: "CANARY", CanaryStages: []CanaryStage{{Percentage: 10, MinDuration: min, StartedAt: started}}}
+	}
+	assert.Equal(t, 6*time.Minute, stageWait(canary("10m", ago(4*time.Minute)), now))
+	assert.Zero(t, stageWait(canary("10m", ago(11*time.Minute)), now))
+	assert.Zero(t, stageWait(canary("0s", ago(0)), now))
+	assert.Zero(t, stageWait(canary("10m", nil), now), "a stage not started yet")
+	assert.Zero(t, stageWait(&Deployment{Strategy: "CANARY", CurrentStage: 1, CanaryStages: canary("10m", ago(0)).CanaryStages}, now), "past the last stage")
+
+	rolling := &Deployment{Strategy: "ROLLING", RollingConfig: &RollingConfig{BatchInterval: "5m"}, StageStartedAt: ago(time.Minute)}
+	assert.Equal(t, 4*time.Minute, stageWait(rolling, now))
+	assert.Zero(t, stageWait(&Deployment{Strategy: "ALL_AT_ONCE"}, now))
+}

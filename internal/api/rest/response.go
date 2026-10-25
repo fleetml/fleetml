@@ -71,7 +71,7 @@ func handleServiceError(c *gin.Context, err error) {
 	case errors.Is(err, registry.ErrInvalidInput):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	case errors.Is(err, registry.ErrInvalidTransition):
-		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		respondError(c, http.StatusConflict, "INVALID_TRANSITION", err.Error())
 	case errors.Is(err, registry.ErrIntegrity):
 		respondError(c, http.StatusUnprocessableEntity, "INTEGRITY_ERROR", err.Error())
 	default:
@@ -139,18 +139,25 @@ func parseUUID(c *gin.Context, param string) (uuid.UUID, bool) {
 	return id, true
 }
 
-func parsePagination(c *gin.Context) (limit, offset int) {
-	limit = 20
-	offset = 0
-	if v := c.Query("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			limit = n
+// parsePagination reads limit (default 20) and offset (default 0). A value
+// that is not an integer is answered with 400 VALIDATION_ERROR naming the
+// parameter, and ok is false.
+func parsePagination(c *gin.Context) (limit, offset int, ok bool) {
+	limit, offset = 20, 0
+	for _, p := range []struct {
+		name string
+		dst  *int
+	}{{"limit", &limit}, {"offset", &offset}} {
+		v := c.Query(p.name)
+		if v == "" {
+			continue
 		}
-	}
-	if v := c.Query("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			offset = n
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", p.name+" must be an integer, got "+strconv.Quote(v))
+			return 0, 0, false
 		}
+		*p.dst = n
 	}
-	return limit, offset
+	return limit, offset, true
 }

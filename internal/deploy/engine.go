@@ -175,15 +175,8 @@ func (e *Engine) progressCanary(ctx context.Context, dep *Deployment) (*Deployme
 	}
 
 	stage := &dep.CanaryStages[dep.CurrentStage]
-
-	// Check min duration
-	if stage.StartedAt != nil {
-		dur, err := time.ParseDuration(stage.MinDuration)
-		if err == nil && dur > 0 {
-			if time.Since(*stage.StartedAt) < dur {
-				return dep, nil // Not enough time elapsed
-			}
-		}
+	if stageWait(dep, time.Now()) > 0 {
+		return dep, nil // the stage's minimum time has not elapsed
 	}
 
 	// Mark current stage as passed
@@ -223,12 +216,8 @@ func (e *Engine) progressRolling(ctx context.Context, dep *Deployment) (*Deploym
 	if rc == nil {
 		rc = DefaultRollingConfig()
 	}
-	interval, err := time.ParseDuration(rc.BatchInterval)
-	if err != nil {
-		interval = 0
-	}
-	if dep.StageStartedAt != nil && time.Since(*dep.StageStartedAt) < interval {
-		return dep, nil
+	if stageWait(dep, time.Now()) > 0 {
+		return dep, nil // the batch interval has not elapsed
 	}
 
 	if rc.MaxUnavailable > 0 {
@@ -561,6 +550,13 @@ func (e *Engine) GetHealthStatus(ctx context.Context, deploymentID uuid.UUID) (m
 	stagePct := dep.EffectiveCanaryPercent()
 
 	canProgress := dep.Status == "ROLLING_OUT" && gate.Healthy && !gate.Hold
+	reason := gate.Reason
+	if wait := stageWait(dep, time.Now()); canProgress && wait > 0 {
+		// The gate passes, but progress would not move before the stage's
+		// minimum time (canary min_duration, rolling batch_interval).
+		canProgress = false
+		reason = fmt.Sprintf("%s; stage %d holds for its minimum time, %s left", reason, dep.CurrentStage, wait.Round(time.Second))
+	}
 	result := map[string]interface{}{
 		"deployment_id":    dep.ID,
 		"status":           dep.Status,
@@ -568,13 +564,44 @@ func (e *Engine) GetHealthStatus(ctx context.Context, deploymentID uuid.UUID) (m
 		"stage_percentage": stagePct,
 		"healthy":          gate.Healthy,
 		"hold":             gate.Hold,
-		"reason":           gate.Reason,
+		"reason":           reason,
 		"can_progress":     canProgress,
 		"cohort_devices":   gate.Cohort,
 		"health_gate":      effectiveGate(dep),
 		"stats":            gate.Stats,
 	}
 	return result, nil
+}
+
+// stageWait is how long the current stage still holds the rollout before it
+// may advance: what is left of a canary stage's min_duration, or of a rolling
+// deployment's batch_interval since the stage started; 0 when nothing is left.
+func stageWait(dep *Deployment, now time.Time) time.Duration {
+	var started *time.Time
+	var minimum string
+	switch dep.Strategy {
+	case "CANARY":
+		if dep.CurrentStage >= len(dep.CanaryStages) {
+			return 0
+		}
+		started, minimum = dep.CanaryStages[dep.CurrentStage].StartedAt, dep.CanaryStages[dep.CurrentStage].MinDuration
+	case "ROLLING":
+		rc := dep.RollingConfig
+		if rc == nil {
+			rc = DefaultRollingConfig()
+		}
+		started, minimum = dep.StageStartedAt, rc.BatchInterval
+	default:
+		return 0
+	}
+	d, err := time.ParseDuration(minimum)
+	if started == nil || err != nil || d <= 0 {
+		return 0
+	}
+	if left := d - now.Sub(*started); left > 0 {
+		return left
+	}
+	return 0
 }
 
 func (e *Engine) validateTransition(from, to string) error {

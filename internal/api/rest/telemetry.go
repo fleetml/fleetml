@@ -72,7 +72,10 @@ func (h *TelemetryHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 func (h *TelemetryHandler) queryEvents(c *gin.Context) {
 	filter := telemetry.EventFilter{}
-	limit, offset := parsePagination(c)
+	limit, offset, ok := parsePagination(c)
+	if !ok {
+		return
+	}
 	filter.Limit = limit
 	filter.Offset = offset
 

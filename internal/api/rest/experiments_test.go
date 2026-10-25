@@ -140,7 +140,10 @@ func TestExpStart_AlreadyRunning(t *testing.T) {
 	})
 	_, _ = svc.Start(context.Background(), exp.ID)
 	w := doJSON(r, "POST", fmt.Sprintf("/api/v1/experiments/%s/start", exp.ID), nil)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
+	errBody := parseBody(t, w)["error"].(map[string]interface{})
+	assert.Equal(t, "INVALID_TRANSITION", errBody["code"])
+	assert.Contains(t, errBody["message"], "invalid status transition", "the message text is unchanged")
 }
 
 func TestExpResults_CollectingBeforeHorizon(t *testing.T) {

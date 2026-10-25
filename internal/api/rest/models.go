@@ -58,7 +58,10 @@ func (h *ModelHandler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, offset := parsePagination(c)
+	limit, offset, ok := parsePagination(c)
+	if !ok {
+		return
+	}
 	models, total, err := h.service.ListModels(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		handleServiceError(c, err)

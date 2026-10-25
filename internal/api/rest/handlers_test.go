@@ -612,7 +612,29 @@ func TestVersionInvalidTransition(t *testing.T) {
 	w = doJSON(r, "PATCH", "/api/v1/versions/"+versionID+"/status", map[string]string{
 		"status": "ACTIVE",
 	})
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
+	errBody := parseBody(t, w)["error"].(map[string]interface{})
+	assert.Equal(t, "INVALID_TRANSITION", errBody["code"])
+	assert.Equal(t, "invalid status transition: cannot transition from DRAFT to ACTIVE", errBody["message"])
+}
+
+// A limit or offset that is not an integer is refused, naming the parameter;
+// before, it was ignored and the default page came back.
+func TestPagination_NotAnInteger(t *testing.T) {
+	r := setupTestRouter(newTestService())
+	for q, want := range map[string]string{
+		"limit=abc":        `limit must be an integer, got "abc"`,
+		"offset=1.5":       `offset must be an integer, got "1.5"`,
+		"limit=5&offset=x": `offset must be an integer, got "x"`,
+	} {
+		w := doJSON(r, "GET", "/api/v1/projects?"+q, nil)
+		assert.Equal(t, http.StatusBadRequest, w.Code, q)
+		errBody := parseBody(t, w)["error"].(map[string]interface{})
+		assert.Equal(t, "VALIDATION_ERROR", errBody["code"], q)
+		assert.Equal(t, want, errBody["message"], q)
+	}
+	w := doJSON(r, "GET", "/api/v1/projects?limit=5&offset=0", nil)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 // --- Variant handler tests ---

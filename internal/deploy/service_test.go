@@ -128,6 +128,29 @@ func TestCreateDeployment(t *testing.T) {
 	})
 }
 
+// progress moves only a ROLLING_OUT deployment; any other status is refused,
+// as pause and cancel refuse theirs.
+func TestProgressDeployment_OnlyRollingOut(t *testing.T) {
+	svc := newServiceWithEngine()
+	ctx := context.Background()
+	d, err := svc.Create(ctx, CreateInput{ProjectID: uuid.New(), ModelVersionID: uuid.New(), Strategy: "CANARY"})
+	require.NoError(t, err)
+
+	_, err = svc.ProgressDeployment(ctx, d.ID)
+	assert.ErrorIs(t, err, ErrInvalidTransition, "PENDING")
+	assert.ErrorContains(t, err, "cannot progress a PENDING deployment")
+
+	_, err = svc.UpdateStatus(ctx, d.ID, "ROLLING_OUT", "")
+	require.NoError(t, err)
+	_, err = svc.ProgressDeployment(ctx, d.ID)
+	require.NoError(t, err)
+
+	_, err = svc.UpdateStatus(ctx, d.ID, "ROLLED_BACK", "test")
+	require.NoError(t, err)
+	_, err = svc.ProgressDeployment(ctx, d.ID)
+	assert.ErrorIs(t, err, ErrInvalidTransition, "ROLLED_BACK")
+}
+
 func newServiceWithEngine() *Service {
 	repo := newMockRepo()
 	svc := NewService(repo, nil)

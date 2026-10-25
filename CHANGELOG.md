@@ -7,6 +7,27 @@ change APIs).
 
 ## [Unreleased]
 
+### Changed
+
+- REST: an experiment or a model version asked for a status change its
+  status does not allow answers `409 INVALID_TRANSITION`, as deployments
+  always did, instead of `400 VALIDATION_ERROR` (the message text is the
+  same); `POST /deployments/{id}/progress` on a deployment that is not
+  `ROLLING_OUT` answers `409 INVALID_TRANSITION` instead of returning it
+  unchanged; a `limit` or `offset` that is not an integer answers
+  `400 VALIDATION_ERROR` naming the parameter instead of being ignored;
+  `can_progress` in a deployment's health is true only when `progress`
+  would move it now, and `reason` names the time a stage still holds
+  (`min_duration`, `batch_interval`). A client that branched on
+  `VALIDATION_ERROR` for those status changes checks `INVALID_TRANSITION`
+  (review 5).
+- Python client: `project`, `limit` and `offset` are keyword-only on the
+  list methods (`deployments.list`, `devices.list` after `labels`,
+  `experiments.list`, `projects.list`, `models.list` and `versions.list`
+  after their parent, `telemetry.events`). A call that passed them by
+  position, `fm.deployments.list(project_id)`, raised nothing and listed the
+  whole server; write `fm.deployments.list(project=project_id)` (review 5).
+
 ### Added
 
 - The server reports its version: `"version"` in `/readyz` and `/livez`,

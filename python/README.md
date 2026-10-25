@@ -16,10 +16,12 @@ Python 3.9 or later. The package is typed (`py.typed`; its own code passes
 `mypy --strict`).
 
 ```python
+import time
+
 from fleetml import FleetML
 
 fm = FleetML("http://localhost:18080", api_key="...")  # or FLEETML_SERVER, FLEETML_API_KEY
-project = fm.projects.create("demo")
+project = fm.projects.create(f"demo-{time.strftime('%Y%m%d-%H%M%S')}")  # names are unique per server
 version = fm.push("model.tflite", project=project.id, model="iris", version="1.0.0")
 deployment = fm.deployments.start(fm.deployments.create(project.id, version.id).id)
 print(fm.wait_for_deployment(deployment.id).status)

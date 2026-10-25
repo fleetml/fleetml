@@ -615,3 +615,21 @@ def test_drift_status(fake: Fake) -> None:
     result = {"id": "r1", "model_version_id": "v1", "metric": "latency", "psi_value": 0.3, "severity": "CRITICAL"}
     fake.on("GET", "/api/v1/drift/v1", data([result]))
     assert [(r.metric, r.severity) for r in fake.client().drift.status("v1")] == [("latency", "CRITICAL")]
+
+
+def test_list_arguments_are_keyword_only() -> None:
+    """A project ID passed positionally used to land in ``limit`` and list the
+    whole server; ``project``, ``limit`` and ``offset`` are keyword-only."""
+    fm = FleetML(SERVER, api_key="k", transport=httpx.MockTransport(lambda r: httpx.Response(500)))
+    calls: List[Callable[[], Any]] = [
+        lambda: fm.deployments.list("p1"),  # type: ignore[call-arg]
+        lambda: fm.experiments.list("p1"),  # type: ignore[call-arg]
+        lambda: fm.devices.list(None, "p1"),  # type: ignore[call-arg]
+        lambda: fm.projects.list(10),  # type: ignore[call-arg]
+        lambda: fm.models.list("p1", 10),  # type: ignore[call-arg]
+        lambda: fm.versions.list("m1", 10),  # type: ignore[call-arg]
+        lambda: fm.telemetry.events("v1", None, None, 10),  # type: ignore[call-arg]
+    ]
+    for call in calls:
+        with pytest.raises(TypeError, match="positional argument"):
+            call()
