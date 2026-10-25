@@ -525,6 +525,10 @@ struct MyApp: App {
    fleetml deploy start $(fleetml deploy create --project $P --version $(vid 2.0.0) --target '{"app":"myapp"}' -o json | jq -r .id)
    ```
 
+   On a phone nobody is looking at, iOS suspends the app within a minute or
+   two and the heartbeat waits with it: run step 5's `launch` line again
+   after the rollout, and the update comes within seconds.
+
 8. **Offline.** Turn on airplane mode (Wi-Fi off too, if it stays on), then
    swipe the app away and open it again from the home screen: the cached
    2.0.0 is ready at once (`fleetML(modelReady:)`), and
@@ -559,7 +563,8 @@ phone are few:
 
 - `FLEETML_SERVER_HOST = localhost` in `Secrets.xcconfig`, and the server
   needs no `S3_PUBLIC_ENDPOINT` change: its default, `localhost:19100`,
-  reaches the Mac. Downloads from `localhost` need no App Transport Security
+  reaches the Mac, and so does the LAN address from step 2, so one server
+  serves the phone and the simulator together. Downloads from `localhost` need no App Transport Security
   key and there is no Local Network prompt; the keys from step 4 are harmless
   on the simulator.
 - No team, trust prompt or Developer Mode: Xcode signs simulator builds
