@@ -141,15 +141,17 @@ NATS) publishes its services on these host ports:
 | `FLEETML_GRAFANA_PORT` | `13000` | Grafana with the FleetML dashboard (profile `observability`) |
 
 `deploy/docker-compose.prod.yml` (server, dashboard and their dependencies)
-publishes the dashboard on `:80`, the REST and gRPC APIs on `:18080` and
-`:19090`, and the object store on `FLEETML_S3_PUBLIC_PORT` (`19100`, so it can
-run next to the dev stack). It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
+publishes the dashboard on `FLEETML_DASHBOARD_PORT` (`80`), the REST and gRPC
+APIs on `FLEETML_REST_PORT` (`18080`) and `FLEETML_GRPC_PORT` (`19090`), and
+the object store on `FLEETML_S3_PUBLIC_PORT` (`19100`, so it can run next to
+the dev stack); only the published ports move, the containers listen on
+their own as before. It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
 (required),
 `FLEETML_ADMIN_KEY` (optional) and `S3_PUBLIC_ENDPOINT` (default
 `localhost:` and the `FLEETML_S3_PUBLIC_PORT`, so moving the port moves the
 download address with it; set it to the object store's public `host:port`
 when devices are not on this machine) from the shell: the quickstart saves
-all five in `~/.fleetml.env`, which every compose command on the stack needs
+them and the four ports in `~/.fleetml.env`, which every compose command on the stack needs
 sourced first ([Run FleetML](QUICKSTART.md#run-fleetml)).
 `FLEETML_VERSION` (default `dev`) labels the two images it builds
 (`org.opencontainers.image.version`); the server reports its version from

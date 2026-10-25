@@ -105,7 +105,9 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 `openssl`; about 2 GB of free memory for the five running containers (plus a
 one-shot `migrate` job, which `docker compose ps -a` lists as exited) and the
 two image builds; ports 80 (dashboard), 18080 (REST), 19090 (gRPC) and 19100 (model
-files; `export FLEETML_S3_PUBLIC_PORT=<port>` before the block moves it) free, and 13000 for Grafana if you
+files) free (`export FLEETML_DASHBOARD_PORT`, `FLEETML_REST_PORT`,
+`FLEETML_GRPC_PORT` or `FLEETML_S3_PUBLIC_PORT=<port>` before the block moves
+one), and 13000 for Grafana if you
 start the optional observability profile. On Windows
 FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell with Docker
 Desktop's WSL 2 backend ([On Windows](docs/QUICKSTART.md#on-windows)), and
@@ -116,12 +118,12 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell):
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
 source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
-until curl -sf localhost:18080/readyz; do sleep 2; done; echo
-curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
+echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
 ```
 
 The second line saves three generated secrets, the model files' port and
