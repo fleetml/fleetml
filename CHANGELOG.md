@@ -53,6 +53,14 @@ change APIs).
 
 ### Fixed
 
+- Linux agent: the last telemetry flush on SIGTERM is bounded at 1.5 s
+  (was 5 s), so a stop with the server unreachable takes under 2 s
+  (`systemctl stop`: 1.64 s, 5.11 s before); `install.sh` prints
+  `exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups ...`
+  for a supervisor, where `su` stayed as the agent's parent and SIGKILLed
+  it 2 s after a SIGTERM (BusyBox keeps the `su` form, which works there).
+  LINUX_AGENT.md: when the offline warning comes, the demo's server ports
+  and its `down`, the enrollment key in `docker inspect` (review 5).
 - Helm: a cold install no longer restarts the server once while the
   Postgres image is still being pulled (the 60 s dependency wait ran out
   first); a `secrets.adminKey` shorter than 32 characters is refused at

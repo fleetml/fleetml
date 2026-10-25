@@ -77,15 +77,19 @@ supervisor (runit, s6, OpenRC, supervisord, a container's entrypoint), with
 the same command the unit runs; `install.sh` prints this line:
 
 ```bash
-exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
+exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml
 ```
 
-Both `exec`s matter: the supervisor stops what it started with SIGTERM, and
-`su` passes it to its child. Without the inner `exec` that child is a shell
-(Ubuntu's `dash` does not replace itself with the last command), the shell
-dies, the agent runs on as an orphan, and the supervisor's restart fails
-with `bind: address already in use` (with `telemetry_listen` set) or starts
-a second agent on the same state folder. It logs to standard error, which is
+`setpriv` (util-linux; checked in Debian 12 and Ubuntu 24.04) switches to the
+user and replaces itself with the agent, so the SIGTERM the supervisor stops
+it with reaches the agent itself, and the `exec` keeps the shell of an
+entrypoint script out of the way too. `su` is the wrong tool here: it stays
+as the agent's parent and kills it with SIGKILL 2 seconds after passing on a
+SIGTERM, and with a `-c` command and no inner `exec` it leaves the agent
+running as an orphan. On BusyBox (Alpine), whose `setpriv` cannot switch
+users, `install.sh` prints the form that works there, where `su` replaces
+itself with the shell and the shell with the agent:
+`exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'`. It logs to standard error, which is
 where the supervisor's log picks it up; the journal lines below are the
 same. The supervisor restarts it if it exits, as `Restart=always` does in
 the unit.
@@ -97,7 +101,7 @@ as `sleep infinity`, an agent that exits leaves its `su` behind as a
 entrypoint script, the last line is
 
 ```bash
-exec su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
+exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml
 ```
 
 and `docker run --init` (or `tini`/`dumb-init` as the entrypoint) reaps
@@ -115,7 +119,7 @@ docker run -d --init --name fleetml-agent -v "$PWD/fleetml-agent:/opt/fleetml-ag
   /opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent &&
   sed -i -e "s|^server: .*|server: <server address>:19090|" -e "s|^enrollment_key: .*|enrollment_key: \"<enrollment key>\"|" \
     -e "s|^# download_host_override: .*|download_host_override: \"<server address>:19100\"|" /etc/fleetml-agent/config.yaml &&
-  exec su -s /bin/sh fleetml-agent -c "exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml"'
+  exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
 docker logs -f fleetml-agent
 ```
 
@@ -126,7 +130,12 @@ there too. With the volume, a recreated container is the same device with
 its models; without it, every new container registers as a new device,
 downloads everything again, and the old one stays in `fleetml device list`.
 `docker rm -f fleetml-agent && docker volume rm fleetml-agent-state` removes
-both.
+both. The enrollment key on this command line ends up in the container's
+configuration, which `docker inspect fleetml-agent` shows to anyone who can
+use Docker on the machine: fine for a throwaway test, but for a device you
+keep, mount a prepared `config.yaml` read-only instead
+(`-v "$PWD/config.yaml:/etc/fleetml-agent/config.yaml:ro"`) and leave out
+the `sed`.
 
 ## Server on another machine
 
@@ -356,9 +365,9 @@ uses the foreground heartbeat interval.
 /var/lib/fleetml-agent/
   state.json, telemetry.queue          # 0600: registration, failures, queued events
   downloads/                           # 0700: partial downloads
-  rejected/detector/3.0.0-5e6f7a8b/model.bin   # 0700 folders, 0600 file: the last version that failed validation
+  rejected/iris/3.0.0-5e6f7a8b/model.bin   # 0700 folders, 0600 file: the last version that failed validation
   models/
-    detector/
+    iris/
       current -> 2.0.0-1a2b3c4d        # the active version, switched atomically
       2.0.0-1a2b3c4d/model.bin
       1.0.0-9f8e7d6c/model.bin         # last-known-good, kept for rollback
@@ -558,7 +567,12 @@ server is back. A connection that dies without a reset (a Wi-Fi roam, a NAT
 or router restart, a pulled cable) is found within 40 seconds: the agent
 pings an idle connection after 30 seconds and gives up on it after 10
 without an answer, and every call to the server has a 30-second deadline.
-The first failed heartbeat is logged once, and the recovery once:
+The warning below comes with the first heartbeat after that, so within one
+heartbeat interval of the drop (60 seconds by default; measured: 32 to 57
+seconds); with telemetry queued, a `sending telemetry failed; the events
+stay queued` warning can come first. With the network removed rather than
+silent, the error reads `connect: network is unreachable` instead. The
+first failed heartbeat is logged once, and the recovery once:
 
 ```text
 level=WARN msg="heartbeat failed; retrying every heartbeat, models stay active and telemetry stays queued" error="rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout"
@@ -572,8 +586,11 @@ successful heartbeat 42 seconds after the server was back. Recovery comes
 with the next heartbeat, so it takes at most one heartbeat interval (60
 seconds by default); before 0.8.0 the same test left the agent silent for
 about 16 minutes. Stopping the agent while the server is unreachable takes
-at most 5 seconds: the last telemetry flush is bounded, and what it cannot
-send stays queued for the next start.
+at most 2 seconds: the last telemetry flush is bounded at 1.5 seconds, and
+what it cannot send stays queued for the next start (`telemetry kept queued
+for the next start`). Measured with `time systemctl stop fleetml-agent` and
+the server frozen: 1.64 seconds (5.11 before 0.9.0, whose bound was 5
+seconds).
 
 ## Upgrade
 
@@ -608,8 +625,11 @@ model that fails at inference trips the health gate and rolls back, and the
 canary boxes switch their `current` link back to the last-known-good
 version. It is the recording at the top of the [README](../README.md). It
 leaves the dev stack running (`docker compose -f deploy/docker-compose.yml down`
-stops it). Where that project or those ports are taken, give it others:
-`COMPOSE_PROJECT_NAME=fleetml-try FLEETML_PG_PORT=25432 FLEETML_S3_PORT=29000 FLEETML_NATS_PORT=24222 FLEETML_NATS_MONITOR_PORT=28222 ./scripts/demo-agent.sh`.
+stops it). Where that project or those ports are taken, give it others,
+the demo server's own REST and gRPC ports (18380 and 19390) among them:
+`COMPOSE_PROJECT_NAME=fleetml-try FLEETML_PG_PORT=25432 FLEETML_S3_PORT=29000 FLEETML_NATS_PORT=24222 FLEETML_NATS_MONITOR_PORT=28222 FLEETML_DEMO_REST_PORT=28380 FLEETML_DEMO_GRPC_PORT=29390 ./scripts/demo-agent.sh`.
+The stack it leaves then has that project name, so stop it with the same
+one: `COMPOSE_PROJECT_NAME=fleetml-try docker compose -f deploy/docker-compose.yml down -v`.
 
 ## Verified
 
