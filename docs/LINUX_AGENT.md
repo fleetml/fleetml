@@ -145,7 +145,7 @@ machine:
 | | Port | Set by | Where |
 |---|---|---|---|
 | Registration and heartbeats (gRPC) | 19090 | you | `server: <server address>:19090` in the agent's config |
-| Model downloads (presigned URLs) | 19100 | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
+| Model downloads (presigned URLs) | 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
 
 The server hands out each model as a download URL for its object store's
 public address, `S3_PUBLIC_ENDPOINT`. In the quickstart's compose stack that
@@ -158,7 +158,7 @@ two ways out:
   restarts the server with it, in the stack's clone:
 
   ```bash
-  sed -i.bak 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<server address>:19100/' ~/.fleetml.env && rm ~/.fleetml.env.bak
+  . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<server address>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d
   ```

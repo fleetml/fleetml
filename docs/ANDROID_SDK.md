@@ -475,7 +475,8 @@ maintainers run it by hand.
    presigned URLs for its `S3_PUBLIC_ENDPOINT`, `localhost:19100` in the
    quickstart, so without that forward the phone registers and then fails
    every download ([CONFIG.md](CONFIG.md#network-and-storage)). On the dev
-   stack (`make dev`), forward 19000 instead of 19100. If the server's
+   stack (`make dev`), forward 19000 instead of 19100, and on a stack started
+   with `FLEETML_S3_PUBLIC_PORT`, that port. If the server's
    `S3_PUBLIC_ENDPOINT` is your LAN address (after [Over Wi-Fi](#over-wi-fi)),
    downloads go there instead, also over USB: the phone must be on that
    network and the debug network security config must allow the address, or
@@ -550,13 +551,16 @@ The phone and the machine that runs the server must be on the same network.
    keeps it, and restart the server, in the quickstart's clone:
 
    ```bash
-   sed -i.bak 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:19100/' ~/.fleetml.env && rm ~/.fleetml.env.bak
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d
    ```
 
-   From then on downloads go to the LAN address for every device, the USB
-   and emulator paths included ([Over USB](#over-usb), step 3).
+   The port is the stack's model files port, 19100 unless you moved it with
+   `FLEETML_S3_PUBLIC_PORT` when you started the stack (the first line reads
+   it from the file). From then on downloads go to the LAN address for every
+   device, the USB and emulator paths included ([Over USB](#over-usb),
+   step 3).
 
 3. Let the phone in: with the macOS firewall on, allow Docker's incoming
    connections when macOS asks; a Linux firewall needs TCP 19090 and 19100
@@ -881,7 +885,11 @@ second run of the block makes a new project instead of stopping with
 `openjdk version "17.0...` (Temurin). The `-P`
 arguments are in quotes because PowerShell splits an unquoted
 `-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`.
-The reverses reach the ports Docker Desktop publishes on Windows. The app's
+The reverses reach the ports Docker Desktop publishes on Windows. If you
+moved the model files' port with `FLEETML_S3_PUBLIC_PORT` (for example out of
+a reserved range, [On Windows](QUICKSTART.md#on-windows)), use your port in
+place of 19100 here, in the firewall rule below and on the emulator; the
+`sed` line below reads it from `~/.fleetml.env`. The app's
 config screen shows host `localhost`, port `19090` and the key; tap
 **Save and connect**. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
 which is the emulator's address for the machine and does not work on a
@@ -903,7 +911,7 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
    download from and restart the server with it:
 
    ```bash
-   sed -i 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:19100/' ~/.fleetml.env
+   . ~/.fleetml.env && sed -i "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d
    ```

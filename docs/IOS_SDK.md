@@ -322,7 +322,7 @@ struct MyApp: App {
    keeps it) and restart the server, in the quickstart's clone:
 
    ```bash
-   sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):19100/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d
    ```
