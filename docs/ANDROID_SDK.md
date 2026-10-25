@@ -93,11 +93,15 @@ and `sdkVersion=0.9.0-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
-Building the SDK from source on the command line needs JDK 17: the wrapper's
-Gradle 8.7 with AGP 8.5 fails on a newer default JDK. Point `JAVA_HOME` at it,
-for example `/opt/homebrew/opt/openjdk@17` on macOS with Homebrew or
-`/usr/lib/jvm/java-17-openjdk-amd64` on Debian and Ubuntu
-(`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with the JDK
+Building on the command line, the SDK from source or your own app from
+[the skeleton below](#a-new-project-from-the-command-line), needs JDK 17: the
+wrapper's Gradle 8.7 with AGP 8.5 stops at once on a newer JDK with
+`What went wrong: <its version>`, for example `26.0.2.1` for Homebrew's
+current `openjdk`, the `java` on a Mac's `PATH`. Point `JAVA_HOME` at a
+JDK 17 in the shell you build in:
+`export JAVA_HOME=/opt/homebrew/opt/openjdk@17` on macOS with Homebrew
+(`brew install openjdk@17`), `/usr/lib/jvm/java-17-openjdk-amd64` on Debian
+and Ubuntu (`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with the JDK
 in its Gradle settings (Settings, Build, Execution, Deployment, Build Tools,
 Gradle, Gradle JDK), by default its bundled JetBrains Runtime, which is Java
 25 in Android Studio 2026.1: with it, Gradle 8.7 stops at once with
@@ -111,6 +115,7 @@ on the versions the SDK is built and tested with: AGP 8.5.0, Kotlin 1.9.24,
 Gradle 8.7 and JDK 17. The Gradle wrapper (`gradlew`, `gradlew.bat` and the
 `gradle` folder) comes from any project on Gradle 8.7, such as a clone of
 this repository: `cp -R <clone>/android/gradlew <clone>/android/gradlew.bat <clone>/android/gradle .`
+(in PowerShell: `Copy-Item -Recurse <clone>\android\gradlew, <clone>\android\gradlew.bat, <clone>\android\gradle .`).
 
 ```kotlin
 // settings.gradle.kts
@@ -207,12 +212,14 @@ class MainActivity : AppCompatActivity() {
 
 `gradle.properties` holds `android.useAndroidX=true`, and
 `local.properties` (or `ANDROID_HOME`) the Android SDK's folder,
-`sdk.dir=<home>/Library/Android/sdk` on macOS. Add the `android` block of
+`sdk.dir=<home>/Library/Android/sdk` on macOS, `sdk.dir=<home>/Android/Sdk`
+on Linux, `sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk` on Windows
+(or `ANDROID_HOME` set as in [From Windows](#from-windows)). Add the `android` block of
 [Configure and start](#configure-and-start) for the server's host and key,
 and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
 with `package com.example.myapp` on top; for a server on your machine, the
-two debug files of [On your phone](#on-your-phone). `./gradlew :app:assembleDebug`
-builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
+two debug files of [On your phone](#on-your-phone). With `JAVA_HOME` at a
+JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
 installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$EK`).
 After a deployment to `app=myapp` the screen reads `Server reached: true`
 and `Model: 1.0.0`.
@@ -450,6 +457,9 @@ maintainers run it by hand.
 
 1. Turn on USB debugging in the phone's developer options, connect it and
    accept the authorisation prompt; `adb devices` then lists it as `device`.
+   On macOS and Linux, `adb` and `emulator` are in the Android SDK, not on the
+   `PATH`: `export PATH="$HOME/Library/Android/sdk/platform-tools:$HOME/Library/Android/sdk/emulator:$PATH"`
+   (`$HOME/Android/Sdk/...` on Linux).
    On Windows, `adb devices` lists a phone only with its maker's USB driver
    (Google's for Pixel phones, from the SDK Manager), see
    [From Windows](#from-windows).
@@ -525,7 +535,8 @@ check when the app is in front again.
 At warning level or above it logs why registration, a heartbeat or a
 download failed, one line each, such as an unreachable host or a refused
 enrollment key; the stack trace of each failure follows at debug level, which
-`adb logcat FleetML:I *:S` leaves out. A missing 19100 forward shows as
+`adb logcat FleetML:I *:S` leaves out (`FleetML:D` shows them, with the
+debug-level lines such as `Telemetry flushed`). A missing 19100 forward shows as
 `Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:19100`
 on every heartbeat.
 
@@ -642,7 +653,9 @@ each flush adds
 `W FleetML : Telemetry flush failed, 1 events kept: UNAVAILABLE: ...`; with
 an empty queue there is no such line. Set the three forwards again (or turn
 airplane mode off): a later heartbeat reconnects, `onConnectionStatusChanged(true)`
-fires and what is queued is sent (`Telemetry flushed: 1 sent, 1 accepted`).
+fires and what is queued is sent (`Telemetry flushed: 1 sent, 1 accepted`, at
+debug level: with `adb logcat FleetML:I *:S` the reconnect itself shows as
+the next line that is not a failure, such as a download).
 The SDK retries every 30 seconds until the server answers, and after airplane
 mode the network itself takes a moment to come back, so expect the reconnect
 within about a minute: it took 28 seconds after the forwards were set again,
@@ -821,7 +834,8 @@ quickstart says of Docker there.
 Once, before you start:
 
 - **Android Studio**, for the SDK and `adb`.
-- **JDK 17**, for Gradle 8.7: `winget install --id EclipseAdoptium.Temurin.17.JDK -e`.
+- **JDK 17**, for Gradle 8.7: `winget install --id EclipseAdoptium.Temurin.17.JDK -e`
+  (a per-machine install: Windows asks for an administrator).
   Android Studio's bundled JDK (the JetBrains Runtime in its `jbr` folder) is
   Java 25 in Android Studio 2026.1, and Gradle 8.7 does not run on it:
   `gradlew.bat` stops at once with `What went wrong: 25.0.2`. CI builds the
@@ -953,7 +967,17 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
 (the emulator reaches the machine's 19090 at `10.0.2.2` by itself), and
 `.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK"`
 without `-PfleetmlDebugHost`; the screen then shows `10.0.2.2`. Or open the
-`android` folder in Android Studio and run `sample-app` there.
+`android` folder in Android Studio and run `sample-app` there, with Studio's
+Gradle JDK set to the Temurin 17 (Settings, Build, Execution, Deployment,
+Build Tools, Gradle, Gradle JDK): its default, the bundled Java 25, stops
+with `What went wrong: 25.0.2`.
+
+**When you are done**: `fleetml project delete $P` (it asks for no
+confirmation and cannot be undone), `adb uninstall com.fleetml.sample`,
+`adb reverse --remove-all`, `Remove-NetFirewallRule -DisplayName FleetML` in
+an administrator PowerShell, and in the Ubuntu shell `S3_PUBLIC_ENDPOINT` back
+to `localhost` and your model files' port in `~/.fleetml.env`, then the
+server restarted as in step 2.
 
 ## Telemetry
 
