@@ -43,7 +43,8 @@ Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`. Keep the
 already have `~/.local/bin` on the `PATH`); for every user of the machine,
 `sudo mv fleetml /usr/local/bin/` in place of the `mkdir` and `mv`. From
 source, with Go 1.26: `go build -o bin/fleetml ./cmd/fleetml` (it reports its
-version as `dev`). The other platforms and the PowerShell block are in
+version as `dev`; in WSL, install Go from [go.dev](https://go.dev/doc/install): Ubuntu's
+`golang` package is older). The other platforms and the PowerShell block are in
 [Get the CLI](QUICKSTART.md#get-the-cli).
 
 ## Troubleshooting
@@ -166,3 +167,55 @@ version IDs, the enrollment key) to that file, next to a compose stack's
 secrets if one runs on the same machine: they change nothing on that stack,
 and the compose [Clean up](QUICKSTART.md#clean-up) removes them with the
 file.
+
+## Upgrading
+
+Every release is in the [CHANGELOG](../CHANGELOG.md). From any earlier
+release the block below goes straight to the newest; read each version's
+"Changed" section in between. From 0.6.0 to 0.8.0
+there are no breaking API changes; 0.9.0 answers a few refused requests
+with other error codes (`409 INVALID_TRANSITION` for experiments and
+versions, `400 VALIDATION_ERROR` for a `limit` that is not a number) and
+makes the Python client's `project`, `limit` and `offset` keyword-only;
+0.9.1 answers a `limit` above the page cap with `400 VALIDATION_ERROR` and
+counts `DEPENDENCY_TIMEOUT` for the whole start-up (each version's
+"Changed" section lists what behaves differently and what to change), and
+the server applies new database
+migrations itself when it starts. Upgrade the server first, then the
+devices and the tools; each moves on its own:
+
+- **The compose stack**, in its clone, with the saved values:
+
+  ```bash
+  git fetch --tags && git checkout v0.9.1
+  source ~/.fleetml.env
+  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
+  source ~/.fleetml.env
+  docker compose -f deploy/docker-compose.prod.yml up -d --build
+  until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+  ```
+
+  The `grep` line matters for a `~/.fleetml.env` written by 0.7.0 or
+  earlier, which holds the three secrets only: the device guides of those
+  releases set `S3_PUBLIC_ENDPOINT` on the command line, so without it the
+  upgraded server would hand out `localhost:19100` and phones and agents
+  elsewhere would stop receiving models. It copies the running server's
+  value into the file once and does nothing when the file has one; it asks
+  compose for the stack's server container, so it also works with your own
+  `COMPOSE_PROJECT_NAME`. The
+  last line prints `/readyz`, which ends with the new version
+  (`"version":"0.9.1"`). The projects, devices, telemetry and the admin key
+  stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
+  code, ahead of the last release.
+- **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the
+  latest release); `fleetml version` prints the version.
+- **An Android app:** the new version in
+  `implementation("dev.fleetml:fleetml-sdk:<version>")` ([Install](ANDROID_SDK.md#install)).
+- **An iOS app:** Xcode's File, Packages, Update to Latest Package Versions
+  (the rule "Up to Next Major Version" takes every 0.x release), or
+  `from: "<version>"` in `Package.swift` ([Install](IOS_SDK.md#install)).
+- **The Python client:** `pip install -U fleetml`.
+- **A Linux agent:** the new archive and `install.sh` again
+  ([Upgrade](LINUX_AGENT.md#upgrade)): it keeps the config and restarts the
+  running service.
+- **The Helm chart:** [Upgrading](../deploy/helm/fleetml/README.md#upgrading).
