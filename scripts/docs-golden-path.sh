@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the docs' golden path: every fenced bash block marked
-#   <!-- golden: <id> [manual] [device] [cleanup] -->
+#   <!-- golden: <id> [manual] [device] [phone] [cleanup] -->
 # in the given Markdown files, in order, in one shell per file (so `export`,
 # `cd` and variables carry from block to block, as for a reader who pastes
 # them into one terminal), and checks each block's "You should see" line: the
@@ -9,11 +9,12 @@
 # with `<placeholder>` matching anything.
 #
 #   manual   needs a person (a browser, the clipboard): never run here.
-#   device   needs a phone, a simulator or an emulator: run only with --devices.
+#   device   needs a simulator, an emulator or a phone: run only with --devices.
+#   phone    needs a physical phone (an iPhone): run only with --phones.
 #   cleanup  also run after a failure or a timeout, so nothing is left behind.
 #
 # Usage: scripts/docs-golden-path.sh [--local-release DIR] [--local-python]
-#                                    [--devices] [--timeout SECONDS] [--verbose] FILE...
+#                                    [--devices] [--phones] [--timeout SECONDS] [--verbose] FILE...
 #
 # The blocks run as written except for three substitutions, so CI tests the
 # tree under test rather than the last release:
@@ -23,26 +24,30 @@
 #       -> file://<DIR>/ with --local-release DIR (from OUT=DIR make release-binaries)
 #   pip install fleetml   -> pip install <this checkout>/python with --local-python
 # HOME is a new empty directory for each file (so ~/.fleetml.env, ~/.local/bin
-# and the CLI's config are the run's own); DOCKER_CONFIG keeps the real one.
+# and the CLI's config are the run's own); DOCKER_CONFIG keeps the real one,
+# and with --devices the run's HOME links the real Android SDK and adb keys
+# (Library/Android, .android), the Gradle cache (.gradle) and Xcode's
+# simulators (Library/Developer), which the device blocks need.
 # --verbose prints what every block printed, not only the failing ones.
 # Run it from the repository root. Secrets the blocks create are replaced by
 # <redacted> in everything this script prints.
 set -u
 
 ROOT=$(pwd)
-DIST="" LOCAL_PY="" DEVICES="" VERBOSE="" TIMEOUT=900 FILES=()
+DIST="" LOCAL_PY="" DEVICES="" PHONES="" VERBOSE="" TIMEOUT=900 FILES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --local-release) DIST=$(cd "$2" && pwd); shift 2 ;;
     --local-python) LOCAL_PY=1; shift ;;
     --devices) DEVICES=1; shift ;;
+    --phones) PHONES=1; DEVICES=1; shift ;;
     --timeout) TIMEOUT=$2; shift 2 ;;
     --verbose) VERBOSE=1; shift ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) FILES+=("$1"); shift ;;
   esac
 done
-[ ${#FILES[@]} -gt 0 ] || { echo "usage: $0 [--local-release DIR] [--local-python] [--devices] [--timeout S] FILE..." >&2; exit 2; }
+[ ${#FILES[@]} -gt 0 ] || { echo "usage: $0 [--local-release DIR] [--local-python] [--devices] [--phones] [--timeout S] [--verbose] FILE..." >&2; exit 2; }
 [ -f deploy/docker-compose.prod.yml ] || { echo "run it from the repository root" >&2; exit 2; }
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/fleetml-golden.XXXXXX")
@@ -114,6 +119,13 @@ run_file() {
   name=$(basename "$doc" .md)
   dir=$WORK/$name; home=$WORK/$name-home
   mkdir -p "$dir" "$home"
+  if [ -n "$DEVICES" ]; then
+    local link
+    for link in Library/Android Library/Developer .android .gradle; do
+      [ -e "$REAL_HOME/$link" ] || continue
+      mkdir -p "$home/$(dirname "$link")"; ln -s "$REAL_HOME/$link" "$home/$link"
+    done
+  fi
   SECRETS=$WORK/$name.secrets; : > "$SECRETS"; chmod 600 "$SECRETS"
   extract "$doc" "$dir"
   local blocks=() cleanup=()
@@ -124,6 +136,7 @@ run_file() {
     substitute "$n.sh"
     case " $flags " in *" manual "*) continue ;; esac
     case " $flags " in *" device "*) [ -n "$DEVICES" ] || continue ;; esac
+    case " $flags " in *" phone "*) [ -n "$PHONES" ] || continue ;; esac
     blocks+=("$n")
     case " $flags " in *" cleanup "*) cleanup+=("$n") ;; esac
   done
@@ -137,6 +150,9 @@ run_file() {
       echo "{ . \"$n.sh\"; } > \"$n.out\" 2>&1 < /dev/null; echo \$? > \"$n.rc\""
       # shellcheck disable=SC2016 # expanded by the driver, not here
       printf 'printf "%%s\\n" "${JWT_SECRET:-}" "${SIGNING_MASTER_KEY:-}" "${FLEETML_ADMIN_KEY:-}" "${FLEETML_API_KEY:-}" "${FLEETML_ENROLLMENT_KEY:-}" "${EK:-}" >> "%s"\n' "$SECRETS"
+      # The shell's exports and directory, for a clean-up block run after a failure.
+      # shellcheck disable=SC2016 # expanded by the driver, not here
+      printf '{ export -p; printf "cd %%q\\n" "$PWD"; } > "%s"\n' "$dir/state.sh"
     done
   } > "$dir/driver.sh"
   HOME=$home perl -e '
@@ -167,13 +183,13 @@ run_file() {
     for n in "${cleanup[@]+"${cleanup[@]}"}"; do
       [ -f "$n.rc" ] && continue
       echo "  running $(cat "$n.id") after the failure"
-      (cd "$ROOT" && HOME=$home bash "$n.sh" > "$n.out" 2>&1 < /dev/null) || true
+      (cd "$ROOT" && HOME=$home bash -c '[ ! -f "$1" ] || . "$1"; . "$2"' _ "$dir/state.sh" "$n.sh" > "$n.out" 2>&1 < /dev/null) || true
     done
   fi
   rm -f "$SECRETS"
 }
 
 for doc in "${FILES[@]}"; do run_file "$doc"; done
+if [ "$FAILED" -ne 0 ]; then echo "golden path: FAILED (each block's output is kept in $WORK)"; exit 1; fi
 rm -rf "$WORK"
-if [ "$FAILED" -ne 0 ]; then echo "golden path: FAILED"; exit 1; fi
 echo "golden path: every block printed what its doc says"
