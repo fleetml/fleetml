@@ -63,3 +63,6 @@ ios/**/*.xcodeproj/
 ios/**/DerivedData/
 ios/**/build/
 xcuserdata/
+
+# The Python client's Get started venv (docs/PYTHON_CLIENT.md)
+.venv/
