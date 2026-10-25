@@ -187,7 +187,7 @@ by `fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
 systemd) and says so:
 
 ```text
-No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent was created for the fleetml-agent user.
+No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent is ready for the fleetml-agent user.
 ```
 
 Once the config is set, run the agent as that user under the machine's own

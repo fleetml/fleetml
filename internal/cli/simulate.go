@@ -50,7 +50,7 @@ download and sha256-verify the models they are assigned, and report inference
 telemetry. Per-version latency and error rates let you exercise health gates,
 experiments and drift detection without real hardware. Devices are derived from
 --seed, so a second run with the same seed continues as the same devices.`,
-		Example: `  fleetml simulate --enrollment-key $KEY --devices 20 --label app=demo \
+		Example: `  FLEETML_ENROLLMENT_KEY=$KEY fleetml simulate --devices 20 --label app=demo \
     --error-rate 2.0.0=0.3 --latency 2.1.0=14 --duration 1m`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var err error

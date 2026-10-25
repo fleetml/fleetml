@@ -157,11 +157,12 @@ func TestPush_PromoteFromCurrentStatus(t *testing.T) {
 		return out, runErr
 	}
 
-	_, err = push(fileA, "INT8")
+	out, err := push(fileA, "INT8")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"STAGED", "ACTIVE"}, patches)
+	assert.Contains(t, out, "v1.0.0 promoted to STAGED → ACTIVE", "a promotion says what it did")
 
-	out, err := push(fileB, "FP16")
+	out, err = push(fileB, "FP16")
 	require.NoError(t, err, "a second variant of an ACTIVE version")
 	assert.Contains(t, out, "Pushed")
 	assert.Contains(t, out, "v1.0.0 was already ACTIVE")
@@ -169,7 +170,8 @@ func TestPush_PromoteFromCurrentStatus(t *testing.T) {
 
 	fake.Versions()[0]["status"] = "STAGED"
 	patches = nil
-	_, err = push(fileA, "INT4")
+	out, err = push(fileA, "INT4")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"ACTIVE"}, patches, "STAGED takes the last step only")
+	assert.Contains(t, out, "v1.0.0 promoted to ACTIVE")
 }

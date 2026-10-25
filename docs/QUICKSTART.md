@@ -426,8 +426,9 @@ store unreachable, say), run the same push again: a variant that was never
 verified is replaced. A new version starts as `DRAFT`, and stays so in the
 CLI and the dashboard while it is deployed: the status (DRAFT, STAGED,
 ACTIVE, ARCHIVED) is a label for you, and deployments do not need it.
-`fleetml push --promote` sets ACTIVE (from wherever the version is, so a
-second variant of an ACTIVE version leaves it as it is); for a version pushed
+`fleetml push --promote` sets ACTIVE and says so (`v1.0.0 promoted to
+STAGED → ACTIVE`), from wherever the version is (a second variant of an
+ACTIVE version leaves it as it is); for a version pushed
 without it,
 `fleetml ver promote <version ID> --status STAGED` and then
 `fleetml ver promote <version ID>` (ACTIVE is the default; the server
@@ -622,7 +623,7 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
-Open http://localhost:13000 in a browser (on its first start Grafana takes
+Open http://localhost:13000 (`FLEETML_GRAFANA_PORT` moves it) in a browser (on its first start Grafana takes
 about half a minute to answer): it shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
