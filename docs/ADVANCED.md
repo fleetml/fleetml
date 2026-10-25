@@ -399,16 +399,23 @@ with other error codes (`409 INVALID_TRANSITION` for experiments and
 versions, `400 VALIDATION_ERROR` for a `limit` that is not a number) and
 makes the Python client's `project`, `limit` and `offset` keyword-only;
 0.9.1 answers a `limit` above the page cap with `400 VALIDATION_ERROR` and
-counts `DEPENDENCY_TIMEOUT` for the whole start-up (each version's
+counts `DEPENDENCY_TIMEOUT` for the whole start-up; 0.10.0 makes the
+Python client's `TelemetryEvent.confidence_score` `None` where no
+confidence was reported, and its `push(promote=True)` raise when a
+promotion is refused (each version's
 "Changed" section lists what behaves differently and what to change), and
 the server applies new database
 migrations itself when it starts. Upgrade the server first, then the
 devices and the tools; each moves on its own:
 
-- **The compose stack**, in its clone, with the saved values:
+- **The compose stack**, in its clone, with the saved values. A port moved
+  with an override file (`dashboard-port.yml`, the way 0.9.0's README
+  showed) goes into `~/.fleetml.env` first, as in [Other ports](#other-ports),
+  and the file stays out of the commands below, or `up` fails with
+  `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.9.1
+  git fetch --tags && git checkout v0.10.0
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
@@ -425,7 +432,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.9.1"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.0"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the
