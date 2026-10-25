@@ -30,7 +30,7 @@ class MainActivity : AppCompatActivity() {
 
         val saved = app.settings()
         host.setText(saved?.host ?: BuildConfig.FLEETML_DEBUG_HOST.ifEmpty { "10.0.2.2" })
-        port.setText((saved?.port ?: 19090).toString())
+        port.setText((saved?.port ?: BuildConfig.FLEETML_DEBUG_PORT).toString())
         key.setText(saved?.enrollmentKey ?: BuildConfig.FLEETML_ENROLLMENT_KEY)
 
         findViewById<Button>(R.id.connectButton).setOnClickListener {

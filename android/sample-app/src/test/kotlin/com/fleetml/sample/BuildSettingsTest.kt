@@ -18,6 +18,11 @@ class BuildSettingsTest {
     }
 
     @Test
+    fun portFromTheBuild() {
+        assertEquals(SampleApp.Settings("localhost", 29090, "k"), SampleApp.fromBuild("k", "localhost", 29090))
+    }
+
+    @Test
     fun emulatorHostByDefault() {
         assertEquals(SampleApp.Settings("10.0.2.2", 19090, "k"), SampleApp.fromBuild(" k ", ""))
     }
