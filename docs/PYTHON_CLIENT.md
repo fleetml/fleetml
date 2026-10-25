@@ -61,6 +61,7 @@ from fleetml import FleetML
 
 with FleetML() as fm:
     project = fm.projects.create(time.strftime("tour-py-%Y%m%d-%H%M%S"))
+    print("project ID:", project.id)  # for Clean up, also if the tour stops early
     v1 = fm.push("models/iris/iris_v1.tflite", project=project.id, model="iris", version="1.0.0")
     v2 = fm.push("models/iris/iris_v2.tflite", project=project.id, model="iris", version="2.0.0")
 
@@ -84,14 +85,15 @@ with FleetML() as fm:
 
     s = fm.telemetry.summary(v1.id)
     print(f"1.0.0: {s.total_events} events, p95 {s.p95_latency_ms:.0f} ms")
-    print("project ID:", project.id)
 ```
 
-It prints `COMPLETE`, `20 devices` (the project's own, whatever else the
-server runs), the rollback with its reason, and the summary. **Clean up**:
+It prints the project ID first, then `COMPLETE`, `20 devices` (the
+project's own, whatever else the server runs), the rollback with its
+reason, and the summary. **Clean up**:
 stop the simulator (Ctrl-C in its shell), then delete the project with
 everything in it (its versions, deployments, the 20 devices and their
-telemetry):
+telemetry), with the ID the tour printed (or the `tour-py-...` project in
+`fm.projects.list()`):
 
 ```python
 from fleetml import FleetML
@@ -144,8 +146,10 @@ default page is 20 and its largest 100, 1000 for `telemetry.events`; a
 larger `limit` is refused with `VALIDATION_ERROR`, so page with `offset=`),
 and `devices.list`, `deployments.list` and
 `experiments.list` take `project=` (a project ID); without it they list the
-whole server. The three are keyword-only (`*` in the table), so a project ID
-passed by position is an error rather than a page size.
+whole server. `project`, `limit` and `offset` are keyword-only on every list
+method (`*` in the table), so a project ID passed by position is an error
+rather than a page size; only `models.list` and `versions.list` take their
+parent (a project, a model) by position, and `devices.list` its `labels`.
 
 | Python | CLI | What it does |
 |---|---|---|
