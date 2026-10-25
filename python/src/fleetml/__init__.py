@@ -25,7 +25,7 @@ from fleetml.types import (
 
 # The package version: the single place it is set (pyproject.toml reads it),
 # equal to the FleetML release it ships with.
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "TERMINAL_DEPLOYMENT_STATUSES",

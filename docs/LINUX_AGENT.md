@@ -40,7 +40,7 @@ two files, or copy them over from another machine; in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
-`fleetml-agent 0.8.0`. To build the agent from source instead, `make
+`fleetml-agent 0.9.0`. To build the agent from source instead, `make
 build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
 and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
@@ -275,7 +275,7 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.8.0 server=<server address>:19090 models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.9.0 server=<server address>:19090 models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
@@ -606,8 +606,9 @@ It replaces the binary, keeps `/etc/fleetml-agent/config.yaml` and the state
 folder (the device's identity, its models and queued telemetry), and
 restarts a running service, so the new version runs at once. Without
 systemd, restart the agent under its supervisor. Upgrade the server first,
-as with every release; a 0.8.0 agent also works with a 0.7.0 server (it
-registered and heartbeated against one without an error).
+as with every release; a 0.9.0 agent also works with a 0.8.0 server (it
+registered, activated a model and heartbeated against one without an
+error).
 
 ## Try it locally
 

@@ -5,7 +5,14 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [Unreleased]
+## [0.9.0] - 2026-10-25
+
+The fixes from the fifth developer review (seven reviewers on the released
+0.8.0), and dependency updates. Two changes are visible to API clients: a
+few refused requests answer with other error codes, and three Python client
+arguments are keyword-only; both are under Changed with what to do. The
+upgrade from 0.8.0 is the [Upgrading](docs/QUICKSTART.md#upgrading) block,
+which now also keeps a 0.7.0 setup's `S3_PUBLIC_ENDPOINT`.
 
 ### Changed
 
@@ -27,14 +34,20 @@ change APIs).
   after their parent, `telemetry.events`). A call that passed them by
   position, `fm.deployments.list(project_id)`, raised nothing and listed the
   whole server; write `fm.deployments.list(project=project_id)` (review 5).
+- Dependencies: github.com/jackc/pgx/v5 5.11.0, lucide-react 1.61.0 in the
+  dashboard, org.json 20260814 in the Android SDK, actions/setup-python 7
+  in CI. The Android toolchain (AGP, Kotlin 2, Gradle 9, protobuf 4, gRPC
+  1.85) and the libraries that need it (kotlinx-coroutines 1.11, mockk
+  1.14, robolectric 4.17) move in an SDK release of their own.
 
 ### Added
 
+- The Android SDK 0.9.0 is on Maven Central and the Python client 0.9.0 on
+  PyPI.
 - The server reports its version: `"version"` in `/readyz` and `/livez`,
   and in the start log line. A server built by `docker compose` in a clone
   takes it from the clone's tag; both images carry the
   `org.opencontainers.image.version` label (review 5).
-
 - Android SDK: the background job's log line tells a refused request from an
   unreachable server: `Background sync: server reached, request refused
   (UNAUTHENTICATED: ...)` with the server's gRPC status and message, where
@@ -45,12 +58,10 @@ change APIs).
 - CI's "Android sample app on Windows" job checks the JDK is 17 and builds
   with a key and a dotted `-PfleetmlDebugHost`, quoted as the guide writes
   it, in PowerShell 7 and in Windows PowerShell 5.1 (review 5).
-
 - `DEPENDENCY_TIMEOUT` (default `60s`): how long the server waits at
   start-up for each of Postgres, the object store and NATS; the Helm chart
   sets `180s` (`server.dependencyTimeout`), inside its 200 s startup probe
   (review 5).
-
 - CLI: `fleetml telemetry events` has Time and Version columns (each
   version looked up once); `fleetml simulate` reads the enrollment key from
   `FLEETML_ENROLLMENT_KEY` when `--enrollment-key` is not given, which keeps
@@ -105,6 +116,17 @@ change APIs).
   written by 0.7.0 or earlier (which set it on the command line): the block
   copies the running server's value into the file first, so phones and
   agents keep receiving models after the upgrade (review 5).
+
+### Security
+
+- pgx 5.11.0 includes 5.10's hardening of its decoders and SCRAM against a
+  malicious or compromised database server.
+- `fleetml simulate` reads its enrollment key from `FLEETML_ENROLLMENT_KEY`,
+  which keeps it out of the process list; LINUX_AGENT.md says the
+  container one-liner's key is visible to `docker inspect` and how to keep
+  it in a read-only `config.yaml` instead.
+- Helm: `fleetml-secrets*.yaml` is git- and helm-ignored, and a short
+  `adminKey` is refused at install time.
 
 ## [0.8.0] - 2026-10-24
 
@@ -914,6 +936,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.9.0]: https://github.com/fleetml/fleetml/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/fleetml/fleetml/compare/v0.5.0...v0.6.0

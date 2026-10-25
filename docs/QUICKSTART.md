@@ -51,11 +51,11 @@ clipboard` on Linux).
 On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
 server instead, and the tour runs against it.
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.8.0"}`
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.8.0-3-g1a2b3c4`: three commits past 0.8.0). To confirm the version
+like `0.9.0-3-g1a2b3c4`: three commits past 0.9.0). To confirm the version
 later: `curl -s localhost:18080/readyz`. If nothing
 appears after about two minutes more than the build took, run
 `docker compose -f deploy/docker-compose.prod.yml ps -a` and
@@ -266,7 +266,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.8.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.9.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -557,7 +557,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.8.0"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.9.0"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 
@@ -628,16 +628,20 @@ new shell, `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
 
 ## Upgrading
 
-Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.7.0
-to 0.8.0 there are no breaking API changes (each version's "Changed" section
-lists what behaves differently), and the server applies new database
+Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.8.0
+there are no breaking API changes; 0.9.0 answers a few refused requests
+with other error codes (`409 INVALID_TRANSITION` for experiments and
+versions, `400 VALIDATION_ERROR` for a `limit` that is not a number) and
+makes the Python client's `project`, `limit` and `offset` keyword-only
+(each version's "Changed" section lists what behaves differently and what
+to change), and the server applies new database
 migrations itself when it starts. Upgrade the server first, then the
 devices and the tools; each moves on its own:
 
 - **The compose stack**, in its clone, with the saved values:
 
   ```bash
-  git fetch --tags && git checkout v0.8.0
+  git fetch --tags && git checkout v0.9.0
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -651,7 +655,7 @@ devices and the tools; each moves on its own:
   elsewhere would stop receiving models. It copies the running server's
   value into the file once and does nothing when the file has one. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.8.0"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.9.0"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](#get-the-cli) block again (it fetches the
