@@ -114,6 +114,7 @@ jobs:
           context: dashboard
           file: dashboard/Dockerfile
           platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.tag.outputs.version }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.tag.outputs.version }}

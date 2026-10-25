@@ -35,6 +35,7 @@ import (
 	"github.com/fleetml/fleetml/internal/signing"
 	"github.com/fleetml/fleetml/internal/storage"
 	"github.com/fleetml/fleetml/internal/telemetry"
+	"github.com/fleetml/fleetml/internal/version"
 )
 
 // dependencyTimeout is how long startup waits for Postgres, S3 and NATS, so the
@@ -77,7 +78,7 @@ func run() error {
 	}
 
 	setupLogger(cfg.LogLevel, cfg.LogFormat)
-	slog.Info("starting FleetML server")
+	slog.Info("starting FleetML server", "version", version.String())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

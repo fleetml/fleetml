@@ -5,6 +5,22 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [Unreleased]
+
+### Added
+
+- The server reports its version: `"version"` in `/readyz` and `/livez`,
+  and in the start log line. A server built by `docker compose` in a clone
+  takes it from the clone's tag; both images carry the
+  `org.opencontainers.image.version` label (review 5).
+
+### Fixed
+
+- QUICKSTART "Upgrading" keeps `S3_PUBLIC_ENDPOINT` for a `~/.fleetml.env`
+  written by 0.7.0 or earlier (which set it on the command line): the block
+  copies the running server's value into the file first, so phones and
+  agents keep receiving models after the upgrade (review 5).
+
 ## [0.8.0] - 2026-10-24
 
 The fixes from the fourth developer review (seven reviewers, a real Android

@@ -60,7 +60,7 @@ until curl -sf localhost:18080/readyz; do sleep 1; done; echo
 helm test fleetml -n fleetml
 ```
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`,
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.8.0"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
 images, which takes a minute or two; `kubectl -n fleetml get pods` then shows
 every pod `Running` with no restarts.

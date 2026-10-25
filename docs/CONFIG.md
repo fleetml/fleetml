@@ -144,6 +144,9 @@ run next to the dev stack). It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
 devices are not on this machine) from the shell: the quickstart saves all
 four in `~/.fleetml.env`, which every compose command on the stack needs
 sourced first ([Run FleetML](QUICKSTART.md#run-fleetml)).
+`FLEETML_VERSION` (default `dev`) labels the two images it builds
+(`org.opencontainers.image.version`); the server reports its version from
+the clone's tag either way (`"version"` in `/readyz`).
 
 ## CLI
 

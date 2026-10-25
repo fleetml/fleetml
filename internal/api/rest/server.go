@@ -17,6 +17,7 @@ import (
 	"github.com/fleetml/fleetml/internal/metrics"
 	"github.com/fleetml/fleetml/internal/registry"
 	"github.com/fleetml/fleetml/internal/telemetry"
+	"github.com/fleetml/fleetml/internal/version"
 )
 
 // Server is the REST API server.
@@ -80,7 +81,7 @@ func NewServer(readiness *health.Checker, service *registry.Service, deviceSvc *
 
 func (s *Server) registerRoutes() {
 	// Probes and metrics live outside /api/v1 and need no API key.
-	s.router.GET("/livez", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	s.router.GET("/livez", s.live)
 	s.router.GET("/readyz", s.ready)
 	s.router.GET("/healthz", s.ready) // the original health endpoint, same as /readyz
 	s.router.GET("/metrics", gin.WrapH(metrics.Handler()))
@@ -150,9 +151,15 @@ func (s *Server) Handler() http.Handler {
 }
 
 // ready answers 200 when Postgres, S3 and NATS are reachable and 503 otherwise.
+// live answers /livez: the process is up. Both probes carry the server's
+// version, so an upgrade can be confirmed with one curl.
+func (s *Server) live(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "version": version.String()})
+}
+
 func (s *Server) ready(c *gin.Context) {
 	statuses, ok := s.readiness.Check(c.Request.Context())
-	body := gin.H{"status": "ok"}
+	body := gin.H{"status": "ok", "version": version.String()}
 	code := http.StatusOK
 	if !ok {
 		body["status"] = "degraded"

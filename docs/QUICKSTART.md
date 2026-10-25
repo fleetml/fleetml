@@ -48,9 +48,12 @@ clipboard` on Linux).
 On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
 server instead, and the tour runs against it.
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.8.0"}`
 once Postgres, the object store and NATS are reachable, and the project list
-answers `{"data":[],"pagination":{...}}`: no projects yet. If nothing
+answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
+server's release, from the clone's tag (on `main` after a release it reads
+like `0.8.0-3-g1a2b3c4`: three commits past 0.8.0). To confirm the version
+later: `curl -s localhost:18080/readyz`. If nothing
 appears after about two minutes more than the build took, run
 `docker compose -f deploy/docker-compose.prod.yml ps -a` and
 `docker compose -f deploy/docker-compose.prod.yml logs server` to see which
@@ -549,7 +552,8 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok"}`. The gRPC port also serves the standard
+`/livez` answers `{"status":"ok","version":"0.8.0"}` and `/readyz` adds the
+three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 
 Prometheus and Grafana with the FleetML dashboard (telemetry lag,
@@ -624,13 +628,21 @@ devices and the tools; each moves on its own:
 
   ```bash
   git fetch --tags && git checkout v0.8.0
+  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d --build
   until curl -sf localhost:18080/readyz; do sleep 2; done; echo
   ```
 
-  The projects, devices, telemetry and the admin key stay, and devices
-  reconnect by themselves. `git checkout main` instead follows the newest
+  The second line matters for a `~/.fleetml.env` written by 0.7.0 or
+  earlier, which holds the three secrets only: the device guides of those
+  releases set `S3_PUBLIC_ENDPOINT` on the command line, so without it the
+  upgraded server would hand out `localhost:19100` and phones and agents
+  elsewhere would stop receiving models. It copies the running server's
+  value into the file once and does nothing when the file has one. The
+  last line prints `/readyz`, which ends with the new version
+  (`"version":"0.8.0"`). The projects, devices, telemetry and the admin key
+  stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](#get-the-cli) block again (it fetches the
   latest release); `fleetml version` prints the version.
