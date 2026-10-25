@@ -25,8 +25,20 @@ change APIs).
   with a key and a dotted `-PfleetmlDebugHost`, quoted as the guide writes
   it, in PowerShell 7 and in Windows PowerShell 5.1 (review 5).
 
+- `DEPENDENCY_TIMEOUT` (default `60s`): how long the server waits at
+  start-up for each of Postgres, the object store and NATS; the Helm chart
+  sets `180s` (`server.dependencyTimeout`), inside its 200 s startup probe
+  (review 5).
+
 ### Fixed
 
+- Helm: a cold install no longer restarts the server once while the
+  Postgres image is still being pulled (the 60 s dependency wait ran out
+  first); a `secrets.adminKey` shorter than 32 characters is refused at
+  install time instead of crash-looping the server; the README's install
+  block names its local ports in one line, used everywhere, and says what
+  `existingSecret` does not roll and how to remove the namespace;
+  `fleetml-secrets*.yaml` is git- and helm-ignored (review 5).
 - ANDROID_SDK.md "From Windows" uses JDK 17 (Temurin, through winget):
   Android Studio 2026.1 bundles Java 25, on which Gradle 8.7 stops with
   `What went wrong: 25.0.2`; the `-P` arguments are quoted, since

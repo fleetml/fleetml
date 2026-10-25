@@ -72,6 +72,9 @@ type Config struct {
 	DeltaMaxSizeMB int `envconfig:"DELTA_MAX_SIZE_MB" default:"128"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
+	// DependencyTimeout is how long start-up waits for each of Postgres, the
+	// object store and NATS (the Helm chart sets 180s, inside its startup probe).
+	DependencyTimeout time.Duration `envconfig:"DEPENDENCY_TIMEOUT" default:"60s"`
 }
 
 // PublicUseSSL is whether presigned URLs are https: S3_PUBLIC_USE_SSL, or
@@ -146,6 +149,9 @@ func (c Config) validate() error {
 		if d < time.Second {
 			fail("%s must be at least 1s, got %s", name, d)
 		}
+	}
+	if c.DependencyTimeout < time.Second {
+		fail("DEPENDENCY_TIMEOUT must be at least 1s, got %s", c.DependencyTimeout)
 	}
 	if c.DeviceTokenTTL < 24*time.Hour {
 		fail("DEVICE_TOKEN_TTL must be at least 24h, got %s", c.DeviceTokenTTL)

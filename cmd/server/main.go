@@ -38,10 +38,6 @@ import (
 	"github.com/fleetml/fleetml/internal/version"
 )
 
-// dependencyTimeout is how long startup waits for Postgres, S3 and NATS, so the
-// server can start alongside them (docker compose up, a cold dev stack).
-const dependencyTimeout = 60 * time.Second
-
 // waitFor calls fn until it succeeds, retrying every second until timeout.
 func waitFor(ctx context.Context, what string, timeout time.Duration, fn func() error) error {
 	deadline := time.Now().Add(timeout)
@@ -84,13 +80,13 @@ func run() error {
 	defer cancel()
 
 	if cfg.MigrateOnStart {
-		if err := waitFor(ctx, "database migrations", dependencyTimeout, func() error { return db.Migrate(cfg.DatabaseURL) }); err != nil {
+		if err := waitFor(ctx, "database migrations", cfg.DependencyTimeout, func() error { return db.Migrate(cfg.DatabaseURL) }); err != nil {
 			return fmt.Errorf("running migrations: %w", err)
 		}
 	}
 
 	var pool *pgxpool.Pool
-	err = waitFor(ctx, "database", dependencyTimeout, func() (err error) {
+	err = waitFor(ctx, "database", cfg.DependencyTimeout, func() (err error) {
 		pool, err = db.NewPool(ctx, cfg.DatabaseURL)
 		return err
 	})
@@ -109,7 +105,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("creating s3 client: %w", err)
 	}
-	if err := waitFor(ctx, "s3", dependencyTimeout, func() error { return s3Client.EnsureBucket(ctx) }); err != nil {
+	if err := waitFor(ctx, "s3", cfg.DependencyTimeout, func() error { return s3Client.EnsureBucket(ctx) }); err != nil {
 		return fmt.Errorf("preparing s3 bucket: %w", err)
 	}
 	// Upload and download URLs are signed for the address clients use.
@@ -125,7 +121,7 @@ func run() error {
 	}
 
 	var nc *nats.Conn
-	err = waitFor(ctx, "nats", dependencyTimeout, func() (err error) {
+	err = waitFor(ctx, "nats", cfg.DependencyTimeout, func() (err error) {
 		nc, err = nats.Connect(cfg.NatsURL)
 		return err
 	})

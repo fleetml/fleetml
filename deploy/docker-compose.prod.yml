@@ -90,6 +90,8 @@ services:
       LOG_LEVEL: info
       CORS_ORIGINS: "http://localhost"
       MIGRATE_ON_START: "true"
+      # How long start-up waits for each of Postgres, the store and NATS.
+      DEPENDENCY_TIMEOUT: ${DEPENDENCY_TIMEOUT:-60s}
       # Optional: if unset, the server generates an admin key on first start and logs it once.
       FLEETML_ADMIN_KEY: ${FLEETML_ADMIN_KEY:-}
     depends_on:

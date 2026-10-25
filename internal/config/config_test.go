@@ -46,6 +46,20 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.False(t, cfg.MigrateOnStart)
 	assert.Equal(t, "http://localhost:5173,http://localhost:18080", cfg.CORSOrigins)
 	assert.Equal(t, 30*24*time.Hour, cfg.DeviceTokenTTL)
+	assert.Equal(t, 60*time.Second, cfg.DependencyTimeout)
+}
+
+// How long start-up waits for each dependency (the Helm chart sets 180s).
+func TestLoad_DependencyTimeout(t *testing.T) {
+	minimalEnv(t)
+	t.Setenv("DEPENDENCY_TIMEOUT", "180s")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, 180*time.Second, cfg.DependencyTimeout)
+
+	t.Setenv("DEPENDENCY_TIMEOUT", "0s")
+	_, err = Load()
+	assert.ErrorContains(t, err, "DEPENDENCY_TIMEOUT must be at least 1s")
 }
 
 func TestLoad_DeviceTokenTTL(t *testing.T) {

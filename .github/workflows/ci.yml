@@ -252,6 +252,16 @@ jobs:
           helm template t deploy/helm/fleetml --set secrets.existingSecret=fleetml,s3.publicEndpoint=s3.example.com:443 \
             --set postgres.enabled=false,postgres.url=postgres://db/fleetml,nats.enabled=false,nats.url=nats://nats:4222 \
             --set seaweedfs.enabled=false,s3.endpoint=s3.example.com:443 > /dev/null
+      - name: Rendered values
+        run: |
+          # The server waits 180 s for its dependencies, inside the startup probe.
+          helm template t deploy/helm/fleetml --set "$SECRETS,s3.publicEndpoint=x:1" | grep -q '{name: DEPENDENCY_TIMEOUT, value: "180s"}'
+          # A short adminKey is refused (the server would crash-loop on it) ...
+          if helm template t deploy/helm/fleetml --set "$SECRETS,secrets.adminKey=short,s3.publicEndpoint=x:1" > /dev/null 2>&1; then
+            echo "a 5-character adminKey was accepted" >&2; exit 1
+          fi
+          # ... unless the keys come from a Secret of your own, which the chart does not read.
+          helm template t deploy/helm/fleetml --set secrets.existingSecret=fleetml,secrets.adminKey=short,s3.publicEndpoint=x:1 > /dev/null
 
   shell:
     name: Shell scripts
