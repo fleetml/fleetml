@@ -36,7 +36,8 @@ fleetml-agent -version
 Debian and Ubuntu images often have neither `curl` nor `wget`
 (`ubuntu:24.04` has neither): `apt-get update && apt-get install -y curl ca-certificates`
 first. On another minimal image, `wget -q` with the same URLs downloads the
-two files, or copy them over from another machine; in a root shell without
+two files, or copy them over from another machine (to check them on a Mac
+first, `shasum -a 256 -c` in place of `sha256sum -c`); in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
@@ -96,8 +97,8 @@ the unit.
 
 In a container, make the agent the main process and give the container an
 init that reaps processes. Started in the background under a placeholder such
-as `sleep infinity`, an agent that exits leaves its `su` behind as a
-`<defunct>` process, because the placeholder does not collect it. In an
+as `sleep infinity`, an agent that exits stays behind as a `<defunct>`
+process, because the placeholder does not collect it. In an
 entrypoint script, the last line is
 
 ```bash
@@ -132,7 +133,9 @@ downloads everything again, and the old one stays in `fleetml device list`.
 `docker rm -f fleetml-agent && docker volume rm fleetml-agent-state` removes
 both. The enrollment key on this command line ends up in the container's
 configuration, which `docker inspect fleetml-agent` shows to anyone who can
-use Docker on the machine: fine for a throwaway test, but for a device you
+use Docker on the machine, and in the container's process list (`ps`, or
+`/proc/1/cmdline`), which every user inside it can read, the inference
+process's user included: fine for a throwaway test, but for a device you
 keep, mount a prepared `config.yaml` read-only instead
 (`-v "$PWD/config.yaml:/etc/fleetml-agent/config.yaml:ro"`) and leave out
 the `sed`.
@@ -261,8 +264,9 @@ sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
 
-Without systemd, start the `su` command from [Without
-systemd](#without-systemd-and-in-containers) under the supervisor instead.
+Without systemd, start the `setpriv` command (on BusyBox, the `su` form)
+from [Without systemd](#without-systemd-and-in-containers) under the
+supervisor instead.
 `sed` is on every image, BusyBox included; with an editor, `sudo vi
 /etc/fleetml-agent/config.yaml` does the same. Leave `tls: false` for the
 quickstart's compose server, which speaks plain gRPC on 19090, and set it to
@@ -309,7 +313,10 @@ level=INFO msg="model active" model=iris version=2.0.0 path=/var/lib/fleetml-age
 ```
 
 After a restart (`sudo systemctl restart fleetml-agent`), the agent keeps its
-registration and logs the model it has instead of registering again:
+registration and logs the model it has instead of registering again (after an
+upgrade of the agent or a change of its labels it logs `registered` once
+more, with the same device ID: it tells the server its new version or
+labels, and the box is still one device):
 
 ```text
 level=INFO msg="active model (from the last run)" model=iris version=2.0.0 path=/var/lib/fleetml-agent/models/iris/current
@@ -571,7 +578,7 @@ The warning below comes with the first heartbeat after that, so within one
 heartbeat interval of the drop (60 seconds by default; measured: 32 to 57
 seconds); with telemetry queued, a `sending telemetry failed; the events
 stay queued` warning can come first. With the network removed rather than
-silent, the error reads `connect: network is unreachable` instead. The
+silent, the error can read `connect: network is unreachable` instead. The
 first failed heartbeat is logged once, and the recovery once:
 
 ```text
@@ -606,9 +613,11 @@ It replaces the binary, keeps `/etc/fleetml-agent/config.yaml` and the state
 folder (the device's identity, its models and queued telemetry), and
 restarts a running service, so the new version runs at once. Without
 systemd, restart the agent under its supervisor. Upgrade the server first,
-as with every release; a 0.9.0 agent also works with a 0.8.0 server (it
-registered, activated a model and heartbeated against one without an
-error).
+as with every release: agents of the release before keep working against
+the new server until you upgrade them (a 0.8.0 agent registered, took a
+model and a delta from a 0.9.0 server, and kept its state when upgraded in
+place), and a 0.9.x agent also works with a 0.8.0 server (it registered,
+activated a model and heartbeated against one without an error).
 
 ## Try it locally
 
