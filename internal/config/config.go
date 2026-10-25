@@ -72,8 +72,8 @@ type Config struct {
 	DeltaMaxSizeMB int `envconfig:"DELTA_MAX_SIZE_MB" default:"128"`
 	// MigrateOnStart applies embedded DB migrations before the server starts.
 	MigrateOnStart bool `envconfig:"MIGRATE_ON_START" default:"false"`
-	// DependencyTimeout is how long start-up waits for each of Postgres, the
-	// object store and NATS (the Helm chart sets 180s, inside its startup probe).
+	// DependencyTimeout is how long start-up waits for Postgres, the object
+	// store and NATS together (the Helm chart sets 180s).
 	DependencyTimeout time.Duration `envconfig:"DEPENDENCY_TIMEOUT" default:"60s"`
 }
 

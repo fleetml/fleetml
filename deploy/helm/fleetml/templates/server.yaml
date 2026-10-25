@@ -43,10 +43,9 @@ spec:
           readinessProbe:
             httpGet: {path: /readyz, port: rest}
             periodSeconds: 5
-          # /livez answers once Postgres, the object store and NATS are
-          # reachable; the server waits up to server.dependencyTimeout (180 s)
-          # for each, and the startup probe allows 200 s before the liveness
-          # probe takes over.
+          # /livez answers as soon as the process listens, also while it waits
+          # (server.dependencyTimeout, 180 s in total) for Postgres, the object
+          # store and NATS; /readyz answers once they are all there.
           startupProbe:
             httpGet: {path: /livez, port: rest}
             periodSeconds: 5

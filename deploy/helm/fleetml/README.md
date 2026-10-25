@@ -72,10 +72,14 @@ helm test fleetml -n fleetml
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
-images, which takes a minute or two (the server waits up to
-`server.dependencyTimeout`, 180 s, for Postgres meanwhile);
+images, which takes a minute or two (the server waits meanwhile, up to
+`server.dependencyTimeout`, 180 s in total for Postgres, the object store and
+NATS, and its `/livez` answers all along, so the probes leave it alone);
 `kubectl -n fleetml get pods` then shows every pod `Running` with no
-restarts.
+restarts. On a link slow enough that the images take longer than that, the
+server exits once with `start-up gave up: DEPENDENCY_TIMEOUT is the total wait
+for all dependencies` and comes up after its restart; raise
+`server.dependencyTimeout` to avoid it.
 
 `s3.publicEndpoint` is the one value the chart needs besides the secrets:
 the `host:port` where devices and the CLI reach the object store. The server
@@ -173,7 +177,7 @@ are most likely to set:
 | `s3.useSSL`, `s3.endpoint`, `s3.bucket` | `false`, , `fleetml-models` | The server's connection to the store (`s3.endpoint` with `seaweedfs.enabled=false`) |
 | `server.image.repository`, `.tag`, `.pullPolicy` | `ghcr.io/fleetml/fleetml-server`, the app version, `IfNotPresent` | Server image |
 | `server.replicas` | `1` | Server replicas (they share the database and the telemetry stream) |
-| `server.dependencyTimeout` | `180s` | How long the server waits at start-up for each of Postgres, the object store and NATS (`DEPENDENCY_TIMEOUT`) |
+| `server.dependencyTimeout` | `180s` | How long the server waits at start-up for Postgres, the object store and NATS, in total (`DEPENDENCY_TIMEOUT`) |
 | `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced |
 | `server.resources` | `{}` | Requests and limits for the server |
 | `server.service.type`, `.restPort`, `.grpcPort` | `ClusterIP`, `18080`, `19090` | The server's Service |
