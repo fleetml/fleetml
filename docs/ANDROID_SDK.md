@@ -90,17 +90,18 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 
    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
-5. **Put the phone on it.** This forwards the server's ports to the phone,
-   builds the sample app with the enrollment key from step 4, installs it
-   and waits until the model is active on the phone (a minute or two the
-   first time, for the build):
+5. **Put the phone on it.** This builds the sample app with the enrollment
+   key from step 4 and installs it, forwards the server's ports to the phone
+   (after the install, since a build can restart `adb`, which drops the
+   forwards), starts the app and waits until the model is active on the
+   phone (a minute or two the first time, for the build):
 
    <!-- golden: android-phone device -->
    ```bash
    export ANDROID_SERIAL=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090})
    adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
    adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090})
    adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity
    adb logcat -s FleetML:I -e 'is active' -m 1
    ```
@@ -608,7 +609,9 @@ maintainers run it by hand.
    ```
 
 3. Forward the REST, gRPC and model-file ports, so the phone reaches the
-   machine as `localhost` (again after each reconnect of the cable):
+   machine as `localhost` (again after each reconnect of the cable, and
+   after a build that restarted `adb`: `adb reverse --list` shows what is
+   forwarded):
 
    ```bash
    . ~/.fleetml.env
