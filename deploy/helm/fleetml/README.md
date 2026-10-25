@@ -57,7 +57,8 @@ ports this machine reaches the release on, the
 [quickstart's](../../../docs/QUICKSTART.md) REST, gRPC and model-file ports;
 if its compose stack runs here (or anything else holds them), make it
 `REST=28080 GRPC=29090 S3=29100`, and every later line, `Try it` included,
-uses those:
+uses those. They are variables of this shell: in a new terminal (for Try it
+or Upgrading), set the same line again first.
 
 ```bash
 REST=18080 GRPC=19090 S3=19100
@@ -131,7 +132,9 @@ SeaweedFS, which reads its credentials at start (Postgres keeps its
 password, see [Install](#install)). The data stays in the volumes, the
 server applies any new database migrations when it starts, and devices
 reconnect by themselves. A port-forward ends when the pod behind it is
-replaced: start the two `port-forward` lines again. To rotate a secret that
+replaced: start the server's `port-forward` line again (and the object
+store's after an `s3SecretKey` change, which replaces that pod too; with the
+old one still running, the new line stops with `address already in use`). To rotate a secret that
 may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
 upgrade. From 0.6.0 to 0.9.0 no
