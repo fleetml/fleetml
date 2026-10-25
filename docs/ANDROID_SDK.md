@@ -97,8 +97,12 @@ Building the SDK from source on the command line needs JDK 17: the wrapper's
 Gradle 8.7 with AGP 8.5 fails on a newer default JDK. Point `JAVA_HOME` at it,
 for example `/opt/homebrew/opt/openjdk@17` on macOS with Homebrew or
 `/usr/lib/jvm/java-17-openjdk-amd64` on Debian and Ubuntu
-(`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with its own
-JDK, set in its Gradle settings.
+(`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with the JDK
+in its Gradle settings (Settings, Build, Execution, Deployment, Build Tools,
+Gradle, Gradle JDK), by default its bundled JetBrains Runtime, which is Java
+25 in Android Studio 2026.1: with it, Gradle 8.7 stops at once with
+`What went wrong: 25.0.2`. Pick a JDK 17 there, or point `JAVA_HOME` at one
+on the command line.
 
 ### A new project from the command line
 
@@ -154,12 +158,64 @@ dependencies {
 }
 ```
 
+The manifest names the application class and a launcher activity, with an
+AppCompat theme (an `AppCompatActivity` under any other theme stops at launch
+with `You need to use a Theme.AppCompat theme`):
+
+```xml
+<!-- app/src/main/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:name=".MyApp"
+        android:label="MyApp"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+```
+
+and the activity shows whether the server was reached and which model is
+active:
+
+```kotlin
+// app/src/main/java/com/example/myapp/MainActivity.kt
+package com.example.myapp
+
+import android.os.Bundle
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.fleetml.sdk.FleetML
+import kotlinx.coroutines.launch
+
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val status = TextView(this).also { setContentView(it) }
+        lifecycleScope.launch {
+            val reached = FleetML.syncNow()
+            status.text = "Server reached: $reached\nModel: ${FleetML.activeModel("iris")?.version ?: "none yet"}"
+        }
+    }
+}
+```
+
 `gradle.properties` holds `android.useAndroidX=true`, and
 `local.properties` (or `ANDROID_HOME`) the Android SDK's folder,
 `sdk.dir=<home>/Library/Android/sdk` on macOS. Add the `android` block of
 [Configure and start](#configure-and-start) for the server's host and key,
-the application class, an activity in `app/src/main/AndroidManifest.xml`,
-and `./gradlew :app:assembleDebug` builds it.
+and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
+with `package com.example.myapp` on top; for a server on your machine, the
+two debug files of [On your phone](#on-your-phone). `./gradlew :app:assembleDebug`
+builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
+installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$EK`).
+After a deployment to `app=myapp` the screen reads `Server reached: true`
+and `Model: 1.0.0`.
 
 ## Configure and start
 
@@ -750,10 +806,12 @@ with `:app:installDebug` in its project. CI builds the sample app with
 
 Once, before you start:
 
-- **Android Studio**, for the SDK, `adb` and its bundled JDK (the JBR, Java
-  17 or 21). `& "$env:ProgramFiles\Android\Android Studio\jbr\bin\java" -version`
-  checks it (an install through JetBrains Toolbox is under
-  `%LOCALAPPDATA%\Programs` instead; use that path below).
+- **Android Studio**, for the SDK and `adb`.
+- **JDK 17**, for Gradle 8.7: `winget install --id EclipseAdoptium.Temurin.17.JDK -e`.
+  Android Studio's bundled JDK (the JetBrains Runtime in its `jbr` folder) is
+  Java 25 in Android Studio 2026.1, and Gradle 8.7 does not run on it:
+  `gradlew.bat` stops at once with `What went wrong: 25.0.2`. CI builds the
+  sample app with Temurin 17, the same JDK.
 - **Git for Windows**: `winget install --id Git.Git -e`, or Android Studio's
   File, New, Project from Version Control.
 - **The `fleetml` CLI for Windows**, from [Get the CLI](QUICKSTART.md#get-the-cli).
@@ -791,7 +849,8 @@ key:
 
 ```powershell
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
-$env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
+$env:JAVA_HOME = (Get-ChildItem "$env:ProgramFiles\Eclipse Adoptium" -Directory -Filter 'jdk-17*')[0].FullName
+& "$env:JAVA_HOME\bin\java" -version
 $env:Path += ";$env:ANDROID_HOME\platform-tools"
 adb devices
 $env:ANDROID_SERIAL = '<the phone''s serial>'
@@ -799,11 +858,14 @@ adb reverse tcp:18080 tcp:18080
 adb reverse tcp:19090 tcp:19090
 adb reverse tcp:19100 tcp:19100
 cd android
-.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" -PfleetmlDebugHost=localhost
+.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=localhost"
 adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
 adb logcat -s FleetML
 ```
 
+`java -version` prints `openjdk version "17.0...` (Temurin). The `-P`
+arguments are in quotes because PowerShell splits an unquoted
+`-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`.
 The reverses reach the ports Docker Desktop publishes on Windows. The app's
 config screen shows host `localhost`, port `19090` and the key; tap
 **Save and connect**. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
@@ -850,7 +912,7 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
    ```powershell
    adb reverse --remove-all
    adb shell pm clear com.fleetml.sample
-   .\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" -PfleetmlDebugHost=<LAN IP>
+   .\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=<LAN IP>"
    adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
    ```
 
@@ -1044,6 +1106,12 @@ adb shell input keyevent KEYCODE_HOME
 adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"
 adb shell cmd jobscheduler run -f com.fleetml.sample <id>
 ```
+
+The job ends with one of three lines: `Background sync: server reached`,
+`Background sync: server unreachable` (no answer: the network, the address
+or the server is down), or `Background sync: server reached, request refused (UNAUTHENTICATED: ...)`
+with the server's status and message, for example a revoked enrollment key
+after the project was deleted.
 
 Then put the device on battery and on a metered network:
 

@@ -14,8 +14,25 @@ change APIs).
   takes it from the clone's tag; both images carry the
   `org.opencontainers.image.version` label (review 5).
 
+- Android SDK: the background job's log line tells a refused request from an
+  unreachable server: `Background sync: server reached, request refused
+  (UNAUTHENTICATED: ...)` with the server's gRPC status and message, where
+  it said `server unreachable` before (review 5).
+- ANDROID_SDK.md: the command-line project has its manifest (AppCompat
+  theme, launcher activity) and a `MainActivity`; built from the guide and
+  run on an emulator (review 5).
+- CI's "Android sample app on Windows" job checks the JDK is 17 and builds
+  with a key and a dotted `-PfleetmlDebugHost`, quoted as the guide writes
+  it, in PowerShell 7 and in Windows PowerShell 5.1 (review 5).
+
 ### Fixed
 
+- ANDROID_SDK.md "From Windows" uses JDK 17 (Temurin, through winget):
+  Android Studio 2026.1 bundles Java 25, on which Gradle 8.7 stops with
+  `What went wrong: 25.0.2`; the `-P` arguments are quoted, since
+  PowerShell cuts an unquoted `-PfleetmlDebugHost=<LAN IP>` at the first
+  dot (review 5).
+- README: `tensorflow-lite:2.17.0`, as the guide and the sample app.
 - QUICKSTART "Upgrading" keeps `S3_PUBLIC_ENDPOINT` for a `~/.fleetml.env`
   written by 0.7.0 or earlier (which set it on the command line): the block
   copies the running server's value into the file first, so phones and

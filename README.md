@@ -200,7 +200,7 @@ the app needs compileSdk 34 or later and minSdk 26,
 
 ```kotlin
 implementation("dev.fleetml:fleetml-sdk:0.8.0")
-implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
+implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL

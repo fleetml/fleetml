@@ -103,6 +103,9 @@ object FleetML {
      */
     suspend fun syncNow(): Boolean = instance?.syncNow() ?: false
 
+    /** Why the last [syncNow] did not reach the server or was refused by it; null after a success. */
+    internal fun lastSyncFailure(): Throwable? = instance?.lastSyncFailure
+
     /** Schedules the next background check (called by the background job). */
     internal fun scheduleBackgroundSync() {
         instance?.scheduleBackgroundWork()
@@ -211,6 +214,8 @@ internal class FleetMLInstance(
     @Volatile private var started = false
     @Volatile private var registered = false
     @Volatile private var foreground = false
+    @Volatile internal var lastSyncFailure: Throwable? = null
+        private set
 
     fun start() {
         started = true
@@ -274,11 +279,13 @@ internal class FleetMLInstance(
                 registration.registerIfNeeded(::register)
                 registered = true
             } catch (e: Exception) {
+                lastSyncFailure = e
                 Logger.failure("Registration failed", e)
                 return false
             }
         }
         val reached = heartbeat.beatOnce()
+        lastSyncFailure = if (reached) null else heartbeat.lastFailure
         telemetryReporter.flushNow()
         return reached
     }

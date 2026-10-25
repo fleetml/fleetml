@@ -191,9 +191,29 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
-      - name: gradlew.bat assembleDebug
+      - name: JDK 17, as From Windows says
         shell: pwsh
-        run: .\gradlew.bat --no-daemon :sample-app:assembleDebug -PfleetmlDebugHost=localhost
+        run: |
+          Select-String -Path "$env:JAVA_HOME\release" -Pattern JAVA_VERSION
+          if (-not (Select-String -Quiet -Path "$env:JAVA_HOME\release" -Pattern 'JAVA_VERSION="17\.')) { throw "JAVA_HOME is not a JDK 17" }
+      # The guide's gradlew.bat line as written, with a key and a dotted host
+      # in quotes (PowerShell cuts an unquoted -Pname=192.168.1.23 at the
+      # first dot), in PowerShell 7 and in Windows PowerShell 5.1; the
+      # generated network config must carry the whole address.
+      - name: gradlew.bat assembleDebug (PowerShell 7)
+        shell: pwsh
+        run: |
+          $EK = 'ci-placeholder-key'
+          .\gradlew.bat --no-daemon :sample-app:assembleDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=192.168.1.23"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet -SimpleMatch '>192.168.1.23<' sample-app\build\generated\res\fleetmlDebugNetworkConfig\xml\network_security_config.xml)) { throw "the dotted host did not reach the build" }
+      - name: gradlew.bat assembleDebug (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $EK = 'ci-placeholder-key'
+          .\gradlew.bat --no-daemon :sample-app:assembleDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=10.20.30.40"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet -SimpleMatch '>10.20.30.40<' sample-app\build\generated\res\fleetmlDebugNetworkConfig\xml\network_security_config.xml)) { throw "the dotted host did not reach the build" }
 
   docs:
     name: Docs site

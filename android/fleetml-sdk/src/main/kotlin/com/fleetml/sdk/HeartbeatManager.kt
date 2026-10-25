@@ -47,6 +47,10 @@ internal class HeartbeatManager(
 
     @Volatile private var connected: Boolean? = null
 
+    /** Why the last heartbeat did not succeed (null after a success), for the background job's log line. */
+    @Volatile internal var lastFailure: Throwable? = null
+        private set
+
     private val inFlightLock = Any()
     private var inFlight: CompletableDeferred<Boolean>? = null
 
@@ -107,13 +111,16 @@ internal class HeartbeatManager(
             // Keys first: an assignment may be signed by a key the device has not seen.
             models.setSigningKeys(response.signingKeysList)
             models.apply(response.assignmentsList)
+            lastFailure = null
             true
         } catch (e: StatusException) {
+            lastFailure = e
             if (e.status.code == Status.Code.UNAUTHENTICATED) {
                 Logger.w("Token rejected by server, re-registering")
                 try {
                     reRegister()
                 } catch (re: Exception) {
+                    lastFailure = re
                     Logger.failure("Re-registration failed", re)
                 }
             } else {
@@ -122,6 +129,7 @@ internal class HeartbeatManager(
             setConnected(false)
             false
         } catch (e: Exception) {
+            lastFailure = e
             Logger.failure("Heartbeat failed", e)
             setConnected(false)
             false

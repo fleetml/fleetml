@@ -19,6 +19,8 @@ val enrollmentKey: String = (project.findProperty("fleetmlEnrollmentKey") as Str
 // allowed to take plain HTTP in the debug network security config:
 // `-PfleetmlDebugHost=<LAN IP>` for a phone over Wi-Fi, `localhost` for one
 // over USB (adb reverse). Unset, the screen shows the emulator's 10.0.2.2.
+// In PowerShell quote it, `"-PfleetmlDebugHost=<LAN IP>"`: unquoted, an IP
+// address is cut at its first dot.
 val debugHost: String = ((project.findProperty("fleetmlDebugHost") as String?)
     ?: localProps.getProperty("fleetml.debugHost")
     ?: "").trim()
