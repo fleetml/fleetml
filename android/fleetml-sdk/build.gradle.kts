@@ -148,7 +148,7 @@ dependencies {
     compileOnly("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     // JSON (for metadata)
-    implementation("org.json:json:20240303")
+    implementation("org.json:json:20260814")
 
     // ed25519 artifact signatures (the platform API needs API 33)
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
