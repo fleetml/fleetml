@@ -988,6 +988,20 @@ After that the SDK:
   for short-lived tokens) with the `RefreshToken` RPC;
 - re-registers with the enrollment key if the server rejects the token
   (revoked with `POST /api/v1/devices/{id}/revoke`, or expired).
+- re-registers with the enrollment key if its stored registration cannot be
+  read. The registration is encrypted with an Android Keystore key, which a
+  backup, a phone-to-phone transfer or a copied app directory does not carry,
+  so a restored copy cannot be decrypted. The SDK then logs
+  `W FleetML : Stored registration unreadable (AEADBadTagException); deleted it, registering again with the enrollment key`,
+  deletes the file and registers again; the device ID comes back the same.
+  To keep the file out of backups in the first place, point your app at the
+  SDK's rules (`android:fullBackupContent="@xml/fleetml_backup_rules"` and
+  `android:dataExtractionRules="@xml/fleetml_data_extraction_rules"` on
+  `<application>`), or, if your app has its own rules files (Android Studio's
+  template creates two), add the SDK's
+  `<exclude domain="sharedpref" path="fleetml_credentials.xml" />` lines to
+  them. The SDK does not set these attributes itself: a library that did
+  would break the build of every app with its own rules.
 
 ## Models: download, verify, validate, activate
 

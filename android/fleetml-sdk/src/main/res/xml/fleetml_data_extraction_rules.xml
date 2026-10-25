@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- For android:dataExtractionRules (Android 12 and newer): the same exclusion
+     for cloud backups and device-to-device transfers. Point your app at this
+     file, or copy the exclude lines into your own rules. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="fleetml_credentials.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="fleetml_credentials.xml" />
+    </device-transfer>
+</data-extraction-rules>
