@@ -49,7 +49,10 @@ without printing it on macOS (`| clip.exe` in WSL, `| xclip -selection
 clipboard` on Linux).
 
 On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
-server instead, and the tour runs against it.
+server instead, and the tour runs against it: keep `FLEETML_SERVER` and
+`FLEETML_API_KEY` from the chart README's Try it instead of the tour's first
+`export` line, and add `--grpc localhost:$GRPC` to the tour's
+`fleetml simulate` lines.
 
 `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`
 once Postgres, the object store and NATS are reachable, and the project list
@@ -325,7 +328,10 @@ export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
 fleetml project list
 ```
 
-`fleetml project list` prints `No results.` on the new server.
+`fleetml project list` prints `No results.` on the new server. On a server
+someone else also tours, add `--seed <your name>` to both `fleetml simulate`
+lines: the same seed gives the same 20 device identities, which register
+into one project only.
 
 Every variable the tour sets (`P`, `V1`, `EK`, `SIM` and the others) lives in
 this shell only, and the simulator that section 2 starts in the background
@@ -452,7 +458,7 @@ A canary of 2.0.0 for 25% of the fleet, with a health gate: more than 5% errors
 over at least 30 events from the canary cohort rolls it back. Each device is
 in the cohort or not by a hash of its ID and the deployment's ID, decided on
 its own and kept for the deployment's life, so the cohort is about 25%: of 20
-devices it can be 4 or 7 as well as 5. The deploy loop runs every 30 seconds,
+devices typically 2 to 8. The deploy loop runs every 30 seconds,
 so the rollback comes within a minute, often within seconds, since the
 simulator's devices report quickly; the loop below gives up after 5 minutes:
 
@@ -573,7 +579,8 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
-Open http://localhost:13000 in a browser: Grafana shows the "FleetML"
+Open http://localhost:13000 in a browser (on its first start Grafana takes
+about half a minute to answer): it shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
 
@@ -633,7 +640,9 @@ new shell, `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
 
 ## Upgrading
 
-Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.8.0
+Every release is in the [CHANGELOG](../CHANGELOG.md). From any earlier
+release the block below goes straight to the newest; read each version's
+"Changed" section in between. From 0.6.0 to 0.8.0
 there are no breaking API changes; 0.9.0 answers a few refused requests
 with other error codes (`409 INVALID_TRANSITION` for experiments and
 versions, `400 VALIDATION_ERROR` for a `limit` that is not a number) and
@@ -647,18 +656,21 @@ devices and the tools; each moves on its own:
 
   ```bash
   git fetch --tags && git checkout v0.9.0
-  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
+  source ~/.fleetml.env
+  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d --build
   until curl -sf localhost:18080/readyz; do sleep 2; done; echo
   ```
 
-  The second line matters for a `~/.fleetml.env` written by 0.7.0 or
+  The `grep` line matters for a `~/.fleetml.env` written by 0.7.0 or
   earlier, which holds the three secrets only: the device guides of those
   releases set `S3_PUBLIC_ENDPOINT` on the command line, so without it the
   upgraded server would hand out `localhost:19100` and phones and agents
   elsewhere would stop receiving models. It copies the running server's
-  value into the file once and does nothing when the file has one. The
+  value into the file once and does nothing when the file has one; it asks
+  compose for the stack's server container, so it also works with your own
+  `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
   (`"version":"0.9.0"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
