@@ -7,6 +7,7 @@ struct FleetMLSampleApp: App {
     private let state: AppState
 
     init() {
+        setvbuf(stdout, nil, _IOLBF, 0) // each log line at once, also into `simctl launch --stdout=<file>`
         FleetML.registerBackgroundTask() // before the app finishes launching
         state = AppState()
     }

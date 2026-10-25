@@ -21,4 +21,20 @@ class BuildSettingsTest {
     fun emulatorHostByDefault() {
         assertEquals(SampleApp.Settings("10.0.2.2", 19090, "k"), SampleApp.fromBuild(" k ", ""))
     }
+
+    private val build = SampleApp.Settings("localhost", 19090, "new")
+    private val saved = SampleApp.Settings("10.0.2.2", 19090, "typed")
+
+    @Test
+    fun aNewBuildKeyWinsOverSavedSettings() {
+        assertEquals(build to true, SampleApp.startSettings(build, saved, lastBuildKey = "old"))
+        assertEquals(build to true, SampleApp.startSettings(build, null, lastBuildKey = null))
+    }
+
+    @Test
+    fun theSameBuildKeyKeepsWhatTheScreenSaved() {
+        assertEquals(saved to false, SampleApp.startSettings(build, saved, lastBuildKey = "new"))
+        assertEquals(saved to false, SampleApp.startSettings(null, saved, lastBuildKey = null))
+        assertNull(SampleApp.startSettings(null, null, lastBuildKey = null))
+    }
 }
