@@ -396,10 +396,17 @@ phone](#on-your-phone). The deployment starts as `COMPLETE`
 (`✓ Deployment start → COMPLETE`), which means assigned; once the app runs,
 logcat shows `Model iris 1.0.0 is active`. `fleetml deploy get $D1 | jq -c .devices`
 counts what the devices reported in their last heartbeat, so it prints
-`{"loaded":0,"targeted":1}` until the app's next heartbeat (60 seconds by
+`{"loaded":0,"targeted":0}` until the app has registered,
+`{"loaded":0,"targeted":1}` until its next heartbeat (60 seconds by
 default) and `{"loaded":1,"targeted":1}` after it; it is counted each time you
 ask, so once 2.0.0 replaces it, this deployment counts down to
 `{"loaded":0,"targeted":1}`.
+
+When you are done, on a server you keep, `fleetml project delete $P`
+removes the project with its devices, deployments and telemetry, so the
+phone's test leaves nothing behind (it asks for no confirmation and cannot
+be undone); the quickstart's [Clean up](QUICKSTART.md#clean-up) removes the
+whole stack instead.
 
 ## On your phone
 
@@ -802,7 +809,10 @@ neither a phone nor the Windows emulator, and Gradle is slow on a
 `\\wsl.localhost` path). This is the sample app on a phone over USB from
 start to end, then over Wi-Fi, then on the emulator; your own app is the same
 with `:app:installDebug` in its project. CI builds the sample app with
-`gradlew.bat` on `windows-latest`; the phone steps are run by hand.
+`gradlew.bat` on `windows-latest`; the phone steps are run by hand. This is
+for x64 Windows: on Windows on Arm the Gradle build is untested (there is no
+`windows-aarch_64` build of the protobuf compiler it fetches), as the
+quickstart says of Docker there.
 
 Once, before you start:
 
@@ -813,7 +823,9 @@ Once, before you start:
   `gradlew.bat` stops at once with `What went wrong: 25.0.2`. CI builds the
   sample app with Temurin 17, the same JDK.
 - **Git for Windows**: `winget install --id Git.Git -e`, or Android Studio's
-  File, New, Project from Version Control.
+  File, New, Project from Version Control. After a winget install, open a
+  new PowerShell window, so that `git` (and the JDK above) are on its
+  `PATH`.
 - **The `fleetml` CLI for Windows**, from [Get the CLI](QUICKSTART.md#get-the-cli).
 - **The phone**: developer options with USB debugging on, and its maker's USB
   driver on Windows (Google's for Pixel phones, from the SDK Manager) so that
@@ -832,7 +844,7 @@ git clone https://github.com/fleetml/fleetml.git $HOME\fleetml
 cd $HOME\fleetml
 $env:FLEETML_SERVER = 'http://localhost:18080'
 $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
-$P = (fleetml project create --name android-windows -o json | ConvertFrom-Json).id
+$P = (fleetml project create --name "android-windows-$(Get-Date -Format yyyyMMdd-HHmmss)" -o json | ConvertFrom-Json).id
 fleetml push models\iris\iris_v1.tflite --project $P --model iris --version 1.0.0
 $M = (fleetml model list --project $P -o json | ConvertFrom-Json)[0].id
 $V1 = (fleetml ver list --model $M -o json | ConvertFrom-Json)[0].id
@@ -863,7 +875,10 @@ adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
 adb logcat -s FleetML
 ```
 
-`java -version` prints `openjdk version "17.0...` (Temurin). The `-P`
+The project name carries the time, since names are unique on a server: a
+second run of the block makes a new project instead of stopping with
+`project already exists` and an empty `$P`. `java -version` prints
+`openjdk version "17.0...` (Temurin). The `-P`
 arguments are in quotes because PowerShell splits an unquoted
 `-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`.
 The reverses reach the ports Docker Desktop publishes on Windows. The app's
@@ -873,6 +888,8 @@ which is the emulator's address for the machine and does not work on a
 phone.) Logcat then shows the lines of [Over USB](#over-usb), among them
 `Registered as device <device ID>`, `Model iris 1.0.0 passed validation`
 and `Model iris 1.0.0 is active`, and the app's screen `Model ready: iris 1.0.0`.
+`adb logcat` runs until Ctrl+C: stop it (or open a second window) before
+the next steps.
 A phone that ran the sample app before keeps its saved host and key, which
 win over the build's: `adb shell pm clear com.fleetml.sample` resets them
 (it deletes the app's data), and a stale key shows as
@@ -893,8 +910,9 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
 
 3. In an administrator PowerShell, mark the Wi-Fi network private (Settings,
    Network and internet, Wi-Fi, the network, Private network; or
-   `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`)
-   and let TCP 19090 and 19100 in on private networks only:
+   `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`;
+   `Get-NetConnectionProfile` lists the interface aliases, if yours is not
+   `Wi-Fi`) and let TCP 19090 and 19100 in on private networks only:
 
    ```powershell
    New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow -Profile Private

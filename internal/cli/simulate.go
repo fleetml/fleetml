@@ -64,7 +64,10 @@ experiments and drift detection without real hardware. Devices are derived from
 				return err
 			}
 			if c.enrollmentKey == "" {
-				return fmt.Errorf("--enrollment-key is required")
+				c.enrollmentKey = os.Getenv("FLEETML_ENROLLMENT_KEY")
+			}
+			if c.enrollmentKey == "" {
+				return fmt.Errorf("--enrollment-key or FLEETML_ENROLLMENT_KEY is required")
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop()
@@ -78,7 +81,7 @@ experiments and drift detection without real hardware. Devices are derived from
 	}
 	f := cmd.Flags()
 	f.StringVar(&c.grpcAddr, "grpc", "localhost:19090", "Device gRPC address")
-	f.StringVar(&c.enrollmentKey, "enrollment-key", "", "Project enrollment key (required)")
+	f.StringVar(&c.enrollmentKey, "enrollment-key", "", "Project enrollment key (required; or FLEETML_ENROLLMENT_KEY, which keeps it out of the process list)")
 	f.IntVar(&c.devices, "devices", 10, "Number of devices")
 	f.StringArrayVar(&labels, "label", nil, "Device label key=value (repeatable)")
 	f.DurationVar(&c.interval, "interval", time.Second, "Heartbeat and telemetry interval")

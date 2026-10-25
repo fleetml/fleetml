@@ -25,7 +25,11 @@ function Set-StepOutput([string]$Name, [string]$Value) {
 # "Expect" lines read, and fails the step when it does not hold.
 function Test-Expect([string]$What, [string]$Got, [bool]$Ok) {
     Write-Host "Expect: $What"
-    Write-Host "Got:    $Got"
+    # Program output can span lines and start with a blank one (reg query
+    # does): print it trimmed, continuation lines under the first.
+    $lines = @($Got.Trim() -split "\r?\n")
+    Write-Host "Got:    $($lines[0])"
+    $lines | Select-Object -Skip 1 | ForEach-Object { Write-Host "        $_" }
     if (-not $Ok) {
         Add-Note "FAILED: $What"
         throw "FAILED: $What"

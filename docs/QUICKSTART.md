@@ -605,6 +605,11 @@ LAN address there.
 
 ### Clean up
 
+To remove only the tour's project from a server you keep, with its models,
+devices, deployments and telemetry: `kill $SIM; fleetml project delete $P`
+(it asks for no confirmation and cannot be undone). To remove the whole
+stack and its data:
+
 ```bash
 kill $SIM
 docker compose -f deploy/docker-compose.prod.yml --profile observability down -v

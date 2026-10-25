@@ -51,8 +51,23 @@ change APIs).
   sets `180s` (`server.dependencyTimeout`), inside its 200 s startup probe
   (review 5).
 
+- CLI: `fleetml telemetry events` has Time and Version columns (each
+  version looked up once); `fleetml simulate` reads the enrollment key from
+  `FLEETML_ENROLLMENT_KEY` when `--enrollment-key` is not given, which keeps
+  it out of `ps` (review 5).
+
 ### Fixed
 
+- CLI: `fleetml push --promote` reports a refused promotion (`uploaded ...
+  but promoting it to STAGED failed: ...`, non-zero exit) instead of
+  printing `✓ Pushed` with the version left at DRAFT; `fleetml project
+  delete --help` says it asks for no confirmation and cannot be undone
+  (review 5).
+- Docs: `fleetml project delete $P` in QUICKSTART "Clean up" and the
+  Android guide, for a server you keep; ANDROID_SDK "From Windows": x64
+  only, a new window after winget, a time-stamped project name so the block
+  runs twice, logcat runs until Ctrl+C, `Get-NetConnectionProfile`; the
+  `deploy get` counts before the app registers (review 5).
 - IOS_SDK.md: step 1 lists what needs a hand at the phone once (Developer
   Mode, trusting the Mac, Connect via network, Auto-Lock Never, the first
   launch's two prompts), so the terminal steps can run unattended; step 2

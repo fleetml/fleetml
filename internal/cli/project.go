@@ -93,7 +93,8 @@ func newProjectDeleteCmd() *cobra.Command {
 		Use:   "delete [project-id]",
 		Short: "Delete a project and everything in it",
 		Long: "Delete a project with its models, versions, deployments, experiments,\n" +
-			"enrollment keys and devices, and the telemetry of its versions.",
+			"enrollment keys and devices, and the telemetry of its versions.\n" +
+			"It asks for no confirmation and cannot be undone.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			var project map[string]interface{}

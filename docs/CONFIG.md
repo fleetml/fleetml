@@ -161,6 +161,7 @@ it:
 | `FLEETML_SERVER` | `http://localhost:18080` | REST API base URL |
 | `FLEETML_API_KEY` | *(unset)* | Admin API key, sent as `Authorization: Bearer` |
 | `FLEETML_OUTPUT` | `table` | `table` or `json` |
+| `FLEETML_ENROLLMENT_KEY` | *(unset)* | `fleetml simulate`'s enrollment key when `--enrollment-key` is not given, which keeps it out of the process list |
 
 ## Dashboard
 
