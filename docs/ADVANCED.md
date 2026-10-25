@@ -153,6 +153,107 @@ it: add the port to `~/.fleetml.env` as above and leave the override file
 out of every later compose command, the [Upgrading](#upgrading) block
 included.
 
+## A phone or another machine: the download address
+
+The server hands out every model as a download URL for its object store's
+public address, `S3_PUBLIC_ENDPOINT`. Get started saves it as `localhost` on
+the model files' port (`${FLEETML_S3_PUBLIC_PORT:-19100}`) in
+`~/.fleetml.env`, which works for everything on the server's own machine:
+the agent in a container (through its `-download-host-override`), the iOS
+simulator, and an Android phone over USB or the emulator (through
+`adb reverse`).
+
+A phone over Wi-Fi or a second machine downloads models from `S3_PUBLIC_ENDPOINT`,
+`localhost` and the model files' port (19100 unless you set
+`FLEETML_S3_PUBLIC_PORT`) in `~/.fleetml.env`: the guides set it to the
+machine's LAN address there, on the same port. The line that does it, in the stack's clone,
+with the machine's LAN address in place of `<LAN IP>` (`ipconfig getifaddr en0`
+on a Mac, `en1` on some; `hostname -I` on Linux):
+
+```bash
+. ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+source ~/.fleetml.env
+docker compose -f deploy/docker-compose.prod.yml up -d
+```
+
+From then on downloads go to the LAN address for every device, the USB,
+emulator and simulator paths included, so those need that address allowed
+too (the guides say how). This shows the value in use:
+
+```bash
+docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
+```
+
+A phone that registers but never downloads is almost always this address
+or its port: the phone must reach `<LAN IP>` on the model files' port, which
+a guest network that isolates devices or the machine's firewall can block.
+
+## Android: a phone over Wi-Fi
+
+The [Android guide](ANDROID_SDK.md)'s Get started uses a USB cable. Over
+Wi-Fi instead:
+
+
+The phone and the machine that runs the server must be on the same network.
+
+1. Find the machine's LAN address: `ipconfig getifaddr en0` on a Mac (`en1`
+   on some), `hostname -I` on Linux, and on Windows the IPv4 address
+   `ipconfig` prints for the Wi-Fi or Ethernet adapter, not WSL's `ip addr`
+   ([From Windows](ANDROID_SDK.md#from-windows)).
+2. Save that address as the server's object store address in
+   `~/.fleetml.env` ([Run FleetML](#the-settings-file-fleetmlenv)), so download
+   URLs point where the phone can reach them and every later compose command
+   keeps it, and restart the server, in the quickstart's clone:
+
+   ```bash
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+   source ~/.fleetml.env
+   docker compose -f deploy/docker-compose.prod.yml up -d
+   ```
+
+   The port is the stack's model files port, 19100 unless you moved it with
+   `FLEETML_S3_PUBLIC_PORT` when you started the stack (the first line reads
+   it from the file). From then on downloads go to the LAN address for every
+   device, the USB and emulator paths included ([Over USB](ANDROID_SDK.md#over-usb),
+   step 3).
+
+3. Let the phone in: with the macOS firewall on, allow Docker's incoming
+   connections when macOS asks; a Linux firewall needs TCP 19090 and 19100
+   open; Windows needs the `New-NetFirewallRule` line in
+   [From Windows](ANDROID_SDK.md#from-windows).
+4. Allow cleartext to that address: in your app, the commented line in the
+   debug network security config above, with the address in place of
+   `<LAN IP>`. The [sample app](ANDROID_SDK.md#sample-app) needs no edit: its build
+   generates the config with the address given as `-PfleetmlDebugHost`.
+   Without it the app registers (gRPC does not check the policy) and then
+   every download fails with
+   `Download of <variant ID> interrupted at 0 bytes: CLEARTEXT communication to <LAN IP> not permitted by network security policy`.
+5. Build with the address as the debug host:
+
+   ```bash
+   ./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=<LAN IP>
+   ```
+
+   For the sample app, `./gradlew :sample-app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=<LAN IP>`
+   in the clone's `android` folder: its config screen then shows the
+   address.
+
+The logcat lines are the same as over USB. A phone that registers but never
+downloads is almost always the object store's address: check it with
+`docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
+
+## Android on Windows: Android Studio
+
+[From Windows](ANDROID_SDK.md#from-windows) builds the sample app with
+`gradlew.bat` in PowerShell. To run it from Android Studio instead, open the
+`android` folder in Android Studio and run `sample-app` there, with Studio's
+Gradle JDK set to the Temurin 17 (Settings, Build, Execution, Deployment,
+Build Tools, Gradle, Gradle JDK): its default, the bundled Java 25, stops
+with `What went wrong: 25.0.2`. The enrollment key and the debug host then
+go in `android/local.properties` (`fleetml.enrollmentKey=...`,
+`fleetml.debugHost=localhost`; the file is not committed), which the sample
+app's build reads as it reads the `-P` properties.
+
 ## Linux agent: a server on another machine
 
 The agent talks to the server in two ways, and both must reach it from this

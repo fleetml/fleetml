@@ -653,10 +653,8 @@ same server, with an enrollment key of the project.
   what it needs from this stack.
 - **A notebook or CI:** the same steps with the [Python client](PYTHON_CLIENT.md).
 
-A phone or a second machine downloads models from `S3_PUBLIC_ENDPOINT`,
-`localhost` and the model files' port (19100 unless you set
-`FLEETML_S3_PUBLIC_PORT`) in `~/.fleetml.env`: the guides set it to the
-machine's LAN address there, on the same port.
+A phone over Wi-Fi or a second machine downloads models from the address in
+`S3_PUBLIC_ENDPOINT`: [the download address](ADVANCED.md#a-phone-or-another-machine-the-download-address).
 
 ### Clean up
 
