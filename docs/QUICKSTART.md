@@ -401,7 +401,9 @@ The finalize call answers `{"code":"INTEGRITY_ERROR","message":"..."}`.
 ### 2. A fleet and a rollout
 
 Every device registers into a project with one of its enrollment keys
-(`fleetml enrollment-key create` prints the key once). `fleetml simulate` runs
+(`fleetml enrollment-key create` prints the key once). `fleetml simulate` takes
+it from `FLEETML_ENROLLMENT_KEY` (`--enrollment-key` works too, but shows the
+key to anyone who lists processes) and runs
 devices on the real device protocol: they register with the key, heartbeat,
 download and verify what they are assigned, and report telemetry. Here 2.0.0
 fails 40% of inferences, 2.1.0 is faster, and each device also reports a week
@@ -409,7 +411,7 @@ of past telemetry as a drift baseline:
 
 ```bash
 EK=$(fleetml enrollment-key create --project $P --name tour -o json | jq -r .key)
-fleetml simulate --enrollment-key $EK --devices 20 --label app=tour \
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --devices 20 --label app=tour \
   --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' -o json | jq -r .id)
@@ -524,7 +526,7 @@ Now the devices get slower:
 
 ```bash
 kill $SIM; sleep 1
-fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 (umask 077; grep -v '^export SIM=' ~/.fleetml.env > ~/.fleetml.env.new; echo "export SIM=$SIM" >> ~/.fleetml.env.new; mv ~/.fleetml.env.new ~/.fleetml.env)
 sleep 20

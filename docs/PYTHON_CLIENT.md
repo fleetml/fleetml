@@ -65,7 +65,7 @@ with FleetML() as fm:
     v2 = fm.push("models/iris/iris_v2.tflite", project=project.id, model="iris", version="2.0.0")
 
     key = fm.enrollment_keys.create(project.id, "tour")
-    print(f"fleetml simulate --enrollment-key {key.key} --devices 20 --label app=tour --seed {project.name} --error-rate 2.0.0=0.4")
+    print(f"FLEETML_ENROLLMENT_KEY={key.key} fleetml simulate --devices 20 --label app=tour --seed {project.name} --error-rate 2.0.0=0.4")
     input("Start the simulator with the line above in another shell, then press Enter")
 
     d1 = fm.deployments.create(project.id, v1.id, target_selector={"app": "tour"})

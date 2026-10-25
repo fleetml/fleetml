@@ -102,7 +102,7 @@ P=$(fleetml project create --name helm-tour -o json | jq -r .id)
 fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
 V1=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
 EK=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
-fleetml simulate --enrollment-key $EK --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
 SIM=$!
 fleetml deploy start $(fleetml deploy create --project $P --version $V1 --target '{"app":"helm"}' -o json | jq -r .id)
 sleep 10; tail -1 /tmp/fleetml-helm-sim.log
