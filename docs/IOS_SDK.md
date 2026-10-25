@@ -22,9 +22,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.9.0, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.9.0")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.9.0` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.9.1, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.9.1")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.9.1` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -47,7 +47,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.9.0        # or path: ../fleetml for a clone
+    from: 0.9.1        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -322,7 +322,7 @@ struct MyApp: App {
    keeps it) and restart the server, in the quickstart's clone:
 
    ```bash
-   sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):19100/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d
    ```
@@ -373,7 +373,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.9.0        # or path: ../fleetml for a clone
+       from: 0.9.1        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
@@ -525,6 +525,10 @@ struct MyApp: App {
    fleetml deploy start $(fleetml deploy create --project $P --version $(vid 2.0.0) --target '{"app":"myapp"}' -o json | jq -r .id)
    ```
 
+   On a phone nobody is looking at, iOS suspends the app within a minute or
+   two and the heartbeat waits with it: run step 5's `launch` line again
+   after the rollout, and the update comes within seconds.
+
 8. **Offline.** Turn on airplane mode (Wi-Fi off too, if it stays on), then
    swipe the app away and open it again from the home screen: the cached
    2.0.0 is ready at once (`fleetML(modelReady:)`), and
@@ -559,7 +563,8 @@ phone are few:
 
 - `FLEETML_SERVER_HOST = localhost` in `Secrets.xcconfig`, and the server
   needs no `S3_PUBLIC_ENDPOINT` change: its default, `localhost:19100`,
-  reaches the Mac. Downloads from `localhost` need no App Transport Security
+  reaches the Mac, and so does the LAN address from step 2, so one server
+  serves the phone and the simulator together. Downloads from `localhost` need no App Transport Security
   key and there is no Local Network prompt; the keys from step 4 are harmless
   on the simulator.
 - No team, trust prompt or Developer Mode: Xcode signs simulator builds

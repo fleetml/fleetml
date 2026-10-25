@@ -57,7 +57,8 @@ ports this machine reaches the release on, the
 [quickstart's](../../../docs/QUICKSTART.md) REST, gRPC and model-file ports;
 if its compose stack runs here (or anything else holds them), make it
 `REST=28080 GRPC=29090 S3=29100`, and every later line, `Try it` included,
-uses those:
+uses those. They are variables of this shell: in a new terminal (for Try it
+or Upgrading), set the same line again first.
 
 ```bash
 REST=18080 GRPC=19090 S3=19100
@@ -70,12 +71,16 @@ until curl -sf localhost:$REST/readyz; do sleep 1; done; echo
 helm test fleetml -n fleetml
 ```
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`,
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.1"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
-images, which takes a minute or two (the server waits up to
-`server.dependencyTimeout`, 180 s, for Postgres meanwhile);
+images, which takes a minute or two (the server waits meanwhile, up to
+`server.dependencyTimeout`, 180 s in total for Postgres, the object store and
+NATS, and its `/livez` answers all along, so the probes leave it alone);
 `kubectl -n fleetml get pods` then shows every pod `Running` with no
-restarts.
+restarts. On a link slow enough that the images take longer than that, the
+server exits once with `start-up gave up: DEPENDENCY_TIMEOUT is the total wait
+for all dependencies` and comes up after its restart; raise
+`server.dependencyTimeout` to avoid it.
 
 `s3.publicEndpoint` is the one value the chart needs besides the secrets:
 the `host:port` where devices and the CLI reach the object store. The server
@@ -98,7 +103,7 @@ P=$(fleetml project create --name helm-tour -o json | jq -r .id)
 fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
 V1=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
 EK=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
-fleetml simulate --enrollment-key $EK --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
 SIM=$!
 fleetml deploy start $(fleetml deploy create --project $P --version $V1 --target '{"app":"helm"}' -o json | jq -r .id)
 sleep 10; tail -1 /tmp/fleetml-helm-sim.log
@@ -127,10 +132,12 @@ SeaweedFS, which reads its credentials at start (Postgres keeps its
 password, see [Install](#install)). The data stays in the volumes, the
 server applies any new database migrations when it starts, and devices
 reconnect by themselves. A port-forward ends when the pod behind it is
-replaced: start the two `port-forward` lines again. To rotate a secret that
+replaced: start the server's `port-forward` line again (and the object
+store's after an `s3SecretKey` change, which replaces that pod too; with the
+old one still running, the new line stops with `address already in use`). To rotate a secret that
 may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
-upgrade. From 0.6.0 to 0.9.0 no
+upgrade. From 0.6.0 to 0.9.1 no
 upgrade needs anything else.
 
 ## Production
@@ -173,7 +180,7 @@ are most likely to set:
 | `s3.useSSL`, `s3.endpoint`, `s3.bucket` | `false`, , `fleetml-models` | The server's connection to the store (`s3.endpoint` with `seaweedfs.enabled=false`) |
 | `server.image.repository`, `.tag`, `.pullPolicy` | `ghcr.io/fleetml/fleetml-server`, the app version, `IfNotPresent` | Server image |
 | `server.replicas` | `1` | Server replicas (they share the database and the telemetry stream) |
-| `server.dependencyTimeout` | `180s` | How long the server waits at start-up for each of Postgres, the object store and NATS (`DEPENDENCY_TIMEOUT`) |
+| `server.dependencyTimeout` | `180s` | How long the server waits at start-up for Postgres, the object store and NATS, in total (`DEPENDENCY_TIMEOUT`) |
 | `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced |
 | `server.resources` | `{}` | Requests and limits for the server |
 | `server.service.type`, `.restPort`, `.grpcPort` | `ClusterIP`, `18080`, `19090` | The server's Service |

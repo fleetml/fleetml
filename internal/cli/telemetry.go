@@ -108,8 +108,13 @@ func versionName(cache map[string]string, id string) string {
 	return name
 }
 
+// confidence is blank for an event without one (the API sends 0, as for
+// lifecycle events and inferences reported without a confidence).
 func confidence(v interface{}) string {
 	if f, ok := v.(float64); ok {
+		if f == 0 {
+			return ""
+		}
 		return fmt.Sprintf("%.3f", f)
 	}
 	return fmt.Sprint(v)

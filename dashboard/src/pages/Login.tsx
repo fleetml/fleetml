@@ -33,7 +33,7 @@ export default function Login({ notice, onLoggedIn }: { notice: string; onLogged
           <input type="password" name="api_key" autoComplete="off" autoFocus value={key} onChange={e => setKey(e.target.value)}
             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <span className="block text-xs text-gray-500 mt-1">
-            <code>FLEETML_ADMIN_KEY</code> from your <code>.env</code>, the server log on first start, or <code>POST /api/v1/api-keys</code>.
+            <code>FLEETML_ADMIN_KEY</code> from <code>~/.fleetml.env</code> (the quickstart saves it there), the server log on first start, or <code>POST /api/v1/api-keys</code>.
           </span>
         </label>
         {error && <p role="alert" className="mb-3 text-sm text-red-600">{error}</p>}

@@ -150,6 +150,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.modelVersions(w, r.Method, p[1], body)
 	case r.Method == http.MethodPost && len(p) == 3 && p[0] == "versions" && p[2] == "variants":
 		s.createVariant(w, r, p[1], body)
+	case r.Method == http.MethodGet && len(p) == 2 && p[0] == "versions":
+		if vs := filter(s.versions, "id", p[1]); len(vs) > 0 {
+			respondData(w, http.StatusOK, vs[0])
+		} else {
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "version not found")
+		}
 	case r.Method == http.MethodPatch && len(p) == 3 && p[0] == "versions" && p[2] == "status":
 		s.setVersionStatus(w, p[1], body)
 	case r.Method == http.MethodPost && len(p) == 3 && p[0] == "variants" && p[2] == "finalize":

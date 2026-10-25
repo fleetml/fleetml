@@ -7,8 +7,10 @@ was run as written, in order.
 ## Run FleetML
 
 Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
-APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100
-(`export FLEETML_S3_PUBLIC_PORT=<port>` before the block moves it, see
+APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100. To
+use other ports, export `FLEETML_DASHBOARD_PORT`, `FLEETML_REST_PORT`,
+`FLEETML_GRPC_PORT` or `FLEETML_S3_PUBLIC_PORT` before the block, for
+example `export FLEETML_REST_PORT=28080`; the block saves all four (see
 [CONFIG.md](CONFIG.md#docker-compose)).
 The first start takes a few minutes on a cold Docker cache, to pull the base
 images and build the server and dashboard, and well under a minute when the
@@ -18,19 +20,19 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell, see [On Windows](#on-wind
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
 source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
-until curl -sf localhost:18080/readyz; do sleep 2; done; echo
-curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/projects; echo
-echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
+echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
 ```
 
 The second line generates the stack's three secrets and saves them in
 `~/.fleetml.env`, a file only you can read, before anything starts, with
-the model files' port (`FLEETML_S3_PUBLIC_PORT`, 19100 unless you set it)
-and `S3_PUBLIC_ENDPOINT`, the address devices download models from,
-`localhost` on that port (a phone or a
+the four ports (the defaults above unless you set them) and
+`S3_PUBLIC_ENDPOINT`, the address devices download models from,
+`localhost` on the model files' port (a phone or a
 second machine needs your LAN address there instead; the device guides
 change it in this file). It leaves an existing file alone, so running the
 block again reuses the saved values. **Keep the file.** The admin key in it
@@ -49,13 +51,16 @@ without printing it on macOS (`| clip.exe` in WSL, `| xclip -selection
 clipboard` on Linux).
 
 On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
-server instead, and the tour runs against it.
+server instead, and the tour runs against it: keep `FLEETML_SERVER` and
+`FLEETML_API_KEY` from the chart README's Try it instead of the tour's first
+`export` line, and add `--grpc localhost:$GRPC` to the tour's
+`fleetml simulate` lines.
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.1"}`
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.9.0-3-g1a2b3c4`: three commits past 0.9.0). To confirm the version
+like `0.9.1-3-g1a2b3c4`: three commits past 0.9.1). To confirm the version
 later: `curl -s localhost:18080/readyz`. If nothing
 appears after about two minutes more than the build took, run
 `docker compose -f deploy/docker-compose.prod.yml ps -a` and
@@ -65,27 +70,28 @@ Windows, a port can also sit in a range that Hyper-V or WSL reserves: Docker
 then fails with `bind: An attempt was made to access a socket in a way
 forbidden by its access permissions`, and
 `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists the
-reserved ranges; move the port out of them (below for port 80; for 19100,
-`export FLEETML_S3_PUBLIC_PORT=29100` before the block, which saves the port
-and `S3_PUBLIC_ENDPOINT=localhost:29100` together; for a stack already
-started, change both in `~/.fleetml.env` and run the `up -d` again). More keys and their routes:
+reserved ranges; move the port out of them with its variable before the
+block (`export FLEETML_S3_PUBLIC_PORT=29100` saves the port and
+`S3_PUBLIC_ENDPOINT=localhost:29100` together; for a stack already started,
+see the next paragraph, and for 19100 change both in `~/.fleetml.env`). More keys and their routes:
 [API keys](CONFIG.md#api-keys).
 
 If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
-dashboard to any free port with an override file and open it on that port,
-here http://localhost:8081. `!override` needs Compose 2.24 or later:
-`docker compose version` prints the version (for example
-`Docker Compose version v2.39.4-desktop.1`); older versions do not know the
-tag. This override is not exercised by CI. `source ~/.fleetml.env` first
-in a new shell: it brings the secrets back and keeps the saved
-`S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset to
-`localhost:19100`:
+dashboard on a stack that already runs by adding the port to `~/.fleetml.env`
+(a later line wins) and starting it again, here on http://localhost:8081;
+the same works for `FLEETML_REST_PORT` and `FLEETML_GRPC_PORT`, and
+`source ~/.fleetml.env` brings back the secrets and the saved
+`S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset:
 
 ```bash
+echo 'export FLEETML_DASHBOARD_PORT=8081' >> ~/.fleetml.env
 source ~/.fleetml.env
-printf 'services:\n  dashboard:\n    ports: !override ["8081:80"]\n' > dashboard-port.yml
-docker compose -f deploy/docker-compose.prod.yml -f dashboard-port.yml up -d --build
+docker compose -f deploy/docker-compose.prod.yml up -d
 ```
+
+With the REST or gRPC port moved, use yours where the docs say 18080 or
+19090: the tour's `FLEETML_SERVER` line reads `FLEETML_REST_PORT`, and its
+`fleetml simulate` lines need `--grpc localhost:$FLEETML_GRPC_PORT`.
 
 ### On Windows
 
@@ -266,7 +272,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.9.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.9.1`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -321,11 +327,14 @@ prints is given in the text, not in `#` comments, which zsh at the prompt
 passes to the command as arguments. Point the CLI at the server:
 
 ```bash
-export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
 fleetml project list
 ```
 
-`fleetml project list` prints `No results.` on the new server.
+`fleetml project list` prints `No results.` on the new server. On a server
+someone else also tours, add `--seed <your name>` to both `fleetml simulate`
+lines: the same seed gives the same 20 device identities, which register
+into one project only.
 
 Every variable the tour sets (`P`, `V1`, `EK`, `SIM` and the others) lives in
 this shell only, and the simulator that section 2 starts in the background
@@ -338,7 +347,7 @@ picks the tour up from the repository root with
 
 ```bash
 source ~/.fleetml.env
-export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
 ```
 
 (and the `export PATH` line above again if you built the CLI from source).
@@ -377,7 +386,9 @@ store unreachable, say), run the same push again: a variant that was never
 verified is replaced. A new version starts as `DRAFT`, and stays so in the
 CLI and the dashboard while it is deployed: the status (DRAFT, STAGED,
 ACTIVE, ARCHIVED) is a label for you, and deployments do not need it.
-`fleetml push --promote` sets ACTIVE; for a version pushed without it,
+`fleetml push --promote` sets ACTIVE (from wherever the version is, so a
+second variant of an ACTIVE version leaves it as it is); for a version pushed
+without it,
 `fleetml ver promote <version ID> --status STAGED` and then
 `fleetml ver promote <version ID>` (ACTIVE is the default; the server
 allows DRAFT to STAGED to ACTIVE, one step at a time).
@@ -401,7 +412,9 @@ The finalize call answers `{"code":"INTEGRITY_ERROR","message":"..."}`.
 ### 2. A fleet and a rollout
 
 Every device registers into a project with one of its enrollment keys
-(`fleetml enrollment-key create` prints the key once). `fleetml simulate` runs
+(`fleetml enrollment-key create` prints the key once). `fleetml simulate` takes
+it from `FLEETML_ENROLLMENT_KEY` (`--enrollment-key` works too, but shows the
+key to anyone who lists processes) and runs
 devices on the real device protocol: they register with the key, heartbeat,
 download and verify what they are assigned, and report telemetry. Here 2.0.0
 fails 40% of inferences, 2.1.0 is faster, and each device also reports a week
@@ -409,7 +422,7 @@ of past telemetry as a drift baseline:
 
 ```bash
 EK=$(fleetml enrollment-key create --project $P --name tour -o json | jq -r .key)
-fleetml simulate --enrollment-key $EK --devices 20 --label app=tour \
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --devices 20 --label app=tour \
   --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' -o json | jq -r .id)
@@ -448,7 +461,7 @@ A canary of 2.0.0 for 25% of the fleet, with a health gate: more than 5% errors
 over at least 30 events from the canary cohort rolls it back. Each device is
 in the cohort or not by a hash of its ID and the deployment's ID, decided on
 its own and kept for the deployment's life, so the cohort is about 25%: of 20
-devices it can be 4 or 7 as well as 5. The deploy loop runs every 30 seconds,
+devices typically 2 to 8. The deploy loop runs every 30 seconds,
 so the rollback comes within a minute, often within seconds, since the
 simulator's devices report quickly; the loop below gives up after 5 minutes:
 
@@ -524,7 +537,7 @@ Now the devices get slower:
 
 ```bash
 kill $SIM; sleep 1
-fleetml simulate --enrollment-key $EK --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 (umask 077; grep -v '^export SIM=' ~/.fleetml.env > ~/.fleetml.env.new; echo "export SIM=$SIM" >> ~/.fleetml.env.new; mv ~/.fleetml.env.new ~/.fleetml.env)
 sleep 20
@@ -538,7 +551,7 @@ shows the latest result per metric. The drift loop runs every 5 minutes
 
 ### 6. Dashboard
 
-Open <http://localhost> and log in with the admin key, `FLEETML_ADMIN_KEY`
+Open <http://localhost> (with `FLEETML_DASHBOARD_PORT` moved, on that port) and log in with the admin key, `FLEETML_ADMIN_KEY`
 in `~/.fleetml.env` (`printf %s "$FLEETML_ADMIN_KEY" | pbcopy` copies it on
 macOS, see [Run FleetML](#run-fleetml)); the dashboard keeps a session
 cookie, not the key. **Models** shows iris with its three versions and
@@ -557,7 +570,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.9.0"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.9.1"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 
@@ -569,7 +582,8 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
-Open http://localhost:13000 in a browser: Grafana shows the "FleetML"
+Open http://localhost:13000 in a browser (on its first start Grafana takes
+about half a minute to answer): it shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
 
@@ -600,8 +614,9 @@ same server, with an enrollment key of the project.
 - **A notebook or CI:** the same steps with the [Python client](PYTHON_CLIENT.md).
 
 A phone or a second machine downloads models from `S3_PUBLIC_ENDPOINT`,
-`localhost:19100` in `~/.fleetml.env`: the guides set it to the machine's
-LAN address there.
+`localhost` and the model files' port (19100 unless you set
+`FLEETML_S3_PUBLIC_PORT`) in `~/.fleetml.env`: the guides set it to the
+machine's LAN address there, on the same port.
 
 ### Clean up
 
@@ -628,34 +643,41 @@ new shell, `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
 
 ## Upgrading
 
-Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.8.0
+Every release is in the [CHANGELOG](../CHANGELOG.md). From any earlier
+release the block below goes straight to the newest; read each version's
+"Changed" section in between. From 0.6.0 to 0.8.0
 there are no breaking API changes; 0.9.0 answers a few refused requests
 with other error codes (`409 INVALID_TRANSITION` for experiments and
 versions, `400 VALIDATION_ERROR` for a `limit` that is not a number) and
-makes the Python client's `project`, `limit` and `offset` keyword-only
-(each version's "Changed" section lists what behaves differently and what
-to change), and the server applies new database
+makes the Python client's `project`, `limit` and `offset` keyword-only;
+0.9.1 answers a `limit` above the page cap with `400 VALIDATION_ERROR` and
+counts `DEPENDENCY_TIMEOUT` for the whole start-up (each version's
+"Changed" section lists what behaves differently and what to change), and
+the server applies new database
 migrations itself when it starts. Upgrade the server first, then the
 devices and the tools; each moves on its own:
 
 - **The compose stack**, in its clone, with the saved values:
 
   ```bash
-  git fetch --tags && git checkout v0.9.0
-  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
+  git fetch --tags && git checkout v0.9.1
+  source ~/.fleetml.env
+  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d --build
-  until curl -sf localhost:18080/readyz; do sleep 2; done; echo
+  until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
   ```
 
-  The second line matters for a `~/.fleetml.env` written by 0.7.0 or
+  The `grep` line matters for a `~/.fleetml.env` written by 0.7.0 or
   earlier, which holds the three secrets only: the device guides of those
   releases set `S3_PUBLIC_ENDPOINT` on the command line, so without it the
   upgraded server would hand out `localhost:19100` and phones and agents
   elsewhere would stop receiving models. It copies the running server's
-  value into the file once and does nothing when the file has one. The
+  value into the file once and does nothing when the file has one; it asks
+  compose for the stack's server container, so it also works with your own
+  `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.9.0"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.9.1"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](#get-the-cli) block again (it fetches the

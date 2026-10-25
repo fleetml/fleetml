@@ -23,6 +23,15 @@ function PSIChart({ points }: { points: DriftPoint[] }) {
     if (!row) { row = { t }; rows.push(row) }
     row[p.metric] = p.psi
   }
+  // Ticks fall at even steps of the span: a short history needs seconds, or
+  // several ticks in one minute print the same label.
+  const times = rows.map(r => Number(r.t))
+  const span = times.length ? Math.max(...times) - Math.min(...times) : 0
+  const tickFormat: Intl.DateTimeFormatOptions = span < 3_600_000
+    ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
+    : span < 2 * 86_400_000
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
   return (
     <div className="border border-gray-200 rounded-lg shadow-sm p-4 mb-6">
       <h3 className="text-sm font-semibold text-gray-900 mb-1">PSI over time</h3>
@@ -30,7 +39,7 @@ function PSIChart({ points }: { points: DriftPoint[] }) {
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={rows}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-          <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tickFormatter={v => new Date(v).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} tick={{ fontSize: 12 }} stroke="#9ca3af" />
+          <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tickFormatter={v => new Date(v).toLocaleString(undefined, tickFormat)} tick={{ fontSize: 12 }} stroke="#9ca3af" />
           <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" />
           <Tooltip labelFormatter={v => new Date(Number(v)).toLocaleString()} formatter={v => typeof v === 'number' ? v.toFixed(3) : String(v ?? '')} />
           <Legend wrapperStyle={{ fontSize: 12 }} />

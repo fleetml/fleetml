@@ -85,8 +85,8 @@ func TestE2E_DeleteProjectWithTelemetry(t *testing.T) {
 
 // Status changes a resource's status does not allow answer 409
 // INVALID_TRANSITION for deployments, experiments and versions alike; paging
-// values that are not integers are refused; can_progress waits for the
-// stage's minimum time.
+// values that are not integers or out of range are refused; can_progress
+// waits for the stage's minimum time; an unknown status is invalid input.
 func TestE2E_StatusAndPagingErrors(t *testing.T) {
 	e := newEnv(t)
 	f := e.newFixture(t)
@@ -130,4 +130,16 @@ func TestE2E_StatusAndPagingErrors(t *testing.T) {
 	assert.Equal(t, 400, status)
 	assert.Equal(t, "VALIDATION_ERROR", code)
 	assert.Equal(t, `limit must be an integer, got "`+f.project+`"`, message)
+
+	// A page larger than the server's is refused with the cap, not clamped.
+	status, code, message = e.apiError(t, "GET", "/api/v1/devices?project_id="+f.project+"&limit=101")
+	assert.Equal(t, 400, status)
+	assert.Equal(t, "VALIDATION_ERROR", code)
+	assert.Equal(t, "limit must be between 1 and 100, got 101", message)
+	status, _, message = e.apiError(t, "GET", "/api/v1/telemetry/events?limit=1001")
+	assert.Equal(t, 400, status)
+	assert.Equal(t, "limit must be between 1 and 1000, got 1001", message)
+
+	// An unknown status is invalid input, not a refused transition.
+	assert.Equal(t, 400, e.call(t, "PATCH", "/api/v1/versions/"+v2+"/status", map[string]string{"status": "LIVE"}, nil))
 }

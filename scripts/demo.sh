@@ -86,9 +86,9 @@ note "each file was sha256-verified on upload; only verified files are ever sent
 
 say "2. Twenty devices enroll and get 1.0.0"
 EK=$(api POST "/api/v1/projects/$P/enrollment-keys" '{"name":"demo"}' | jq -r .data.key)
-SIM=(--grpc "localhost:$GRPC_PORT" --enrollment-key "$EK" --devices 20 --label app=demo --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h)
+SIM=(--grpc "localhost:$GRPC_PORT" --devices 20 --label app=demo --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h)
 show "fleetml simulate --devices 20 --label app=demo   # simulated phones: real protocol, real downloads"
-"$WORK/fleetml" simulate "${SIM[@]}" > "$WORK/sim.log" 2>&1 & SIM_PID=$!
+FLEETML_ENROLLMENT_KEY=$EK "$WORK/fleetml" simulate "${SIM[@]}" > "$WORK/sim.log" 2>&1 & SIM_PID=$!
 show "POST /api/v1/deployments  {version: 1.0.0, target: app=demo}"
 D1=$(api POST /api/v1/deployments "{\"project_id\":\"$P\",\"model_version_id\":\"$V1\",\"target_selector\":{\"app\":\"demo\"}}" | jq -r .data.id)
 api POST "/api/v1/deployments/$D1/start" >/dev/null
@@ -101,7 +101,7 @@ sleep 6 # let the telemetry pipeline flush
 note "latency drift for 1.0.0: $(drift)"
 note "now the devices slow down (say, after an OS update)..."
 kill "$SIM_PID"; wait "$SIM_PID" 2>/dev/null || true
-"$WORK/fleetml" simulate "${SIM[@]}" --latency 1.0.0=34 > "$WORK/sim.log" 2>&1 & SIM_PID=$!
+FLEETML_ENROLLMENT_KEY=$EK "$WORK/fleetml" simulate "${SIM[@]}" --latency 1.0.0=34 > "$WORK/sim.log" 2>&1 & SIM_PID=$!
 sleep 12
 note "latency drift for 1.0.0: ${R}$(drift)${N}"
 note "a change into CRITICAL is sent as an alert: $(curl -s "$API/metrics" | grep '^fleetml_alerts_sent_total{channel="nats",result="ok",type="drift"}' | awk '{print $2}') drift alert(s) on NATS"

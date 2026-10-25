@@ -637,6 +637,47 @@ func TestPagination_NotAnInteger(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// A page size outside 1 to the cap, or a negative offset, is refused with the
+// range; before 0.9.1 it was clamped without a word.
+func TestPagination_OutOfRange(t *testing.T) {
+	r := setupTestRouter(newTestService())
+	for q, want := range map[string]string{
+		"limit=101":  "limit must be between 1 and 100, got 101",
+		"limit=0":    "limit must be between 1 and 100, got 0",
+		"limit=-1":   "limit must be between 1 and 100, got -1",
+		"offset=-3":  "offset must be 0 or more, got -3",
+		"limit=1000": "limit must be between 1 and 100, got 1000",
+	} {
+		w := doJSON(r, "GET", "/api/v1/projects?"+q, nil)
+		assert.Equal(t, http.StatusBadRequest, w.Code, q)
+		errBody := parseBody(t, w)["error"].(map[string]interface{})
+		assert.Equal(t, "VALIDATION_ERROR", errBody["code"], q)
+		assert.Equal(t, want, errBody["message"], q)
+	}
+	for _, q := range []string{"limit=100", "limit=1", "offset=0"} {
+		assert.Equal(t, http.StatusOK, doJSON(r, "GET", "/api/v1/projects?"+q, nil).Code, q)
+	}
+}
+
+// An unknown status is invalid input, not a transition the version's status
+// does not allow.
+func TestVersionStatus_Unknown(t *testing.T) {
+	svc := newTestService()
+	r := setupTestRouter(svc)
+	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
+	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{"name": "m", "framework": "TFLITE", "task_type": "CLASSIFICATION"})
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
+	w = doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{"version": "1.0.0"})
+	versionID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
+
+	w = doJSON(r, "PATCH", "/api/v1/versions/"+versionID+"/status", map[string]string{"status": "LIVE"})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	errBody := parseBody(t, w)["error"].(map[string]interface{})
+	assert.Equal(t, "VALIDATION_ERROR", errBody["code"])
+	assert.Equal(t, `invalid input: status must be one of DRAFT, STAGED, ACTIVE, ARCHIVED, got "LIVE"`, errBody["message"])
+}
+
 // --- Variant handler tests ---
 
 func TestVariantCRUD(t *testing.T) {

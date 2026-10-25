@@ -45,7 +45,8 @@ fleet() { local i out=""; for i in "${!BOXES[@]}"; do out+="${BOXES[$i]} $(activ
 all_on() { local i; for i in "${!BOXES[@]}"; do [ "$(active "$i")" = "$1" ] || return 1; done; }
 
 cleanup() {
-  for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
+  # ${PIDS[@]+...}: an empty array is an unbound variable under set -u in bash 3.2 (macOS).
+  for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
   if [ -n "${SERVER_PID:-}" ]; then { kill "$SERVER_PID" && wait "$SERVER_PID"; } 2>/dev/null || true; fi
   psql_admin "DROP DATABASE IF EXISTS $DB WITH (FORCE)" >/dev/null 2>&1 || true
   if [ -n "${NATS_NAME:-}" ]; then docker rm -f "$NATS_NAME" >/dev/null 2>&1 || true; fi
@@ -54,7 +55,9 @@ cleanup() {
 trap cleanup EXIT
 
 say "Starting the dev stack, a demo server and four edge boxes"
-docker compose -f deploy/docker-compose.yml up -d >/dev/null 2>&1
+if ! out=$(docker compose -f deploy/docker-compose.yml up -d 2>&1); then
+  printf '%s\n%sstarting the dev stack failed%s\n' "$out" "$R" "$N"; exit 1
+fi
 ./scripts/wait-migrate.sh
 psql_admin "CREATE DATABASE $DB"
 # Its own NATS: telemetry goes through a JetStream work queue, so a second

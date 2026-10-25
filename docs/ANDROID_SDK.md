@@ -14,14 +14,14 @@ Windows and the sample app follow as variants of the same steps.
 
 ## Install
 
-The SDK is on Maven Central; 0.9.0 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.9.1 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.9.0")
+    implementation("dev.fleetml:fleetml-sdk:0.9.1")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -56,7 +56,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.9.0") {
+implementation("dev.fleetml:fleetml-sdk:0.9.1") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -89,15 +89,19 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.9.0-dev` (any version string) in the app's
+and `sdkVersion=0.9.1-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
-Building the SDK from source on the command line needs JDK 17: the wrapper's
-Gradle 8.7 with AGP 8.5 fails on a newer default JDK. Point `JAVA_HOME` at it,
-for example `/opt/homebrew/opt/openjdk@17` on macOS with Homebrew or
-`/usr/lib/jvm/java-17-openjdk-amd64` on Debian and Ubuntu
-(`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with the JDK
+Building on the command line, the SDK from source or your own app from
+[the skeleton below](#a-new-project-from-the-command-line), needs JDK 17: the
+wrapper's Gradle 8.7 with AGP 8.5 stops at once on a newer JDK with
+`What went wrong: <its version>`, for example `26.0.2.1` for Homebrew's
+current `openjdk`, the `java` on a Mac's `PATH`. Point `JAVA_HOME` at a
+JDK 17 in the shell you build in:
+`export JAVA_HOME=/opt/homebrew/opt/openjdk@17` on macOS with Homebrew
+(`brew install openjdk@17`), `/usr/lib/jvm/java-17-openjdk-amd64` on Debian
+and Ubuntu (`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with the JDK
 in its Gradle settings (Settings, Build, Execution, Deployment, Build Tools,
 Gradle, Gradle JDK), by default its bundled JetBrains Runtime, which is Java
 25 in Android Studio 2026.1: with it, Gradle 8.7 stops at once with
@@ -111,6 +115,7 @@ on the versions the SDK is built and tested with: AGP 8.5.0, Kotlin 1.9.24,
 Gradle 8.7 and JDK 17. The Gradle wrapper (`gradlew`, `gradlew.bat` and the
 `gradle` folder) comes from any project on Gradle 8.7, such as a clone of
 this repository: `cp -R <clone>/android/gradlew <clone>/android/gradlew.bat <clone>/android/gradle .`
+(in PowerShell: `Copy-Item -Recurse <clone>\android\gradlew, <clone>\android\gradlew.bat, <clone>\android\gradle .`).
 
 ```kotlin
 // settings.gradle.kts
@@ -151,7 +156,7 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.9.0")
+    implementation("dev.fleetml:fleetml-sdk:0.9.1")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -207,12 +212,14 @@ class MainActivity : AppCompatActivity() {
 
 `gradle.properties` holds `android.useAndroidX=true`, and
 `local.properties` (or `ANDROID_HOME`) the Android SDK's folder,
-`sdk.dir=<home>/Library/Android/sdk` on macOS. Add the `android` block of
+`sdk.dir=<home>/Library/Android/sdk` on macOS, `sdk.dir=<home>/Android/Sdk`
+on Linux, `sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk` on Windows
+(or `ANDROID_HOME` set as in [From Windows](#from-windows)). Add the `android` block of
 [Configure and start](#configure-and-start) for the server's host and key,
 and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
 with `package com.example.myapp` on top; for a server on your machine, the
-two debug files of [On your phone](#on-your-phone). `./gradlew :app:assembleDebug`
-builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
+two debug files of [On your phone](#on-your-phone). With `JAVA_HOME` at a
+JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
 installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$EK`).
 After a deployment to `app=myapp` the screen reads `Server reached: true`
 and `Model: 1.0.0`.
@@ -450,6 +457,9 @@ maintainers run it by hand.
 
 1. Turn on USB debugging in the phone's developer options, connect it and
    accept the authorisation prompt; `adb devices` then lists it as `device`.
+   On macOS and Linux, `adb` and `emulator` are in the Android SDK, not on the
+   `PATH`: `export PATH="$HOME/Library/Android/sdk/platform-tools:$HOME/Library/Android/sdk/emulator:$PATH"`
+   (`$HOME/Android/Sdk/...` on Linux).
    On Windows, `adb devices` lists a phone only with its maker's USB driver
    (Google's for Pixel phones, from the SDK Manager), see
    [From Windows](#from-windows).
@@ -475,7 +485,8 @@ maintainers run it by hand.
    presigned URLs for its `S3_PUBLIC_ENDPOINT`, `localhost:19100` in the
    quickstart, so without that forward the phone registers and then fails
    every download ([CONFIG.md](CONFIG.md#network-and-storage)). On the dev
-   stack (`make dev`), forward 19000 instead of 19100. If the server's
+   stack (`make dev`), forward 19000 instead of 19100, and on a stack started
+   with `FLEETML_S3_PUBLIC_PORT`, that port. If the server's
    `S3_PUBLIC_ENDPOINT` is your LAN address (after [Over Wi-Fi](#over-wi-fi)),
    downloads go there instead, also over USB: the phone must be on that
    network and the debug network security config must allow the address, or
@@ -524,7 +535,8 @@ check when the app is in front again.
 At warning level or above it logs why registration, a heartbeat or a
 download failed, one line each, such as an unreachable host or a refused
 enrollment key; the stack trace of each failure follows at debug level, which
-`adb logcat FleetML:I *:S` leaves out. A missing 19100 forward shows as
+`adb logcat FleetML:I *:S` leaves out (`FleetML:D` shows them, with the
+debug-level lines such as `Telemetry flushed`). A missing 19100 forward shows as
 `Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:19100`
 on every heartbeat.
 
@@ -550,13 +562,16 @@ The phone and the machine that runs the server must be on the same network.
    keeps it, and restart the server, in the quickstart's clone:
 
    ```bash
-   sed -i.bak 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:19100/' ~/.fleetml.env && rm ~/.fleetml.env.bak
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d
    ```
 
-   From then on downloads go to the LAN address for every device, the USB
-   and emulator paths included ([Over USB](#over-usb), step 3).
+   The port is the stack's model files port, 19100 unless you moved it with
+   `FLEETML_S3_PUBLIC_PORT` when you started the stack (the first line reads
+   it from the file). From then on downloads go to the LAN address for every
+   device, the USB and emulator paths included ([Over USB](#over-usb),
+   step 3).
 
 3. Let the phone in: with the macOS firewall on, allow Docker's incoming
    connections when macOS asks; a Linux firewall needs TCP 19090 and 19100
@@ -638,7 +653,9 @@ each flush adds
 `W FleetML : Telemetry flush failed, 1 events kept: UNAVAILABLE: ...`; with
 an empty queue there is no such line. Set the three forwards again (or turn
 airplane mode off): a later heartbeat reconnects, `onConnectionStatusChanged(true)`
-fires and what is queued is sent (`Telemetry flushed: 1 sent, 1 accepted`).
+fires and what is queued is sent (`Telemetry flushed: 1 sent, 1 accepted`, at
+debug level: with `adb logcat FleetML:I *:S` the reconnect itself shows as
+the next line that is not a failure, such as a download).
 The SDK retries every 30 seconds until the server answers, and after airplane
 mode the network itself takes a moment to come back, so expect the reconnect
 within about a minute: it took 28 seconds after the forwards were set again,
@@ -817,7 +834,8 @@ quickstart says of Docker there.
 Once, before you start:
 
 - **Android Studio**, for the SDK and `adb`.
-- **JDK 17**, for Gradle 8.7: `winget install --id EclipseAdoptium.Temurin.17.JDK -e`.
+- **JDK 17**, for Gradle 8.7: `winget install --id EclipseAdoptium.Temurin.17.JDK -e`
+  (a per-machine install: Windows asks for an administrator).
   Android Studio's bundled JDK (the JetBrains Runtime in its `jbr` folder) is
   Java 25 in Android Studio 2026.1, and Gradle 8.7 does not run on it:
   `gradlew.bat` stops at once with `What went wrong: 25.0.2`. CI builds the
@@ -881,7 +899,11 @@ second run of the block makes a new project instead of stopping with
 `openjdk version "17.0...` (Temurin). The `-P`
 arguments are in quotes because PowerShell splits an unquoted
 `-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`.
-The reverses reach the ports Docker Desktop publishes on Windows. The app's
+The reverses reach the ports Docker Desktop publishes on Windows. If you
+moved the model files' port with `FLEETML_S3_PUBLIC_PORT` (for example out of
+a reserved range, [On Windows](QUICKSTART.md#on-windows)), use your port in
+place of 19100 here, in the firewall rule below and on the emulator; the
+`sed` line below reads it from `~/.fleetml.env`. The app's
 config screen shows host `localhost`, port `19090` and the key; tap
 **Save and connect**. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
 which is the emulator's address for the machine and does not work on a
@@ -903,7 +925,7 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
    download from and restart the server with it:
 
    ```bash
-   sed -i 's/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:19100/' ~/.fleetml.env
+   . ~/.fleetml.env && sed -i "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d
    ```
@@ -945,7 +967,17 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
 (the emulator reaches the machine's 19090 at `10.0.2.2` by itself), and
 `.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK"`
 without `-PfleetmlDebugHost`; the screen then shows `10.0.2.2`. Or open the
-`android` folder in Android Studio and run `sample-app` there.
+`android` folder in Android Studio and run `sample-app` there, with Studio's
+Gradle JDK set to the Temurin 17 (Settings, Build, Execution, Deployment,
+Build Tools, Gradle, Gradle JDK): its default, the bundled Java 25, stops
+with `What went wrong: 25.0.2`.
+
+**When you are done**: `fleetml project delete $P` (it asks for no
+confirmation and cannot be undone), `adb uninstall com.fleetml.sample`,
+`adb reverse --remove-all`, `Remove-NetFirewallRule -DisplayName FleetML` in
+an administrator PowerShell, and in the Ubuntu shell `S3_PUBLIC_ENDPOINT` back
+to `localhost` and your model files' port in `~/.fleetml.env`, then the
+server restarted as in step 2.
 
 ## Telemetry
 
@@ -988,6 +1020,20 @@ After that the SDK:
   for short-lived tokens) with the `RefreshToken` RPC;
 - re-registers with the enrollment key if the server rejects the token
   (revoked with `POST /api/v1/devices/{id}/revoke`, or expired).
+- re-registers with the enrollment key if its stored registration cannot be
+  read. The registration is encrypted with an Android Keystore key, which a
+  backup, a phone-to-phone transfer or a copied app directory does not carry,
+  so a restored copy cannot be decrypted. The SDK then logs
+  `W FleetML : Stored registration unreadable (AEADBadTagException); deleted it, registering again with the enrollment key`,
+  deletes the file and registers again; the device ID comes back the same.
+  To keep the file out of backups in the first place, point your app at the
+  SDK's rules (`android:fullBackupContent="@xml/fleetml_backup_rules"` and
+  `android:dataExtractionRules="@xml/fleetml_data_extraction_rules"` on
+  `<application>`), or, if your app has its own rules files (Android Studio's
+  template creates two), add the SDK's
+  `<exclude domain="sharedpref" path="fleetml_credentials.xml" />` lines to
+  them. The SDK does not set these attributes itself: a library that did
+  would break the build of every app with its own rules.
 
 ## Models: download, verify, validate, activate
 

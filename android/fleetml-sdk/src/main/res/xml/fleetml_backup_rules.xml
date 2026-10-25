@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- For android:fullBackupContent (Android 11 and older). The registration is
+     encrypted with a Keystore key that a backup does not carry, so a restored
+     copy cannot be read: keep it out. Point your app at this file
+     (android:fullBackupContent="@xml/fleetml_backup_rules"), or copy the
+     exclude line into your own rules. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="fleetml_credentials.xml" />
+</full-backup-content>

@@ -78,7 +78,7 @@ func (h *DeploymentHandler) create(c *gin.Context) {
 
 // list filters on the project_id query parameter.
 func (h *DeploymentHandler) list(c *gin.Context) {
-	limit, offset, ok := parsePagination(c)
+	limit, offset, ok := parsePagination(c, maxPageSize)
 	if !ok {
 		return
 	}

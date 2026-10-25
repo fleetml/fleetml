@@ -201,11 +201,18 @@ func (a *Agent) Sync(ctx context.Context) bool {
 	}
 	if a.needsRegistration() {
 		if err := a.register(ctx); err != nil {
+			if ctx.Err() != nil {
+				return false // the agent is stopping; not a server problem
+			}
 			a.log.Warn("registration failed", "error", err)
 			return false
 		}
 	}
 	if err := a.heartbeat(ctx); err != nil {
+		if ctx.Err() != nil {
+			a.log.Debug("heartbeat cancelled by shutdown", "error", err)
+			return false
+		}
 		if status.Code(err) == codes.Unauthenticated {
 			a.log.Warn("token rejected, registering again")
 			_ = a.store.Update(func(s *State) { s.Token = "" })
@@ -714,6 +721,8 @@ func (a *Agent) telemetryLoop(ctx context.Context) {
 		}
 		if err := a.flush(ctx); err == nil {
 			failures = 0
+		} else if ctx.Err() != nil {
+			return // stopping: the shutdown flush reports what stays queued
 		} else {
 			// Once per outage at WARN; the heartbeat says when it is over.
 			if failures == 0 {

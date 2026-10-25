@@ -131,13 +131,15 @@ function Write-JobSummary([string]$Title, [string]$Heading, [string[]]$Rows) {
     foreach ($row in $Rows) {
         $id, $label = $row -split '=', 2
         $step = $steps.$id
-        $result = switch ($step.outcome) {
+        # A step that ran but chose not to do its work says so in its own
+        # "result" output; otherwise the outcome decides.
+        $result = if ($step.outputs.result) { $step.outputs.result } else { switch ($step.outcome) {
             'success' { 'pass' }
             'failure' { '**FAIL**' }
             'skipped' { 'skipped' }
             $null { 'not run' }
             default { $step.outcome }
-        }
+        } }
         $note = "$($step.outputs.note)" -replace '\|', '\|'
         $md += "| $label | $result | $note |"
     }

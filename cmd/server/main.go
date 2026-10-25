@@ -38,16 +38,16 @@ import (
 	"github.com/fleetml/fleetml/internal/version"
 )
 
-// waitFor calls fn until it succeeds, retrying every second until timeout.
-func waitFor(ctx context.Context, what string, timeout time.Duration, fn func() error) error {
-	deadline := time.Now().Add(timeout)
+// waitFor calls fn until it succeeds, retrying every second until the
+// start-up deadline, which all dependencies share (DEPENDENCY_TIMEOUT).
+func waitFor(ctx context.Context, what string, deadline time.Time, fn func() error) error {
 	for attempt := 1; ; attempt++ {
 		err := fn()
 		if err == nil {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return err
+			return fmt.Errorf("%w (start-up gave up: DEPENDENCY_TIMEOUT is the total wait for all dependencies)", err)
 		}
 		if attempt == 1 {
 			slog.Info("waiting for dependency", "dependency", what, "error", err)
@@ -78,15 +78,32 @@ func run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	return serve(ctx, cancel, cfg)
+}
+
+// serve starts the server and blocks until ctx ends or a listener fails.
+func serve(ctx context.Context, cancel context.CancelFunc, cfg *config.Config) error {
+
+	// /livez answers while the dependencies are awaited; one budget for all of them.
+	early, err := listenDuringStartup(cfg.RESTAddr())
+	if err != nil {
+		return err
+	}
+	defer early.stop()
+	deadline := time.Now().Add(cfg.DependencyTimeout)
+	depend := func(what string, fn func() error) error {
+		early.wait(what)
+		return waitFor(ctx, what, deadline, fn)
+	}
 
 	if cfg.MigrateOnStart {
-		if err := waitFor(ctx, "database migrations", cfg.DependencyTimeout, func() error { return db.Migrate(cfg.DatabaseURL) }); err != nil {
+		if err := depend("database migrations", func() error { return db.Migrate(cfg.DatabaseURL) }); err != nil {
 			return fmt.Errorf("running migrations: %w", err)
 		}
 	}
 
 	var pool *pgxpool.Pool
-	err = waitFor(ctx, "database", cfg.DependencyTimeout, func() (err error) {
+	err = depend("database", func() (err error) {
 		pool, err = db.NewPool(ctx, cfg.DatabaseURL)
 		return err
 	})
@@ -105,7 +122,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("creating s3 client: %w", err)
 	}
-	if err := waitFor(ctx, "s3", cfg.DependencyTimeout, func() error { return s3Client.EnsureBucket(ctx) }); err != nil {
+	if err := depend("s3", func() error { return s3Client.EnsureBucket(ctx) }); err != nil {
 		return fmt.Errorf("preparing s3 bucket: %w", err)
 	}
 	// Upload and download URLs are signed for the address clients use.
@@ -121,7 +138,7 @@ func run() error {
 	}
 
 	var nc *nats.Conn
-	err = waitFor(ctx, "nats", cfg.DependencyTimeout, func() (err error) {
+	err = depend("nats", func() (err error) {
 		nc, err = nats.Connect(cfg.NatsURL)
 		return err
 	})
@@ -294,6 +311,7 @@ func run() error {
 		errCh <- grpcServer.ListenAndServe(ctx, cfg.GRPCAddr())
 	}()
 
+	early.stop()
 	go func() {
 		errCh <- restServer.ListenAndServe(ctx, cfg.RESTAddr())
 	}()
