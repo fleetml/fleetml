@@ -113,7 +113,8 @@ status, 0 when the server was not reached), `code` (the server's error code:
 `NOT_FOUND` for an unknown ID, also a version's telemetry summary or drift
 (`telemetry.events` filters, so an unknown version gives an empty list);
 `CONFLICT`, for example a project name that exists;
-`VALIDATION_ERROR`, for example a `limit` that is not an integer;
+`VALIDATION_ERROR`, for example a `limit` that is not an integer or is
+outside 1 to the page cap, or an unknown version status;
 `INVALID_TRANSITION` (409), a deployment, experiment or version asked to do
 what its status does not allow, such as starting a COMPLETE deployment,
 progressing one that is not ROLLING_OUT, concluding a CONCLUDED experiment
@@ -139,7 +140,9 @@ IDs are strings. The responses users read are dataclasses (`Project`,
 `Device`, `TelemetryEvent`, `TelemetrySummary`, `Experiment`,
 `ExperimentResults`, `DriftResult`) whose `raw` field holds the server's
 full JSON object; list methods take `limit=` and `offset=` (the server's
-default page is 20), and `devices.list`, `deployments.list` and
+default page is 20 and its largest 100, 1000 for `telemetry.events`; a
+larger `limit` is refused with `VALIDATION_ERROR`, so page with `offset=`),
+and `devices.list`, `deployments.list` and
 `experiments.list` take `project=` (a project ID); without it they list the
 whole server. The three are keyword-only (`*` in the table), so a project ID
 passed by position is an error rather than a page size.

@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -139,10 +140,17 @@ func parseUUID(c *gin.Context, param string) (uuid.UUID, bool) {
 	return id, true
 }
 
-// parsePagination reads limit (default 20) and offset (default 0). A value
-// that is not an integer is answered with 400 VALIDATION_ERROR naming the
-// parameter, and ok is false.
-func parsePagination(c *gin.Context) (limit, offset int, ok bool) {
+// Page sizes: every list answers at most maxPageSize items per page,
+// telemetry events at most maxEventsPage.
+const (
+	maxPageSize   = 100
+	maxEventsPage = 1000
+)
+
+// parsePagination reads limit (1 to maxLimit, default 20) and offset (0 or
+// more). A value that is not an integer or is out of range is refused with
+// VALIDATION_ERROR naming the parameter and the range; nothing is clamped.
+func parsePagination(c *gin.Context, maxLimit int) (limit, offset int, ok bool) {
 	limit, offset = 20, 0
 	for _, p := range []struct {
 		name string
@@ -158,6 +166,14 @@ func parsePagination(c *gin.Context) (limit, offset int, ok bool) {
 			return 0, 0, false
 		}
 		*p.dst = n
+	}
+	if limit < 1 || limit > maxLimit {
+		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", fmt.Sprintf("limit must be between 1 and %d, got %d", maxLimit, limit))
+		return 0, 0, false
+	}
+	if offset < 0 {
+		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", fmt.Sprintf("offset must be 0 or more, got %d", offset))
+		return 0, 0, false
 	}
 	return limit, offset, true
 }

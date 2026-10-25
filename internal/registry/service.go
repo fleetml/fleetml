@@ -340,6 +340,9 @@ func (s *Service) UpdateVersionStatus(ctx context.Context, id uuid.UUID, newStat
 		return nil, err
 	}
 
+	if _, known := validTransitions[newStatus]; !known {
+		return nil, fmt.Errorf("%w: status must be one of DRAFT, STAGED, ACTIVE, ARCHIVED, got %q", ErrInvalidInput, newStatus)
+	}
 	allowed, ok := validTransitions[v.Status]
 	if !ok || !allowed[newStatus] {
 		return nil, fmt.Errorf("%w: cannot transition from %s to %s", ErrInvalidTransition, v.Status, newStatus)

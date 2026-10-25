@@ -35,7 +35,7 @@ func (h *DeviceHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // listDevices filters on project_id and on label.<key>=<value> query parameters.
 func (h *DeviceHandler) listDevices(c *gin.Context) {
-	limit, offset, ok := parsePagination(c)
+	limit, offset, ok := parsePagination(c, maxPageSize)
 	if !ok {
 		return
 	}

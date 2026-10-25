@@ -377,7 +377,9 @@ store unreachable, say), run the same push again: a variant that was never
 verified is replaced. A new version starts as `DRAFT`, and stays so in the
 CLI and the dashboard while it is deployed: the status (DRAFT, STAGED,
 ACTIVE, ARCHIVED) is a label for you, and deployments do not need it.
-`fleetml push --promote` sets ACTIVE; for a version pushed without it,
+`fleetml push --promote` sets ACTIVE (from wherever the version is, so a
+second variant of an ACTIVE version leaves it as it is); for a version pushed
+without it,
 `fleetml ver promote <version ID> --status STAGED` and then
 `fleetml ver promote <version ID>` (ACTIVE is the default; the server
 allows DRAFT to STAGED to ACTIVE, one step at a time).

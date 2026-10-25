@@ -290,3 +290,33 @@ func TestRunExitsWhileOffline(t *testing.T) {
 	defer fake.mu.Unlock()
 	assert.Zero(t, fake.events)
 }
+
+// A heartbeat cut short by the agent's own shutdown is not a server failure:
+// no WARN that would read like a new outage.
+func TestShutdownCancelledHeartbeatIsNotAWarning(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = lis.Close() }()
+	go func() {
+		for {
+			c, err := lis.Accept()
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }() // accepted, never answered
+		}
+	}()
+	a, logs := offlineAgent(t, lis.Addr().String())
+	a.callTimeout = 10 * time.Second
+	require.NoError(t, a.store.Update(func(s *State) {
+		s.DeviceID, s.Token, s.Signature = "dev-1", "token", a.signature()
+		s.TokenIssued, s.TokenExpires = time.Now(), time.Now().Add(24*time.Hour)
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(200*time.Millisecond, cancel)
+	var ok bool
+	took := timed(func() { ok = a.Sync(ctx) })
+	assert.False(t, ok)
+	assert.Less(t, took, 2*time.Second, "the cancel ends the call")
+	assert.NotContains(t, logs.String(), "level=WARN", logs.String())
+}

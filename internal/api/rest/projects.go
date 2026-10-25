@@ -48,7 +48,7 @@ func (h *ProjectHandler) create(c *gin.Context) {
 }
 
 func (h *ProjectHandler) list(c *gin.Context) {
-	limit, offset, ok := parsePagination(c)
+	limit, offset, ok := parsePagination(c, maxPageSize)
 	if !ok {
 		return
 	}

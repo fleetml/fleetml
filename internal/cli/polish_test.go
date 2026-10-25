@@ -117,5 +117,59 @@ func TestTelemetryEvents_TimeAndVersion(t *testing.T) {
 	assert.Contains(t, out, "Version")
 	assert.Regexp(t, `2026-10-25 \d\d:00:01\s+1\.0\.0\s+INFERENCE`, out)
 	assert.Regexp(t, `22222222\s+MODEL_LOAD`, out, "an unknown version shows its ID's start")
+	assert.Regexp(t, `INFERENCE\s+3\s+0\.970`, out)
+	assert.NotContains(t, out, "0.000", "no confidence is a blank, not a zero")
 	assert.Equal(t, 1, lookups["11111111-aaaa-4aaa-8aaa-000000000001"], "one lookup per version")
+}
+
+// push --promote starts from the version's status: a second variant of an
+// ACTIVE version changes nothing and succeeds, and a STAGED version only
+// takes the last step.
+func TestPush_PromoteFromCurrentStatus(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	target, err := url.Parse(fake.URL)
+	require.NoError(t, err)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	var patches []string
+	counting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch && strings.HasSuffix(r.URL.Path, "/status") {
+			var body map[string]string
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &body)
+			patches = append(patches, body["status"])
+			r.Body = io.NopCloser(strings.NewReader(string(raw)))
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(counting.Close)
+
+	dir := t.TempDir()
+	fileA, fileB := filepath.Join(dir, "a.tflite"), filepath.Join(dir, "b.tflite")
+	require.NoError(t, os.WriteFile(fileA, []byte("TFL3 int8"), 0o644))
+	require.NoError(t, os.WriteFile(fileB, []byte("TFL3 fp16"), 0o644))
+	require.NoError(t, runCLI(t, counting.URL, "k", "project", "create", "--name", "promote"))
+	projectID := fake.Projects()[0]["id"].(string)
+	push := func(file, quant string) (string, error) {
+		var runErr error
+		out := stdout(t, func() {
+			runErr = runCLI(t, counting.URL, "k", "push", file, "--project", projectID, "--model", "m", "--version", "1.0.0", "--quantization", quant, "--promote")
+		})
+		return out, runErr
+	}
+
+	_, err = push(fileA, "INT8")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"STAGED", "ACTIVE"}, patches)
+
+	out, err := push(fileB, "FP16")
+	require.NoError(t, err, "a second variant of an ACTIVE version")
+	assert.Contains(t, out, "Pushed")
+	assert.Contains(t, out, "v1.0.0 was already ACTIVE")
+	assert.Equal(t, []string{"STAGED", "ACTIVE"}, patches, "no status change for an ACTIVE version")
+
+	fake.Versions()[0]["status"] = "STAGED"
+	patches = nil
+	_, err = push(fileA, "INT4")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ACTIVE"}, patches, "STAGED takes the last step only")
 }

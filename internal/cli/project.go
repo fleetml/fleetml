@@ -157,15 +157,24 @@ func projectContents(id string) []projectCount {
 			out = append(out, projectCount{name, n})
 		}
 	}
+	// The models, a page of 100 (the server's largest) at a time.
 	var models []map[string]interface{}
-	if err := client.Get("/api/v1/projects/"+id+"/models?limit=1000", &models); err == nil {
-		out = append(out, projectCount{"model", len(models)})
-		versions := 0
-		for _, m := range models {
-			n, _ := total(fmt.Sprintf("/api/v1/models/%v/versions?limit=1", m["id"]))
-			versions += n
+	for complete := false; !complete; {
+		var page []map[string]interface{}
+		if err := client.Get(fmt.Sprintf("/api/v1/projects/%s/models?limit=100&offset=%d", id, len(models)), &page); err != nil {
+			break
 		}
-		out = append(out, projectCount{"version", versions})
+		models = append(models, page...)
+		complete = len(page) < 100
+		if complete {
+			out = append(out, projectCount{"model", len(models)})
+			versions := 0
+			for _, m := range models {
+				n, _ := total(fmt.Sprintf("/api/v1/models/%v/versions?limit=1", m["id"]))
+				versions += n
+			}
+			out = append(out, projectCount{"version", versions})
+		}
 	}
 	add("deployment", "/api/v1/deployments?limit=1&project_id="+id)
 	add("experiment", "/api/v1/experiments?limit=1&project_id="+id)

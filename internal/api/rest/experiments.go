@@ -76,7 +76,7 @@ func (h *ExperimentHandler) create(c *gin.Context) {
 }
 
 func (h *ExperimentHandler) list(c *gin.Context) {
-	limit, offset, ok := parsePagination(c)
+	limit, offset, ok := parsePagination(c, maxPageSize)
 	if !ok {
 		return
 	}

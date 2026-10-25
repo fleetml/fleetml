@@ -56,7 +56,7 @@ func (h *VersionHandler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, offset, ok := parsePagination(c)
+	limit, offset, ok := parsePagination(c, maxPageSize)
 	if !ok {
 		return
 	}

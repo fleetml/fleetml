@@ -49,14 +49,19 @@ func newPushCmd() *cobra.Command {
 				"name": modelName, "framework": framework, "task_type": task,
 			}, &model)
 			if err != nil {
-				// Try to find existing
-				var models []map[string]interface{}
-				if err2 := client.Get("/api/v1/projects/"+projectID+"/models", &models); err2 != nil {
-					return fmt.Errorf("creating model: %s", err)
-				}
-				for _, m := range models {
-					if fmt.Sprint(m["name"]) == modelName {
-						model = m
+				// Try to find existing, a page of 100 at a time
+				for offset := 0; model == nil; offset += 100 {
+					var models []map[string]interface{}
+					if err2 := client.Get(fmt.Sprintf("/api/v1/projects/%s/models?limit=100&offset=%d", projectID, offset), &models); err2 != nil {
+						return fmt.Errorf("creating model: %s", err)
+					}
+					for _, m := range models {
+						if fmt.Sprint(m["name"]) == modelName {
+							model = m
+							break
+						}
+					}
+					if len(models) < 100 {
 						break
 					}
 				}
@@ -78,13 +83,19 @@ func newPushCmd() *cobra.Command {
 			var version map[string]interface{}
 			err = client.Post("/api/v1/models/"+modelID+"/versions", versionBody, &version)
 			if err != nil {
-				var versions []map[string]interface{}
-				if err2 := client.Get("/api/v1/models/"+modelID+"/versions", &versions); err2 != nil {
-					return fmt.Errorf("creating version: %s", err)
-				}
-				for _, v := range versions {
-					if fmt.Sprint(v["version"]) == ver {
-						version = v
+				// The existing version, a page of 100 at a time.
+				for offset := 0; version == nil; offset += 100 {
+					var versions []map[string]interface{}
+					if err2 := client.Get(fmt.Sprintf("/api/v1/models/%s/versions?limit=100&offset=%d", modelID, offset), &versions); err2 != nil {
+						return fmt.Errorf("creating version: %s", err)
+					}
+					for _, v := range versions {
+						if fmt.Sprint(v["version"]) == ver {
+							version = v
+							break
+						}
+					}
+					if len(versions) < 100 {
 						break
 					}
 				}
@@ -139,11 +150,24 @@ func newPushCmd() *cobra.Command {
 				return fmt.Errorf("finalize failed: %s", err)
 			}
 
-			// Step 6: Promote if requested
+			// Step 6: Promote if requested: DRAFT -> STAGED -> ACTIVE from where
+			// the version is now, so a second variant of an ACTIVE version
+			// changes nothing. The file is uploaded either way, so a failed
+			// promotion says what the version is left at.
+			alreadyActive := false
 			if promote {
-				// DRAFT -> STAGED -> ACTIVE. The file is uploaded either way, so a
-				// failed promotion says what the version is left at.
-				for _, status := range []string{"STAGED", "ACTIVE"} {
+				var current map[string]interface{}
+				if err := client.Get("/api/v1/versions/"+versionID, &current); err != nil {
+					return fmt.Errorf("uploaded %s as %s v%s (variant %s), but reading its status failed: %w", filePath, modelName, ver, variantID, err)
+				}
+				steps := []string{"STAGED", "ACTIVE"} // DRAFT; ARCHIVED is refused by the server
+				switch fmt.Sprint(current["status"]) {
+				case "STAGED":
+					steps = []string{"ACTIVE"}
+				case "ACTIVE":
+					steps, alreadyActive = nil, true
+				}
+				for _, status := range steps {
 					var stageResp map[string]interface{}
 					if err := client.Patch("/api/v1/versions/"+versionID+"/status", map[string]string{"status": status}, &stageResp); err != nil {
 						return fmt.Errorf("uploaded %s as %s v%s (variant %s), but promoting it to %s failed: %w", filePath, modelName, ver, variantID, status, err)
@@ -153,6 +177,9 @@ func newPushCmd() *cobra.Command {
 
 			PrintSuccess(fmt.Sprintf("Pushed %s → %s v%s (%s)", filePath, modelName, ver, quant))
 			fmt.Printf("  Variant ID: %s\n", variantID)
+			if alreadyActive {
+				fmt.Printf("  v%s was already ACTIVE\n", ver)
+			}
 			return nil
 		},
 	}
