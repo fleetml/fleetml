@@ -7,6 +7,7 @@ struct FleetMLSampleApp: App {
     private let state: AppState
 
     init() {
+        setvbuf(stdout, nil, _IOLBF, 0) // each log line at once, also into `simctl launch --stdout=<file>`
         FleetML.registerBackgroundTask() // before the app finishes launching
         state = AppState()
     }
@@ -20,7 +21,10 @@ struct FleetMLSampleApp: App {
 
 /// Owns the SDK for the life of the app and publishes what the screen shows.
 /// Settings come from UserDefaults, so they can also be passed as launch
-/// arguments: `-fleetmlHost localhost -fleetmlEnrollmentKey <key>`.
+/// arguments (`-fleetmlHost localhost`), and from the environment:
+/// `FLEETML_HOST`, `FLEETML_PORT` and `FLEETML_ENROLLMENT_KEY`, which
+/// `SIMCTL_CHILD_` (simctl launch) and `DEVICECTL_CHILD_` (devicectl) pass
+/// to the app without putting the key on a command line.
 final class AppState: ObservableObject, FleetMLDelegate {
     struct Settings {
         var host: String
@@ -38,8 +42,8 @@ final class AppState: ObservableObject, FleetMLDelegate {
     private let worker = DispatchQueue(label: "com.fleetml.sample.inference")
 
     init() {
-        guard let s = savedSettings else { return }
-        save(s) // settings passed as launch arguments are kept for later launches
+        guard let s = Self.settings(saved: savedSettings, environment: ProcessInfo.processInfo.environment) else { return }
+        save(s) // settings passed as launch arguments or in the environment are kept for later launches
         start(s)
     }
 
@@ -47,6 +51,18 @@ final class AppState: ObservableObject, FleetMLDelegate {
         guard let host = defaults.string(forKey: "fleetmlHost") else { return nil }
         let port = defaults.integer(forKey: "fleetmlPort")
         return Settings(host: host, port: port > 0 ? port : 19090, enrollmentKey: defaults.string(forKey: "fleetmlEnrollmentKey") ?? "")
+    }
+
+    /// The saved settings with what the environment sets on top; without saved
+    /// settings, the environment's alone once it carries a key (host
+    /// `localhost`, the simulator's Mac, unless `FLEETML_HOST` says otherwise).
+    static func settings(saved: Settings?, environment env: [String: String]) -> Settings? {
+        let key = env["FLEETML_ENROLLMENT_KEY"].flatMap { $0.isEmpty ? nil : $0 }
+        guard var s = saved ?? key.map({ Settings(host: "localhost", port: 19090, enrollmentKey: $0) }) else { return nil }
+        if let host = env["FLEETML_HOST"], !host.isEmpty { s.host = host }
+        if let port = env["FLEETML_PORT"].flatMap(Int.init), port > 0 { s.port = port }
+        if let key { s.enrollmentKey = key }
+        return s
     }
 
     /// Saves the settings and (re)starts the SDK with them.

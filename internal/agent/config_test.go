@@ -23,3 +23,18 @@ func TestExampleConfig(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, d.TLS, c.TLS, "the example's tls is the default")
 }
+
+// FLEETML_ENROLLMENT_KEY fills a config without a key, or with the example's
+// placeholder, and never replaces a key the config or the flag set.
+func TestUseEnvEnrollmentKey(t *testing.T) {
+	for _, tc := range []struct{ config, env, want string }{
+		{"", "env-key", "env-key"},
+		{PlaceholderEnrollmentKey, "env-key", "env-key"},
+		{"config-key", "env-key", "config-key"},
+		{PlaceholderEnrollmentKey, "", PlaceholderEnrollmentKey},
+	} {
+		c := &Config{EnrollmentKey: tc.config}
+		c.UseEnvEnrollmentKey(tc.env)
+		assert.Equal(t, tc.want, c.EnrollmentKey, "config %q, env %q", tc.config, tc.env)
+	}
+}

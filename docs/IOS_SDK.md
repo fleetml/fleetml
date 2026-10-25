@@ -9,10 +9,161 @@ and reports telemetry. It does not run your models: your app does, with Core ML
 or anything else. It mirrors the [Android SDK](ANDROID_SDK.md) feature for
 feature.
 
-This guide follows the path to an iPhone and then to production: add the
-package, configure the app from build settings, run it on your iPhone with a
-model published and deployed to it, then the same on the simulator, and what
-production needs. The sample app and the tests come last.
+This guide starts with the sample app on the simulator and then on your
+iPhone ([Get started](#get-started)), then follows the path to your own app
+and to production: add the package, configure the app from build settings,
+run it on your iPhone with a model published and deployed to it, then the
+same on the simulator, and what production needs. The sample app and the
+tests come last.
+
+## Get started
+
+The [sample app](#sample-app) on the simulator, then on your iPhone, against
+a server on your Mac: copy and paste, nothing to choose. Each step says what
+you should see; if you see something else, stop there and look it up in
+[Troubleshooting](ADVANCED.md#troubleshooting). Use one terminal and keep it
+open until the end.
+
+Before you start, once: Xcode with an iOS simulator (Xcode, Settings,
+Components), [Homebrew](https://brew.sh) and Docker Desktop.
+
+1. **Check the tools.** This installs [XcodeGen](https://github.com/yonaskolb/XcodeGen),
+   which generates the sample app's Xcode project:
+
+   <!-- golden: ios-tools device -->
+   ```bash
+   brew install -q xcodegen
+   docker compose version && jq --version && xcodebuild -version && xcodegen --version
+   ```
+
+   You should see `Xcode` and `Version: `.
+
+2. **Start FleetML.** The first start takes a few minutes, to download and
+   build the images:
+
+   <!-- golden: start -->
+   ```bash
+   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+   source ~/.fleetml.env
+   docker compose -f deploy/docker-compose.prod.yml up -d --build
+   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   ```
+
+   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+
+3. **Get the CLI**, checked against the release's checksums:
+
+   <!-- golden: cli -->
+   ```bash
+   OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+   curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+   curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+   grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+   tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+   rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
+   export PATH="$HOME/.local/bin:$PATH"
+   fleetml version
+   ```
+
+   You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
+
+4. **Publish the sample model and deploy it**, the Core ML build of it. The
+   project gets the time in its name, so running the block again makes a new
+   one:
+
+   <!-- golden: ios-publish -->
+   ```bash
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+   P=$(fleetml project create --name "first-ios-$(date +%H%M%S)" -o json | jq -r .id)
+   fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata '{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
+   V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
+   fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
+   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
+   ```
+
+   You should see `✓ Pushed models/iris/iris_v1.mlmodel → iris v1.0.0 (FP32)` and `✓ Deployment start → COMPLETE`.
+
+5. **Put the simulator on it.** This builds the sample app, starts an iPhone
+   simulator, installs the app and launches it with the enrollment key in
+   its environment, then waits until the SDK logs the model active (a few
+   minutes the first time, for the build):
+
+   <!-- golden: ios-simulator device -->
+   ```bash
+   (cd ios/SampleApp && xcodegen generate --quiet)
+   SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+   xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath ios/SampleApp/build build
+   xcrun simctl boot $SIM 2>/dev/null; open -a Simulator
+   xcrun simctl install $SIM ios/SampleApp/build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
+   SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun simctl launch --terminate-running-process $SIM com.fleetml.sample
+   for i in $(seq 60); do xcrun simctl spawn $SIM log show --last 2m --info --style compact --predicate 'subsystem == "com.fleetml.sdk"' 2>/dev/null | grep 'is active' && break; sleep 2; done
+   ```
+
+   You should see `[com.fleetml.sdk:FleetML] Model iris 1.0.0 is active`, and the app's
+   screen **Active model: iris 1.0.0**. Tap **Classify sample flower** to
+   run it.
+
+6. **Put your iPhone on it.** Once, before: on the phone, Developer Mode
+   (Settings, Privacy & Security, Developer Mode, then restart); connect it
+   to the Mac with a cable once and tap **Trust**; in Xcode, your Apple ID
+   (Settings, Accounts) and an Apple Development certificate (Manage
+   Certificates, +). The phone and the Mac on the same Wi-Fi, the phone
+   unlocked. The block points the server's downloads at the Mac's network
+   address, which the phone reaches, then builds, installs and launches the
+   app on the phone:
+
+   <!-- golden: ios-iphone phone -->
+   ```bash
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
+   TEAM=$(security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject | grep -o 'OU=[A-Z0-9]*' | cut -d= -f2)
+   PHONE=$(xcrun devicectl list devices --quiet --json-output /dev/stdout | jq -r '[.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired")][0].identifier')
+   xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath ios/SampleApp/build -allowProvisioningUpdates DEVELOPMENT_TEAM=$TEAM build
+   xcrun devicectl device install app --device $PHONE ios/SampleApp/build/Build/Products/Debug-iphoneos/FleetMLSample.app
+   DEVICECTL_CHILD_FLEETML_HOST=$(ipconfig getifaddr en0) DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device $PHONE --terminate-existing com.fleetml.sample
+   for i in $(seq 60); do fleetml device list --project $P -o json | jq -e 'length == 2' > /dev/null && break; sleep 3; done; fleetml device list --project $P
+   ```
+
+   You should see `Launched application with com.fleetml.sample bundle identifier`
+   and two devices in the list, the simulator and the iPhone. The first
+   launch of the app on a phone stops at two prompts on the phone: trust the
+   developer (Settings, General, VPN & Device Management) and allow Local
+   Network access; after you tap them, run the `devicectl device process launch`
+   line again. The phone's screen then shows **Active model: iris 1.0.0**.
+
+7. **See it in the dashboard.** This puts the admin key on the clipboard (on
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
+
+   <!-- golden: dashboard manual -->
+   ```bash
+   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   ```
+
+   You should see the Overview page; **Devices** lists the simulator (and the iPhone), and **Deployments** one
+   `COMPLETE` deployment of iris 1.0.0.
+
+8. **Clean up**: the app on the simulator and the phone, the build, the
+   server and all its data, and the saved secrets:
+
+   <!-- golden: ios-cleanup device cleanup -->
+   ```bash
+   xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM
+   [ -z "${PHONE:-}" ] || xcrun devicectl device uninstall app --device $PHONE com.fleetml.sample
+   rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
+   rm -f ~/.fleetml.env
+   ```
+
+   You should see `Network <stack>_default  Removed`.
+
+Then your own app: [Install](#install) and [Configure and start](#configure-and-start),
+and [Your own app on an iPhone](#your-own-app-on-an-iphone) for its own
+project, signing and Info.plist keys.
 
 ## Install
 
@@ -22,9 +173,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.9.1, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.9.1")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.9.1` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.0, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.0")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.0` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -47,7 +198,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.9.1        # or path: ../fleetml for a clone
+    from: 0.10.0        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -331,11 +482,15 @@ struct MyApp: App {
    that registers but never downloads: it is almost always the endpoint.
 
    Check the network path from the phone before the app: in Safari on the
-   phone, `http://<Mac LAN IP>:18080/readyz` must show `"status":"ok"`, and
-   `http://<Mac LAN IP>:19100` must answer at all (an XML error page from
-   the object store is fine). If Safari cannot load them, it is the Wi-Fi
-   (a guest network that isolates devices) or the Mac's firewall, not the
-   app or the SDK.
+   phone, `http://<Mac LAN IP>:<REST port>/readyz` must show
+   `"status":"ok"`, and `http://<Mac LAN IP>:<model files port>` must answer
+   at all (an XML error page from the object store is fine). The stack's
+   ports are in `~/.fleetml.env`, which
+   `grep -o 'FLEETML_[A-Z_]*PORT=[0-9]*' ~/.fleetml.env` prints (the REST
+   port is `FLEETML_REST_PORT`, the model files' `FLEETML_S3_PUBLIC_PORT`).
+   If Safari cannot load them on those ports, it is the Wi-Fi (a guest
+   network that isolates devices) or the Mac's firewall, not the app or the
+   SDK.
 
 3. **The models, the enrollment key and the deployment**, from the root of a
    clone (for the Core ML sample models; push your own `.mlmodel` instead),
@@ -346,7 +501,7 @@ struct MyApp: App {
    earlier run, so pick another name.
 
    ```bash
-   export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=<the admin or project key your team gave you>
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=<the admin or project key your team gave you>
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
    P=$(fleetml project create --name myapp-ios -o json | jq -r .id)   # or P=<the project ID your team gave you>
    fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
@@ -373,7 +528,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.9.1        # or path: ../fleetml for a clone
+       from: 0.10.0        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
@@ -433,7 +588,7 @@ struct MyApp: App {
    from `xcrun devicectl list devices`:
 
    ```bash
-   (umask 077; printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = 19090\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "$EK" > Secrets.xcconfig)
+   (umask 077; printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "${FLEETML_GRPC_PORT:-19090}" "$EK" > Secrets.xcconfig)
    xcodegen generate
    xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates ENABLE_PREVIEWS=NO build
    xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/MyApp.app
@@ -473,7 +628,10 @@ struct MyApp: App {
    timers until it is in front again ([Battery and data](#battery-and-data)):
    an update then waits for the next launch, which the `launch` line gives.
 
-6. **What it prints.** `--console` shows the app's `print` lines:
+6. **What it prints.** `--console` shows the app's `print` lines, for as
+   long as the `launch` line runs: leave it running and type the CLI lines
+   below in a second terminal, because Ctrl-C on it ends the app too
+   (`App terminated due to signal 2.`). It prints
    `FleetML registered as <device ID>` (on the launch that registers; later
    launches start with the next two), `FleetML connected: true` and
    `FleetML model ready: iris 1.0.0`, which are enough to follow the steps
@@ -507,8 +665,8 @@ struct MyApp: App {
    - **It registers but never downloads**, and the SDK logs
      `Download of iris 1.0.0 failed: Could not connect to the server.; retried on the next heartbeat`
      (-1004): nothing answers at the download address, so
-     `S3_PUBLIC_ENDPOINT` is still `localhost:19100` (on a phone, the phone
-     itself) or the Mac's firewall blocks 19100. The line is the one the
+     `S3_PUBLIC_ENDPOINT` is still `localhost` (on a phone, the phone
+     itself) or the Mac's firewall blocks the model files' port. The line is the one the
      simulator logs with the endpoint on a closed port.
 
    `fleetml deploy get $D1 | jq -c .devices` prints `{"loaded":1,"targeted":1}`
@@ -562,7 +720,7 @@ The simulator shares the Mac's `localhost`, so the differences from the
 phone are few:
 
 - `FLEETML_SERVER_HOST = localhost` in `Secrets.xcconfig`, and the server
-  needs no `S3_PUBLIC_ENDPOINT` change: its default, `localhost:19100`,
+  needs no `S3_PUBLIC_ENDPOINT` change: its default, `localhost` on the model files' port,
   reaches the Mac, and so does the LAN address from step 2, so one server
   serves the phone and the simulator together. Downloads from `localhost` need no App Transport Security
   key and there is no Local Network prompt; the keys from step 4 are harmless
@@ -576,7 +734,7 @@ available iPhone simulator (on a Mac with several, a simulator of your own,
 apart; `xcrun simctl delete fleetml-test` removes it):
 
 ```bash
-(umask 077; printf 'FLEETML_SERVER_HOST = localhost\nFLEETML_SERVER_PORT = 19090\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$EK" > Secrets.xcconfig)
+(umask 077; printf 'FLEETML_SERVER_HOST = localhost\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "${FLEETML_GRPC_PORT:-19090}" "$EK" > Secrets.xcconfig)
 xcodegen generate
 SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
 xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
@@ -796,7 +954,8 @@ only the counts are sent.
 ![Sample app](screenshots/ios-sample.png)
 
 `ios/SampleApp` is the reference integration, generated with XcodeGen from
-`project.yml`: a SwiftUI config screen (host, port, enrollment key), the SDK
+`project.yml`: a SwiftUI config screen (host, port, enrollment key; the key
+shows in clear there, so crop it out of screenshots you share), the SDK
 owned by an app-wide object, the Iris Core ML model from `models/iris`
 (Apache-2.0) bundled and used until the server assigns one, and inference
 telemetry. Its `Info.plist` sets `NSAllowsLocalNetworking` and
@@ -804,9 +963,12 @@ telemetry. Its `Info.plist` sets `NSAllowsLocalNetworking` and
 work over plain HTTP, on the simulator and on a phone; production servers
 should serve presigned URLs over HTTPS. The config screen's host defaults to
 `localhost`, which works on the simulator; on a phone, use the Mac's LAN
-address. Unlike an own app, it takes its settings as launch arguments
-(`-fleetmlHost`, `-fleetmlPort`, `-fleetmlEnrollmentKey`) or on its config
-screen.
+address. Unlike an own app, it takes its settings from the environment
+(`FLEETML_HOST`, `FLEETML_PORT`, `FLEETML_ENROLLMENT_KEY`, which
+`SIMCTL_CHILD_` and `DEVICECTL_CHILD_` in front of each name pass to the
+app without putting the key on a command line), as launch arguments
+(`-fleetmlHost`, `-fleetmlPort`) or on its config screen, and keeps them for
+later launches.
 
 ### Simulator runbook
 
@@ -826,7 +988,7 @@ key from `.env` instead.
    enrollment key and deploy 1.0.0 to the sample app's label (`app=sample`):
 
    ```bash
-   export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
    P=$(fleetml project create --name ios-demo -o json | jq -r .id)
    fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
@@ -843,7 +1005,7 @@ key from `.env` instead.
    `COMPLETE` (`✓ Deployment start → COMPLETE`): it waits for the device.
 
 3. Generate the Xcode project, build, install and launch the sample app on the
-   first available iPhone simulator, with the settings as launch arguments
+   first available iPhone simulator, with the settings in its environment
    (or, after `xcodegen generate`, open `ios/SampleApp/FleetMLSample.xcodeproj`,
    run it and type them on the config screen):
 
@@ -853,12 +1015,11 @@ key from `.env` instead.
    xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
    xcrun simctl boot $SIM; open -a Simulator
    xcrun simctl install $SIM build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
-   xcrun simctl launch --console-pty $SIM com.fleetml.sample -fleetmlHost localhost -fleetmlEnrollmentKey "$EK"
+   SIMCTL_CHILD_FLEETML_HOST=localhost SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$EK xcrun simctl launch --console-pty $SIM com.fleetml.sample
    ```
 
    On a simulator where the sample app ran before, its saved settings stay,
-   the port included, and the launch arguments replace only the host and the
-   key: `xcrun simctl uninstall $SIM com.fleetml.sample` before the install
+   and the environment replaces what it sets: `xcrun simctl uninstall $SIM com.fleetml.sample` before the install
    starts it clean. The app registers, downloads iris 1.0.0, validates it
    with Core ML, shows **Active model: iris 1.0.0** and classifies the sample
    flower with it, reporting inference telemetry; the console prints the same
@@ -900,7 +1061,7 @@ address:
 cd ios/SampleApp && xcodegen generate
 xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> ENABLE_PREVIEWS=NO build
 xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/FleetMLSample.app
-xcrun devicectl device process launch --device <device> --console com.fleetml.sample -- -fleetmlHost <Mac LAN IP> -fleetmlEnrollmentKey "$EK"
+DEVICECTL_CHILD_FLEETML_HOST=<Mac LAN IP> DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$EK xcrun devicectl device process launch --device <device> --console com.fleetml.sample
 ```
 
 The trust prompt, the Local Network prompt and the error codes are as in

@@ -49,11 +49,13 @@ def cli(tmp_path_factory: pytest.TempPathFactory) -> str:
 
 
 class Simulator:
-    """`fleetml simulate` in the background, with its output lines."""
+    """`fleetml simulate` in the background, with its output lines; the
+    enrollment key goes in its environment, as the docs pass it, not in argv."""
 
-    def __init__(self, args: List[str]) -> None:
+    def __init__(self, args: List[str], enrollment_key: str) -> None:
         self.lines: List[str] = []
-        self.proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        env = {**os.environ, "FLEETML_ENROLLMENT_KEY": enrollment_key}
+        self.proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self) -> None:
@@ -106,9 +108,9 @@ def test_quickstart_sections_1_to_3(fm: FleetML, cli: str) -> None:
     key = fm.enrollment_keys.create(project.id, "python-tour")
     grpc = os.environ.get("FLEETML_GRPC", "localhost:19090")
     sim = Simulator([
-        cli, "simulate", "--grpc", grpc, "--enrollment-key", key.key, "--devices", "20",
+        cli, "simulate", "--grpc", grpc, "--devices", "20",
         "--label", "app=tour", "--label", f"run={run}", "--seed", f"python-tour-{run}", "--error-rate", "2.0.0=0.4",
-    ])  # fmt: skip
+    ], key.key)  # fmt: skip
     try:
         d1 = fm.deployments.create(project.id, v1.id, target_selector=labels)
         d1 = fm.deployments.start(d1.id)
@@ -168,9 +170,9 @@ def test_lifecycle_methods(fm: FleetML, cli: str) -> None:
     key = fm.enrollment_keys.create(project.id, "life")
     grpc = os.environ.get("FLEETML_GRPC", "localhost:19090")
     sim = Simulator([
-        cli, "simulate", "--grpc", grpc, "--enrollment-key", key.key, "--devices", "6",
+        cli, "simulate", "--grpc", grpc, "--devices", "6",
         "--label", "app=life", "--label", f"run={run}", "--seed", f"python-life-{run}",
-    ])  # fmt: skip
+    ], key.key)  # fmt: skip
     try:
         wait(lambda: len(fm.devices.list(project=project.id, limit=100)) == 6, 60, "6 devices in the project")
         devices = fm.devices.list(project=project.id, labels=labels, limit=100)

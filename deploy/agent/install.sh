@@ -17,6 +17,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 CONFIG=/etc/fleetml-agent/config.yaml
 RUN="/usr/local/bin/fleetml-agent -config $CONFIG"
 
+# A binary already there means an upgrade: the agent may be running the old one.
+UPGRADE=false
+[ ! -e /usr/local/bin/fleetml-agent ] || UPGRADE=true
 install -m 0755 "$BIN" /usr/local/bin/fleetml-agent
 if ! id fleetml-agent >/dev/null 2>&1; then
   if command -v useradd >/dev/null 2>&1; then
@@ -38,7 +41,7 @@ fi
 if [ ! -d /run/systemd/system ]; then
   # The unit's StateDirectory= would create this; without systemd we do.
   install -d -m 0755 -o fleetml-agent -g fleetml-agent /var/lib/fleetml-agent
-  echo "No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent was created for the fleetml-agent user."
+  echo "No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent is ready for the fleetml-agent user."
   echo "Once $CONFIG is set, run the agent as that user under this machine's supervisor (runit, s6, OpenRC, supervisord, a container's entrypoint), for example:"
   if setpriv --help 2>&1 | grep -q -- --reuid; then
     # util-linux setpriv execs the agent as the user, so the supervisor's
@@ -48,7 +51,9 @@ if [ ! -d /run/systemd/system ]; then
     # BusyBox has no setpriv --reuid; its su execs the shell, which execs the agent.
     echo "  exec su -s /bin/sh fleetml-agent -c 'exec $RUN'"
   fi
-  echo "If an agent is running, restart it under the supervisor to use the new binary."
+  if [ "$UPGRADE" = true ]; then
+    echo "If an agent is running, restart it under the supervisor to use the new binary."
+  fi
   exit 0
 fi
 

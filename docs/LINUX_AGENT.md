@@ -9,10 +9,127 @@ downloads and checking the sha256), validates each one before switching to it,
 keeps the last-known-good version, and reports telemetry. It does not run your
 models: your inference process loads them from disk.
 
-This guide follows a real deployment: install the agent as a service on the
-machine, connect it to a FleetML server on another machine, deploy a model to
-it and check that it arrived. Running everything on one laptop is at the end,
-in [Try it locally](#try-it-locally).
+This guide starts with the agent in a container on the machine that runs
+the server ([Get started](#get-started)), then installs it on a real machine
+as a service, connects it, deploys a model to it and checks that it arrived.
+Running everything on one laptop with a demo fleet is at the end, in
+[Try it locally](#try-it-locally).
+
+## Get started
+
+The agent in a container on this machine, against a server on this machine:
+ten minutes, copy and paste, nothing to choose. Each step says what you should
+see; if you see something else, stop there and look it up in
+[Troubleshooting](ADVANCED.md#troubleshooting). Use one terminal (bash or
+zsh, on macOS or Linux; on Windows, see [On Windows](QUICKSTART.md#on-windows))
+and keep it open until the end.
+
+1. **Check the tools.** You need Docker (Docker Desktop on a Mac), git, curl
+   and jq ([installing them](ADVANCED.md#installing-the-tools)):
+
+   <!-- golden: tools -->
+   ```bash
+   docker compose version && git --version && jq --version
+   ```
+
+   You should see `Docker Compose version v2` and `jq-` on the last line.
+
+2. **Start FleetML.** The first start takes a few minutes, to download and
+   build the images:
+
+   <!-- golden: start -->
+   ```bash
+   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+   source ~/.fleetml.env
+   docker compose -f deploy/docker-compose.prod.yml up -d --build
+   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   ```
+
+   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+
+3. **Get the CLI**, checked against the release's checksums:
+
+   <!-- golden: cli -->
+   ```bash
+   OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+   curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+   curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+   grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+   tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+   rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
+   export PATH="$HOME/.local/bin:$PATH"
+   fleetml version
+   ```
+
+   You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
+
+4. **Publish the sample model and deploy it.** The project gets the time in
+   its name, so running the block again makes a new one:
+
+   <!-- golden: publish -->
+   ```bash
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+   P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
+   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+   V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
+   fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
+   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
+   ```
+
+   You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
+
+5. **Put the agent on it**, in a container on this machine. It registers with the enrollment key from step 4, downloads the
+   model, checks it and makes it active:
+
+   <!-- golden: device -->
+   ```bash
+   ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+   mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
+   docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
+     -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
+     exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
+       -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
+   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; sleep 2; done
+   ```
+
+   You should see `msg="model active" model=iris version=1.0.0`.
+   The container runs `install.sh` and then the agent as the
+   `fleetml-agent` user, as [Without systemd](#without-systemd-and-in-containers)
+   describes; `-server` and `-download-host-override` point it at this
+   machine's ports, which a container reaches as `host.docker.internal`.
+
+6. **See it in the dashboard.** This puts the admin key on the clipboard (on
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
+
+   <!-- golden: dashboard manual -->
+   ```bash
+   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   ```
+
+   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   `COMPLETE` deployment of iris 1.0.0.
+
+7. **Clean up**: the device, the server and all its data, and the saved
+   secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would keep
+   the data):
+
+   <!-- golden: cleanup cleanup -->
+   ```bash
+   docker rm -f fleetml-agent
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
+   rm -rf fleetml-agent ~/.fleetml.env
+   ```
+
+   You should see `Network <stack>_default  Removed`.
+
+Then the agent on a real machine: [Install](#install) and
+[Connect and verify](#connect-and-verify); a server on another machine:
+[ADVANCED.md](ADVANCED.md#linux-agent-a-server-on-another-machine).
 
 ## Install
 
@@ -41,7 +158,7 @@ first, `shasum -a 256 -c` in place of `sha256sum -c`); in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
-`fleetml-agent 0.9.1`. To build the agent from source instead, `make
+`fleetml-agent 0.10.0`. To build the agent from source instead, `make
 build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
 and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
@@ -70,7 +187,7 @@ by `fleetml-agent` (mode `0755`; the unit's `StateDirectory=` does this under
 systemd) and says so:
 
 ```text
-No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent was created for the fleetml-agent user.
+No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent is ready for the fleetml-agent user.
 ```
 
 Once the config is set, run the agent as that user under the machine's own
@@ -110,17 +227,19 @@ what is left. To try the agent in a throwaway Ubuntu container, first run the
 CLI block of [Connect and verify](#connect-and-verify) on the machine with
 the CLI (it prints the enrollment key and creates the deployment), then,
 from the folder that holds the unpacked `fleetml-agent` folder, with the
-server's address and that key (the third `sed` expression is the one from
-[Server on another machine](#server-on-another-machine); leave it out when
-the server's `S3_PUBLIC_ENDPOINT` is reachable):
+server's address and ports in place of the placeholders (the server's gRPC
+port and its model files' port; [Server on another
+machine](#server-on-another-machine) says which, and
+`-download-host-override` can go when the server's `S3_PUBLIC_ENDPOINT` is
+reachable from the container) and that key in `FLEETML_ENROLLMENT_KEY` (the
+`EK` of the CLI block: `export FLEETML_ENROLLMENT_KEY=$EK`). [Get
+started](#get-started) runs the same against a server on this machine:
 
 ```bash
-docker run -d --init --name fleetml-agent -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" \
-  -v fleetml-agent-state:/var/lib/fleetml-agent ubuntu:24.04 sh -c '
-  /opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent &&
-  sed -i -e "s|^server: .*|server: <server address>:19090|" -e "s|^enrollment_key: .*|enrollment_key: \"<enrollment key>\"|" \
-    -e "s|^# download_host_override: .*|download_host_override: \"<server address>:19100\"|" /etc/fleetml-agent/config.yaml &&
-  exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml'
+docker run -d --init --name fleetml-agent -e FLEETML_ENROLLMENT_KEY -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" \
+  -v fleetml-agent-state:/var/lib/fleetml-agent ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
+  exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
+    -server <server address>:<gRPC port> -download-host-override <server address>:<model files port>"
 docker logs -f fleetml-agent
 ```
 
@@ -131,96 +250,21 @@ there too. With the volume, a recreated container is the same device with
 its models; without it, every new container registers as a new device,
 downloads everything again, and the old one stays in `fleetml device list`.
 `docker rm -f fleetml-agent && docker volume rm fleetml-agent-state` removes
-both. The enrollment key on this command line ends up in the container's
-configuration, which `docker inspect fleetml-agent` shows to anyone who can
-use Docker on the machine, and in the container's process list (`ps`, or
-`/proc/1/cmdline`), which every user inside it can read, the inference
-process's user included: fine for a throwaway test, but for a device you
-keep, mount a prepared `config.yaml` read-only instead
+both. The enrollment key passed with `-e` stays off every command line, the
+container's process list (`ps`, `/proc/1/cmdline`) included, but it is in
+the container's configuration, which `docker inspect fleetml-agent` shows to
+anyone who can use Docker on the machine, and in the agent's environment:
+fine for a throwaway test, but for a device you keep, mount a prepared
+`config.yaml` read-only instead
 (`-v "$PWD/config.yaml:/etc/fleetml-agent/config.yaml:ro"`) and leave out
-the `sed`.
+the `-e`, `-server` and `-download-host-override`.
 
 ## Server on another machine
 
-The agent talks to the server in two ways, and both must reach it from this
-machine:
-
-| | Port | Set by | Where |
-|---|---|---|---|
-| Registration and heartbeats (gRPC) | 19090 | you | `server: <server address>:19090` in the agent's config |
-| Model downloads (presigned URLs) | 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
-
-The server hands out each model as a download URL for its object store's
-public address, `S3_PUBLIC_ENDPOINT`. In the quickstart's compose stack that
-is `localhost:19100`, which only the server's own machine reaches. There are
-two ways out:
-
-- **On the server**, whoever runs it saves an address of the server that
-  this machine reaches as the stack's `S3_PUBLIC_ENDPOINT` (in the
-  quickstart's `~/.fleetml.env`, so every later compose command keeps it) and
-  restarts the server with it, in the stack's clone:
-
-  ```bash
-  . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<server address>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
-  source ~/.fleetml.env
-  docker compose -f deploy/docker-compose.prod.yml up -d
-  ```
-
-  On the server's machine, this shows the value in use:
-
-  ```bash
-  docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
-  ```
-
-- **On this machine**, when the server stays as it is: `download_host_override`
-  in the agent's config sends every download, full model or delta, to an
-  address of the server's object store that this machine reaches, with the
-  URL's path and signature unchanged (the request keeps the original host in
-  its `Host` header, which the signature covers). The example config ships it
-  commented out; together with the two settings every machine needs:
-
-  ```bash
-  sudo sed -i -e 's|^server: .*|server: <server address>:19090|' \
-    -e 's|^enrollment_key: .*|enrollment_key: "<enrollment key>"|' \
-    -e 's|^# download_host_override: .*|download_host_override: "<server address>:19100"|' \
-    /etc/fleetml-agent/config.yaml
-  ```
-
-  At start the agent then logs
-  `level=INFO msg="model downloads go to download_host_override" host=<server address>:19100`,
-  and the next heartbeat's download succeeds.
-
-**The symptom** of an unreachable download address: the agent registers and
-heartbeats normally, and the server reports the deployment `COMPLETE`, which
-means assigned, not delivered. Only the agent's log shows the failure, on
-every heartbeat:
-
-```text
-level=WARN msg="download failed" model=iris version=1.0.0 error="downloading: Get \"http://localhost:19100/fleetml-models/models/<project>/iris/1.0.0/INT8_TFLITE.bin\": dial tcp [::1]:19100: connect: connection refused"
-```
-
-**From the CLI**, `fleetml deploy get <deployment ID> | jq -c .devices`
-counts the devices that report the model loaded (`{"loaded":0,"targeted":1}`
-while downloads fail), and `fleetml device get <device ID> | jq .last_model_event`
-shows the agent's `MODEL_LOAD_FAILED` with the error once the agent's next
-telemetry flush has sent it (30 seconds by default). `loaded` counts the
-devices whose last heartbeat reported the version, so it turns to 1 one
-heartbeat (60 seconds by default) after the agent logs `model active`; it is
-counted each time you ask, so a deployment that a newer one replaced counts
-down to 0 as its devices move on.
-
-A server in production sits behind a TLS proxy with a real host name: then
-`tls: true`, `server: <host name>:443` (or the proxy's gRPC port) and an
-`S3_PUBLIC_ENDPOINT` on the proxy too, and no override
-([CONFIG.md](CONFIG.md#docker-compose) has the compose settings).
-
-On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
-stack, where `server: localhost:19090` and the stack's default
-`S3_PUBLIC_ENDPOINT` should work as they are, since Docker Desktop publishes
-19090 and 19100 there too; current Ubuntu images for WSL run systemd, and
-without it `install.sh` takes the [no-systemd path](#without-systemd-and-in-containers).
-None of this is verified on Windows by CI, which runs Docker Engine inside
-the distribution rather than Docker Desktop.
+Moved to [ADVANCED.md](ADVANCED.md#linux-agent-a-server-on-another-machine):
+which addresses the agent needs from the server's machine, the server's
+`S3_PUBLIC_ENDPOINT` or this machine's `download_host_override`, and what an
+unreachable download address looks like.
 
 ## Connect and verify
 
@@ -235,7 +279,7 @@ the project name `edge` and the model file are this guide's, yours will differ
 (`models/iris/iris_v1.tflite` is in a clone of this repository):
 
 ```bash
-export FLEETML_SERVER=http://<server address>:18080 FLEETML_API_KEY=<the key your team gave you>
+export FLEETML_SERVER=<server URL> FLEETML_API_KEY=<the key your team gave you>
 P=$(fleetml project create --name edge -o json | jq -r .id)   # or P=<the project ID your team gave you>
 fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
@@ -251,13 +295,13 @@ a version up by its number, so the block picks 1.0.0 even after more versions
 are pushed (`fleetml ver list` lists the newest first). The deployment starts
 as `COMPLETE` (`✓ Deployment start → COMPLETE`): it waits for the machine.
 With the quickstart on the same machine as the CLI, `FLEETML_SERVER` is
-`http://localhost:18080` and the key `$FLEETML_ADMIN_KEY` after
+`http://localhost:${FLEETML_REST_PORT:-18080}` and the key `$FLEETML_ADMIN_KEY` after
 `source ~/.fleetml.env`.
 
 Then, on the agent's machine, set `server` and `enrollment_key` (and
-`download_host_override` if the server needs it) with the `sed` line from
-[Server on another machine](#server-on-another-machine), and start the
-service:
+`download_host_override` if the server needs it) with the lines in
+[ADVANCED.md](ADVANCED.md#linux-agent-a-server-on-another-machine), which
+take the key without putting it on a command line, and start the service:
 
 ```bash
 sudo systemctl enable --now fleetml-agent
@@ -269,7 +313,7 @@ from [Without systemd](#without-systemd-and-in-containers) under the
 supervisor instead.
 `sed` is on every image, BusyBox included; with an editor, `sudo vi
 /etc/fleetml-agent/config.yaml` does the same. Leave `tls: false` for the
-quickstart's compose server, which speaks plain gRPC on 19090, and set it to
+quickstart's compose server, which speaks plain gRPC on its gRPC port, and set it to
 `true` when the server is behind a TLS proxy. Set `labels` to what your
 deployments target (the example's `site: factory-1` matches the block above):
 a `target_selector` such as `{"site":"factory-1"}` matches every device whose
@@ -279,7 +323,7 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.9.1 server=<server address>:19090 models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.10.0 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
@@ -335,7 +379,7 @@ with the end of the command's output in `error` ([Where models go](#where-models
 A `transport: authentication handshake failed` error means `tls: true` against
 a server without TLS; `registration failed` with `Unauthenticated` means the
 enrollment key is wrong or revoked; `download failed` with
-`connection refused` and `localhost:19100` in the URL means the server's
+`connection refused` and `localhost` with the model files' port in the URL means the server's
 `S3_PUBLIC_ENDPOINT` ([Server on another machine](#server-on-another-machine)).
 
 ## Configure
@@ -438,8 +482,13 @@ sudo systemctl start fleetml-agent
 Without systemd, stop the agent under its supervisor and run, as root,
 
 ```bash
-su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml -retry-failed'
+setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml -retry-failed
 ```
+
+(on BusyBox, whose `setpriv` cannot switch users,
+`su -s /bin/sh fleetml-agent -c 'exec /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml -retry-failed'`;
+with `setpriv`, Ctrl-C reaches the agent itself and the prompt comes back at
+once)
 
 then start it under the supervisor again. The foreground run logs
 `level=INFO msg="cleared the failed versions; they are retried on the next heartbeat" count=1`,
@@ -578,7 +627,9 @@ The warning below comes with the first heartbeat after that, so within one
 heartbeat interval of the drop (60 seconds by default; measured: 32 to 57
 seconds); with telemetry queued, a `sending telemetry failed; the events
 stay queued` warning can come first. With the network removed rather than
-silent, the error can read `connect: network is unreachable` instead. The
+silent, or when the server's name resolves first to an address this
+machine has no route to (an IPv6 one, as `host.docker.internal` can in a
+container), the error can read `connect: network is unreachable` instead. The
 first failed heartbeat is logged once, and the recovery once:
 
 ```text

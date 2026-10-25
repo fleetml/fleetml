@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -155,6 +156,7 @@ func newPushCmd() *cobra.Command {
 			// changes nothing. The file is uploaded either way, so a failed
 			// promotion says what the version is left at.
 			alreadyActive := false
+			var promoted []string
 			if promote {
 				var current map[string]interface{}
 				if err := client.Get("/api/v1/versions/"+versionID, &current); err != nil {
@@ -172,6 +174,7 @@ func newPushCmd() *cobra.Command {
 					if err := client.Patch("/api/v1/versions/"+versionID+"/status", map[string]string{"status": status}, &stageResp); err != nil {
 						return fmt.Errorf("uploaded %s as %s v%s (variant %s), but promoting it to %s failed: %w", filePath, modelName, ver, variantID, status, err)
 					}
+					promoted = append(promoted, status)
 				}
 			}
 
@@ -179,6 +182,9 @@ func newPushCmd() *cobra.Command {
 			fmt.Printf("  Variant ID: %s\n", variantID)
 			if alreadyActive {
 				fmt.Printf("  v%s was already ACTIVE\n", ver)
+			}
+			if len(promoted) > 0 {
+				fmt.Printf("  v%s promoted to %s\n", ver, strings.Join(promoted, " → "))
 			}
 			return nil
 		},

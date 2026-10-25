@@ -229,7 +229,8 @@ class TelemetryEvent:
     model_version_id: str
     event_type: str
     latency_ms: int
-    confidence_score: float
+    #: None for an event that reported no confidence (MODEL_LOAD, for example).
+    confidence_score: Optional[float]
     prediction_label: str
     error_message: str
     recorded_at: str
@@ -242,7 +243,7 @@ class TelemetryEvent:
             _str(d, "model_version_id"),
             _str(d, "event_type"),
             _int(d, "latency_ms"),
-            _float(d, "confidence_score"),
+            _opt_float(d, "confidence_score") or None,
             _str(d, "prediction_label"),
             _str(d, "error_message"),
             _str(d, "recorded_at"),

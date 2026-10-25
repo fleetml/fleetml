@@ -59,6 +59,7 @@ nav:
   - iOS SDK: IOS_SDK.md
   - Linux agent: LINUX_AGENT.md
   - Python client: PYTHON_CLIENT.md
+  - Advanced: ADVANCED.md
   - Config: CONFIG.md
   - Architecture: ARCHITECTURE.md
   - Releasing: RELEASING.md

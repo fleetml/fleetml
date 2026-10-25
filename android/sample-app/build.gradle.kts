@@ -26,6 +26,14 @@ val debugHost: String = ((project.findProperty("fleetmlDebugHost") as String?)
     ?: "").trim()
 require(debugHost.matches(Regex("[A-Za-z0-9.:-]*"))) { "fleetmlDebugHost must be a host name or IP address, got \"$debugHost\"" }
 
+// The server's gRPC port for a debug build, prefilled on the config screen:
+// `-PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}` follows a stack whose gRPC
+// port was moved. Unset, the SDK's default.
+val debugPort: Int = ((project.findProperty("fleetmlDebugPort") as String?)
+    ?: localProps.getProperty("fleetml.debugPort")
+    ?: "19090").trim().toIntOrNull()?.takeIf { it in 1..65535 }
+    ?: error("fleetmlDebugPort must be a port number")
+
 /** Writes the debug build's network security config: plain HTTP to the emulator's host, localhost and fleetmlDebugHost. */
 abstract class DebugNetworkConfig : DefaultTask() {
     @get:Input abstract val host: Property<String>
@@ -66,10 +74,11 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.9.1"
+        versionName = "0.10.0"
 
         buildConfigField("String", "FLEETML_ENROLLMENT_KEY", "\"$enrollmentKey\"")
         buildConfigField("String", "FLEETML_DEBUG_HOST", "\"$debugHost\"")
+        buildConfigField("int", "FLEETML_DEBUG_PORT", "$debugPort")
     }
 
     androidResources {

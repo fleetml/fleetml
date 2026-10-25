@@ -79,7 +79,7 @@ DEPLOYMENT = {
 
 
 def test_version_is_the_package_version() -> None:
-    assert fleetml.__version__ == "0.9.1"
+    assert fleetml.__version__ == "0.10.0"
 
 
 def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fake: Fake) -> None:
@@ -405,6 +405,55 @@ def test_push_into_an_existing_model_and_version_and_promote(fake: Fake, tmp_pat
     assert json.loads(fake.requests[0].content)["framework"] == "ONNX"
 
 
+def test_push_finds_an_existing_model_and_version_past_the_first_page(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    push_routes(fake, model_exists=True, version_exists=True)
+    others = [{**MODEL, "id": f"m{i}x", "name": f"other{i}"} for i in range(100)]
+    fake.on(
+        "GET",
+        "/api/v1/projects/p1/models",
+        lambda r: data(others if r.url.params.get("offset") == "0" else [MODEL]),
+    )
+    older = [{**VERSION, "id": f"v{i}x", "version": f"0.{i}.0"} for i in range(100)]
+    fake.on(
+        "GET",
+        "/api/v1/models/m1/versions",
+        lambda r: data(older if r.url.params.get("offset") == "0" else [VERSION]),
+    )
+    assert fake.client().push(model, project="p1", model="iris", version="1.0.0").id == "v1"
+    pages = [(r.url.path, r.url.params.get("limit"), r.url.params.get("offset")) for r in fake.requests]
+    assert ("/api/v1/projects/p1/models", "100", "100") in pages
+    assert ("/api/v1/models/m1/versions", "100", "100") in pages
+
+
+@pytest.mark.parametrize(
+    ("status", "patches"), [("DRAFT", ["STAGED", "ACTIVE"]), ("STAGED", ["ACTIVE"]), ("ACTIVE", [])]
+)
+def test_push_promote_takes_only_the_steps_left(fake: Fake, tmp_path: Path, status: str, patches: List[str]) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    push_routes(fake, version_exists=True)
+    fake.on("GET", "/api/v1/versions/v1", data({**VERSION, "status": status}))
+    fake.client().push(model, project="p1", model="iris", version="1.0.0", promote=True)
+    assert [json.loads(r.content)["status"] for r in fake.requests if r.method == "PATCH"] == patches
+
+
+def test_push_promote_raises_when_the_server_refuses(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    push_routes(fake, version_exists=True)
+    fake.on("GET", "/api/v1/versions/v1", data({**VERSION, "status": "ARCHIVED"}))
+    fake.on(
+        "PATCH",
+        "/api/v1/versions/v1/status",
+        error(409, "INVALID_TRANSITION", "cannot transition from ARCHIVED to STAGED"),
+    )
+    with pytest.raises(FleetMLError) as e:
+        fake.client().push(model, project="p1", model="iris", version="1.0.0", promote=True)
+    assert (e.value.status, e.value.code) == (409, "INVALID_TRANSITION")
+
+
 def test_push_raises_the_create_error_when_nothing_is_found(fake: Fake, tmp_path: Path) -> None:
     model = tmp_path / "m.tflite"
     model.write_bytes(b"x")
@@ -537,6 +586,9 @@ def test_version_promote_walks_the_lifecycle(fake: Fake) -> None:
     statuses.clear()
     assert fm.versions.promote("v1", status="ARCHIVED").status == "ARCHIVED"
     assert statuses == ["ARCHIVED"]
+    statuses.clear()
+    assert fm.versions.promote("v1", status="active").status == "ACTIVE", "any case, as the server takes it"
+    assert statuses == ["STAGED", "ACTIVE"]
 
 
 def test_deployment_lifecycle(fake: Fake) -> None:
@@ -574,6 +626,14 @@ def test_devices_by_project_and_get(fake: Fake) -> None:
     assert fm.devices.get("dev1").project_id == "p1"
 
 
+def test_telemetry_events_without_a_confidence(fake: Fake) -> None:
+    # The server stores no confidence as 0, as for a MODEL_LOAD; the CLI shows it blank.
+    load = {"device_id": "dev1", "model_version_id": "v1", "event_type": "MODEL_LOAD", "latency_ms": 0,
+            "confidence_score": 0, "recorded_at": "2026-10-24T00:00:00Z"}  # fmt: skip
+    fake.on("GET", "/api/v1/telemetry/events", data([load, {**load, "confidence_score": None}]))
+    assert [e.confidence_score for e in fake.client().telemetry.events(version_id="v1")] == [None, None]
+
+
 def test_telemetry_events(fake: Fake) -> None:
     event = {"device_id": "dev1", "model_version_id": "v1", "event_type": "INFERENCE", "latency_ms": 12,
              "confidence_score": 0.9700000286102295, "prediction_label": "virginica", "error_message": "",
@@ -582,7 +642,7 @@ def test_telemetry_events(fake: Fake) -> None:
     fm = fake.client()
     [e] = fm.telemetry.events(version_id="v1", device_id="dev1", event_type="INFERENCE", limit=10)
     assert (e.event_type, e.latency_ms, e.prediction_label) == ("INFERENCE", 12, "virginica")
-    assert round(e.confidence_score, 3) == 0.97
+    assert e.confidence_score is not None and round(e.confidence_score, 3) == 0.97
     assert dict(fake.requests[-1].url.params) == {
         "limit": "10", "model_version_id": "v1", "device_id": "dev1", "event_type": "INFERENCE",
     }  # fmt: skip

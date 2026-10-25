@@ -5,6 +5,95 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.0] - 2026-10-26
+
+### What changed for readers
+
+Every guide now opens with **Get started**: a numbered list of copy-paste
+blocks with nothing to choose, from a fresh clone to one device with a
+model on it, the dashboard and a clean up, each block followed by the line
+it prints. The README's device is the Linux agent in a container on the
+same machine; the Android guide puts the sample app on a phone over USB,
+the iOS guide on the simulator and then an iPhone, the Python guide and the
+Helm chart have their own. Everything that is a choice (other ports, a
+phone over Wi-Fi, Android Studio on Windows, the Helm variants, upgrades,
+the settings file) moved, unchanged, to the new
+[docs/ADVANCED.md](docs/ADVANCED.md), with a pointer where it was. Two CI
+jobs keep it that way: `Docs golden path` runs the Get started blocks of
+the README, QUICKSTART, LINUX_AGENT and PYTHON_CLIENT against each change,
+and `Docs lint` fails on a port number in a command, a key on a command
+line, a version that disagrees with this file, a malformed entry here, or a
+golden block that differs between two guides. Upgrading from 0.9.1 needs
+nothing for the server, the CLI or the SDKs; Python callers see the two
+client changes under Changed.
+
+### Changed
+
+- Python client: `TelemetryEvent.confidence_score` is `Optional[float]`,
+  `None` for an event that reported no confidence (a MODEL_LOAD, for
+  example), where it was `0.0`; `push(promote=True)` raises when the server
+  refuses a step (from ARCHIVED), where it returned the version unchanged.
+- Docs: the guides open with Get started, and their options moved to
+  docs/ADVANCED.md (above). Every command reads the stack's saved ports
+  (`${FLEETML_REST_PORT:-18080}`, `${FLEETML_GRPC_PORT:-19090}`,
+  `${FLEETML_S3_PUBLIC_PORT:-19100}`), so a stack started on other ports
+  needs no edits; prose names the defaults in words.
+- Docs: no command puts an enrollment key on a command line: Android's
+  Gradle lines take `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey`, the iOS
+  sample app `SIMCTL_CHILD_`/`DEVICECTL_CHILD_` variables, the Linux
+  container `-e FLEETML_ENROLLMENT_KEY` and a machine's config `read -rs`
+  and `printf | tee`.
+- `install.sh` without systemd says the state folder "is ready" and prints
+  the restart hint only when it replaced a binary.
+
+### Added
+
+- `fleetml-agent -download-host-override`, the config's
+  `download_host_override` as a flag; `FLEETML_ENROLLMENT_KEY` also
+  replaces config.example.yaml's placeholder key, and `-h` names it.
+- The Android sample app connects by itself on the first start of a build
+  that carries an enrollment key, again whenever a build brings a new one,
+  and takes its gRPC port from `-PfleetmlDebugPort`; the iOS sample app
+  takes `FLEETML_HOST`, `FLEETML_PORT` and `FLEETML_ENROLLMENT_KEY` from its
+  environment and logs line by line.
+- `fleetml push --promote` prints what it promoted
+  (`v1.0.0 promoted to STAGED → ACTIVE`).
+- The prod compose file publishes Grafana on `FLEETML_GRAFANA_PORT`.
+- `scripts/docs-golden-path.sh` and `scripts/docs-lint.sh`, and the CI jobs
+  `Docs golden path` and `Docs lint`.
+- The Helm chart's NOTES.txt names the reader's own port variables and
+  prints the object store's port-forward only with the bundled SeaweedFS.
+
+### Fixed
+
+The findings of the seventh developer review (review 7, on 0.9.1):
+
+- Python client: `push` found an existing model or version only on the
+  server's first page of 20 and then failed with `409 CONFLICT`; it now
+  pages 100 at a time, as the CLI does. `versions.promote(status="active")`
+  skipped the STAGED step; the status is now taken in any case.
+- `fleetml simulate --help`'s example put the key on the command line; it
+  uses `FLEETML_ENROLLMENT_KEY` now.
+- iOS: step 2's network check and the never-downloads diagnosis named
+  19100 on a stack with another model files' port (the review's iOS 4);
+  step 6 now says Ctrl-C on the `--console` line ends the app.
+- Android: the `adb reverse` lines, the emulator section and From Windows
+  named the default ports; the backup rules are in the skeleton's manifest
+  and the Production checklist.
+- Linux agent: the agent-side `download_host_override` lines and
+  config.example.yaml named 19100; `-retry-failed` without systemd uses
+  `setpriv`.
+- QUICKSTART: the tour's `simulate` lines follow a moved gRPC port
+  (`--grpc`); README: the port-80 override paragraph, which QUICKSTART had
+  replaced, is gone, and Upgrading says what to do with a 0.9.0 override
+  file.
+- Helm chart README: its example ports collided with the quickstart's, and
+  on macOS a port-forward takes `localhost` from Docker Desktop without an
+  error; Get started uses 38080, 39090 and 39100, and ADVANCED says how to
+  check other ports. Each restart past `server.dependencyTimeout` waits
+  another full budget, as the README now says.
+- The 0.9.1 entry's paging sentence, which did not parse.
+
 ## [0.9.1] - 2026-10-25
 
 The fixes from the sixth developer review (seven reviewers on the released
@@ -20,8 +109,9 @@ change. Two refused requests answer differently (under Changed), and
   or a negative `offset` answers `400 VALIDATION_ERROR` naming the range,
   for example `limit must be between 1 and 100, got 500`, instead of being
   clamped without a word (`GET /devices` had no cap at all). A client that
-  asked for more than 100 pages with `offset`; the CLI, the dashboard and
-  the Python client's own calls already do (review 6).
+  asked for more than 100 must page with `offset`, as the CLI and the
+  dashboard already do (review 6; the Python client's `push` pages since
+  0.10.0).
 - `DEPENDENCY_TIMEOUT` is the total time start-up waits for Postgres, the
   object store and NATS together, not the time for each; the Helm chart's
   `180s` and the compose default `60s` stay. Meanwhile `/livez` answers 200
@@ -1011,6 +1101,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.0]: https://github.com/fleetml/fleetml/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/fleetml/fleetml/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/fleetml/fleetml/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...v0.8.0

@@ -11,28 +11,129 @@ repository: there is no chart repository or OCI package.
 
 Needs a Kubernetes cluster, `kubectl`, Helm 3 and `openssl`, and for the
 last steps the [`fleetml` CLI](../../../docs/QUICKSTART.md#get-the-cli) and
-`jq`. No cluster yet? [kind](https://kind.sigs.k8s.io/) makes one in Docker:
+`jq`. [Get started](#get-started) makes the cluster with
+[kind](https://kind.sigs.k8s.io/), in Docker.
 
-```bash
-kind create cluster --name fleetml
-```
+## Get started
+
+The chart on a [kind](https://kind.sigs.k8s.io/) cluster on this machine,
+with twenty simulated devices: copy and paste, nothing to choose. Each step
+says what you should see; if you see something else, stop there and look it
+up in [Troubleshooting](../../../docs/ADVANCED.md#troubleshooting). Use one
+terminal and keep it open until the end. Before you start: Docker, `kind`,
+Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
+[README's Get started](../../../README.md#get-started)).
+
+1. **Check the tools**, with this terminal's `kubectl` and `helm` pointed at
+   a kubeconfig file of their own, so your other clusters and contexts stay
+   as they are:
+
+   <!-- golden: helm-tools -->
+   ```bash
+   export KUBECONFIG=$HOME/.kube/fleetml-kind.yaml
+   kind version && helm version --short && kubectl version --client && jq --version && fleetml version
+   ```
+
+   You should see `kind v` and `✓ fleetml v`.
+
+2. **A cluster**, written into that file:
+
+   <!-- golden: helm-cluster -->
+   ```bash
+   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   kind create cluster --name fleetml
+   ```
+
+   You should see `Set kubectl context to "kind-fleetml"`.
+
+3. **The secrets**, generated once into a file only you can read (keep it:
+   [why](#install)):
+
+   <!-- golden: helm-secrets -->
+   ```bash
+   (umask 077; cat > fleetml-secrets.yaml <<EOF
+   secrets:
+     jwtSecret: "$(openssl rand -base64 32)"
+     signingMasterKey: "$(openssl rand -base64 32)"
+     adminKey: "$(openssl rand -hex 32)"
+     s3SecretKey: "$(openssl rand -hex 16)"
+     postgresPassword: "$(openssl rand -hex 16)"
+   EOF
+   )
+   ```
+
+   You should see nothing: the block prints no secret.
+
+4. **Install the chart** and wait for it. The first line names the local
+   ports this machine reaches the release on (other than the quickstart's,
+   so both can run here); they are variables of this shell, so in a new
+   terminal (for [Upgrading](#upgrading)) set the same line again first:
+
+   <!-- golden: helm-install -->
+   ```bash
+   REST=38080 GRPC=39090 S3=39100
+   helm install fleetml deploy/helm/fleetml -n fleetml --create-namespace \
+     -f fleetml-secrets.yaml --set s3.publicEndpoint=localhost:$S3
+   kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
+   kubectl -n fleetml port-forward svc/fleetml-server $REST:18080 $GRPC:19090 >/dev/null &
+   kubectl -n fleetml port-forward svc/fleetml-s3 $S3:8333 >/dev/null &
+   until curl -sf localhost:$REST/readyz; do sleep 1; done; echo
+   helm test fleetml -n fleetml
+   ```
+
+   You should see `"status":"ok"` and `Succeeded`.
+
+5. **Put devices on it**: the CLI, the sample model, an enrollment key, 20
+   simulated devices and a deployment, as in the
+   [tour](../../../docs/QUICKSTART.md#tour):
+
+   <!-- golden: helm-tryit -->
+   ```bash
+   export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^  adminKey: "\(.*\)"$/\1/p' fleetml-secrets.yaml)
+   P=$(fleetml project create --name helm-tour -o json | jq -r .id)
+   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+   V1=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
+   EK=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
+   FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
+   SIM=$!
+   fleetml deploy start $(fleetml deploy create --project $P --version $V1 --target '{"app":"helm"}' -o json | jq -r .id)
+   sleep 10; tail -1 /tmp/fleetml-helm-sim.log
+   ```
+
+   You should see `✓ Deployment start → COMPLETE` and `simulator: iris 1.0.0 on 20`.
+
+6. **See it in the dashboard.** This forwards it to <http://localhost:8080>
+   and puts the admin key on the clipboard (on a Mac; elsewhere it prints
+   it); open the page and paste the key into the login box:
+
+   <!-- golden: helm-dashboard manual -->
+   ```bash
+   kubectl -n fleetml port-forward svc/fleetml-dashboard 8080:80 >/dev/null &
+   printf %s "$FLEETML_API_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_API_KEY"
+   ```
+
+   You should see the Overview page; **Devices** lists the 20 devices.
+
+7. **Clean up**: the simulator, the port-forwards, the cluster with all its
+   data, its kubeconfig file and the secrets file:
+
+   <!-- golden: helm-cleanup cleanup -->
+   ```bash
+   kill $SIM; pkill -f 'kubectl -n fleetml port-forward'
+   kind delete cluster --name fleetml
+   rm -f "$KUBECONFIG" fleetml-secrets.yaml /tmp/fleetml-helm-sim.log
+   ```
+
+   You should see `Deleting cluster "fleetml"`.
+
+Then [Upgrading](#upgrading), [Production](#production) and the
+[values](#values); a Secret of your own, other local ports and unreleased
+images: [ADVANCED.md](../../../docs/ADVANCED.md#helm-chart-variants).
 
 ## Install
 
-From the root of a clone. First the secrets, generated once into a file
-only you can read:
-
-```bash
-(umask 077; cat > fleetml-secrets.yaml <<EOF
-secrets:
-  jwtSecret: "$(openssl rand -base64 32)"
-  signingMasterKey: "$(openssl rand -base64 32)"
-  adminKey: "$(openssl rand -hex 32)"
-  s3SecretKey: "$(openssl rand -hex 16)"
-  postgresPassword: "$(openssl rand -hex 16)"
-EOF
-)
-```
+[Get started](#get-started)'s steps 3 and 4 are the install. About the
+secrets file of step 3:
 
 **Keep this file, and never generate it again for a release that has data.**
 Every install and upgrade of this release passes it. With new values:
@@ -42,45 +143,23 @@ failed`), `signingMasterKey` no longer decrypts the stored signing keys (so
 publishing fails), and a new `jwtSecret` invalidates every device token (the
 devices register again with their enrollment key). A new `s3SecretKey` is
 safe: the store restarts with it. `adminKey` is stored on the first start
-only. Instead of the file, a Secret of your own with the keys `JWT_SECRET`,
-`SIGNING_MASTER_KEY`, `FLEETML_ADMIN_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
-and `POSTGRES_PASSWORD` works the same way: `--set secrets.existingSecret=<name>`,
-except that a change to your Secret rolls nothing: after one, run
-`kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
+only. A Secret of your own instead of the file: [ADVANCED.md](../../../docs/ADVANCED.md#helm-chart-variants).
 The chart refuses a `jwtSecret`, `signingMasterKey` or `adminKey` shorter
 than 32 characters (the server would not start with one), and the first two
 must differ. The file name is in the repository's `.gitignore`, so a clone
 does not commit it; keep a copy outside the clone as well.
 
-Then the chart, into its own namespace. The first line names the local
-ports this machine reaches the release on, the
-[quickstart's](../../../docs/QUICKSTART.md) REST, gRPC and model-file ports;
-if its compose stack runs here (or anything else holds them), make it
-`REST=28080 GRPC=29090 S3=29100`, and every later line, `Try it` included,
-uses those. They are variables of this shell: in a new terminal (for Try it
-or Upgrading), set the same line again first.
-
-```bash
-REST=18080 GRPC=19090 S3=19100
-helm install fleetml deploy/helm/fleetml -n fleetml --create-namespace \
-  -f fleetml-secrets.yaml --set s3.publicEndpoint=localhost:$S3
-kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
-kubectl -n fleetml port-forward svc/fleetml-server $REST:18080 $GRPC:19090 >/dev/null &
-kubectl -n fleetml port-forward svc/fleetml-s3 $S3:8333 >/dev/null &
-until curl -sf localhost:$REST/readyz; do sleep 1; done; echo
-helm test fleetml -n fleetml
-```
-
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.1"}`,
+About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.0"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
 images, which takes a minute or two (the server waits meanwhile, up to
 `server.dependencyTimeout`, 180 s in total for Postgres, the object store and
 NATS, and its `/livez` answers all along, so the probes leave it alone);
 `kubectl -n fleetml get pods` then shows every pod `Running` with no
 restarts. On a link slow enough that the images take longer than that, the
-server exits once with `start-up gave up: DEPENDENCY_TIMEOUT is the total wait
-for all dependencies` and comes up after its restart; raise
-`server.dependencyTimeout` to avoid it.
+server exits with `start-up gave up: DEPENDENCY_TIMEOUT is the total wait
+for all dependencies`, and each restart waits another
+`server.dependencyTimeout`, so it comes up once the images are there; raise
+`server.dependencyTimeout` to avoid the restarts.
 
 `s3.publicEndpoint` is the one value the chart needs besides the secrets:
 the `host:port` where devices and the CLI reach the object store. The server
@@ -94,25 +173,9 @@ the cluster.
 
 ### Try it
 
-The CLI, a model, an enrollment key, 20 simulated devices and a deployment,
-as in the [tour](../../../docs/QUICKSTART.md#tour), from the clone's root:
-
-```bash
-export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^  adminKey: "\(.*\)"$/\1/p' fleetml-secrets.yaml)
-P=$(fleetml project create --name helm-tour -o json | jq -r .id)
-fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-V1=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
-EK=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
-FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
-SIM=$!
-fleetml deploy start $(fleetml deploy create --project $P --version $V1 --target '{"app":"helm"}' -o json | jq -r .id)
-sleep 10; tail -1 /tmp/fleetml-helm-sim.log
-```
-
-The deployment starts as `COMPLETE` and the simulator's last line reads
-`simulator: iris 1.0.0 on 20`. `kill $SIM` stops the simulator.
-`kubectl -n fleetml port-forward svc/fleetml-dashboard 8080:80` serves the
-dashboard at http://localhost:8080 (log in with the `adminKey`).
+[Get started](#get-started)'s step 5. The deployment starts as `COMPLETE` and the simulator's last line reads
+`simulator: iris 1.0.0 on 20`. `kill $SIM` stops the simulator; step 6 serves the dashboard at
+http://localhost:8080 (log in with the `adminKey`).
 
 ## Upgrading
 
@@ -137,7 +200,7 @@ store's after an `s3SecretKey` change, which replaces that pod too; with the
 old one still running, the new line stops with `address already in use`). To rotate a secret that
 may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
-upgrade. From 0.6.0 to 0.9.1 no
+upgrade. From 0.6.0 to 0.10.0 no
 upgrade needs anything else.
 
 ## Production

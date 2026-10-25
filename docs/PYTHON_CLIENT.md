@@ -8,6 +8,120 @@ a client for the REST API only and has no device-side role (devices use the
 [Linux agent](LINUX_AGENT.md)). It uses the same words as the `fleetml` CLI,
 which stays the command-line tool; the package installs no command.
 
+## Get started
+
+The client against a server on this machine, with one device on it: ten
+minutes, copy and paste, nothing to choose. Each step says what you should
+see; if you see something else, stop there and look it up in
+[Troubleshooting](ADVANCED.md#troubleshooting). Use one terminal (bash or
+zsh, on macOS or Linux) and keep it open until the end.
+
+1. **Check the tools.** You need Docker (Docker Desktop on a Mac), git, curl
+   and Python 3.9 or later ([installing them](ADVANCED.md#installing-the-tools)):
+
+   <!-- golden: python-tools -->
+   ```bash
+   docker compose version && git --version && python3 --version
+   ```
+
+   You should see `Docker Compose version v2` and `Python 3.` on the last line.
+
+2. **Start FleetML.** The first start takes a few minutes, to download and
+   build the images:
+
+   <!-- golden: start -->
+   ```bash
+   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+   source ~/.fleetml.env
+   docker compose -f deploy/docker-compose.prod.yml up -d --build
+   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   ```
+
+   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+
+3. **Install the client** in a virtual environment in the clone:
+
+   <!-- golden: python-install -->
+   ```bash
+   python3 -m venv .venv && . .venv/bin/activate
+   pip install -q fleetml
+   python -c 'import fleetml; print("fleetml", fleetml.__version__)'
+   ```
+
+   You should see `fleetml <version>`.
+
+4. **Publish the sample model and deploy it**, from Python. The block keeps
+   the device's enrollment key in this terminal's environment for step 5,
+   without printing it:
+
+   <!-- golden: python-publish -->
+   ```bash
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+   export FLEETML_ENROLLMENT_KEY=$(python - <<'EOF'
+   import sys, time
+   from fleetml import FleetML
+   with FleetML() as fm:
+       project = fm.projects.create(time.strftime("first-py-%H%M%S"))
+       v = fm.push("models/iris/iris_v1.tflite", project=project.id, model="iris", version="1.0.0")
+       print("deployment", fm.deployments.start(fm.deployments.create(project.id, v.id).id).status, file=sys.stderr)
+       print(fm.enrollment_keys.create(project.id, "first-device").key)
+   EOF
+   )
+   ```
+
+   You should see `deployment COMPLETE`.
+
+5. **Put a device on it**: the Linux device agent in a container on this
+   machine. It registers with the enrollment key from step 4, downloads the
+   model, checks it and makes it active:
+
+   <!-- golden: device -->
+   ```bash
+   ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+   mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
+   docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
+     -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
+     exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
+       -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
+   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; sleep 2; done
+   ```
+
+   You should see `msg="model active" model=iris version=1.0.0`.
+   On a phone instead: the [Android](ANDROID_SDK.md#get-started) guide
+   (a phone on a USB cable) or the [iOS](IOS_SDK.md#get-started) guide
+   (the simulator, then an iPhone).
+
+6. **See it in the dashboard.** This puts the admin key on the clipboard (on
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
+
+   <!-- golden: dashboard manual -->
+   ```bash
+   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   ```
+
+   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   `COMPLETE` deployment of iris 1.0.0.
+
+7. **Clean up**: the device, the server and all its data, the virtual
+   environment and the saved secrets:
+
+   <!-- golden: python-cleanup cleanup -->
+   ```bash
+   deactivate; docker rm -f fleetml-agent
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
+   rm -rf fleetml-agent .venv ~/.fleetml.env
+   ```
+
+   You should see `Network <stack>_default  Removed`.
+
+Then [the tour in Python](#the-tour-in-python): canary rollouts that roll
+themselves back, against twenty simulated devices.
+
 ## Install
 
 ```bash
@@ -29,14 +143,17 @@ unit tests on `windows-latest`, and its live test on Linux.
 from fleetml import FleetML
 
 fm = FleetML()                                         # FLEETML_SERVER and FLEETML_API_KEY
-fm = FleetML("http://localhost:18080", api_key="...")  # or explicitly
+fm = FleetML("<server URL>", api_key="...")             # or explicitly
 ```
 
-The server defaults to `FLEETML_SERVER`, then `http://localhost:18080`; the
-API key (an admin key, as for the CLI) to `FLEETML_API_KEY`. With the
-quickstart's server, the admin key is `FLEETML_ADMIN_KEY` in
-`~/.fleetml.env` ([Run FleetML](QUICKSTART.md#run-fleetml)):
-`source ~/.fleetml.env && export FLEETML_API_KEY=$FLEETML_ADMIN_KEY`. `FleetML` is a
+The server defaults to `FLEETML_SERVER`, then `http://localhost` on the
+quickstart's default REST port; the API key (an admin key, as for the CLI)
+to `FLEETML_API_KEY`. With the quickstart's server, both come from
+`~/.fleetml.env` ([the settings file](ADVANCED.md#the-settings-file-fleetmlenv)),
+the saved REST port included:
+`source ~/.fleetml.env && export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY`.
+The simulator line the tour prints takes `--grpc localhost:${FLEETML_GRPC_PORT:-19090}`
+on a stack whose gRPC port was moved. `FleetML` is a
 context manager (`with FleetML() as fm:`), or call `fm.close()`.
 
 ## The tour in Python
@@ -87,7 +204,8 @@ with FleetML() as fm:
     print(f"1.0.0: {s.total_events} events, p95 {s.p95_latency_ms:.0f} ms")
 ```
 
-It prints the project ID first, then `COMPLETE`, `20 devices` (the
+It prints the project ID first, then the simulator's line and its prompt,
+then `COMPLETE`, `20 devices` (the
 project's own, whatever else the server runs), the rollback with its
 reason, and the summary. **Clean up**:
 stop the simulator (Ctrl-C in its shell), then delete the project with
@@ -116,7 +234,7 @@ status, 0 when the server was not reached), `code` (the server's error code:
 (`telemetry.events` filters, so an unknown version gives an empty list);
 `CONFLICT`, for example a project name that exists;
 `VALIDATION_ERROR`, for example a `limit` that is not an integer or is
-outside 1 to the page cap, or an unknown version status;
+outside 1 to the page cap, a negative `offset`, or an unknown version status;
 `INVALID_TRANSITION` (409), a deployment, experiment or version asked to do
 what its status does not allow, such as starting a COMPLETE deployment,
 progressing one that is not ROLLING_OUT, concluding a CONCLUDED experiment
@@ -163,8 +281,8 @@ parent (a project, a model) by position, and `devices.list` its `labels`.
 | `fm.versions.create(model, version, metadata=None)` | `fleetml ver create --model --version` | Creates a version, with optional metadata |
 | `fm.versions.list(model, *, limit=None, offset=None)` | `fleetml ver list --model` | Lists a model's versions |
 | `fm.versions.get(version_id)` | (REST) | One version |
-| `fm.versions.promote(version_id, status="ACTIVE")` | `fleetml ver promote` | Moves a version to STAGED, ACTIVE (through STAGED from DRAFT) or ARCHIVED |
-| `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. `target_runtime` is the CLI's `--framework` |
+| `fm.versions.promote(version_id, status="ACTIVE")` | `fleetml ver promote` | Moves a version to STAGED, ACTIVE (through STAGED from DRAFT) or ARCHIVED, the status in any case; an ACTIVE version asked for ACTIVE raises `INVALID_TRANSITION` (`push(promote=True)` leaves it ACTIVE) |
+| `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. It finds an existing model and version on any page. With `promote=True` it takes the version to ACTIVE from wherever it is, as `fleetml push --promote` does, and raises when the server refuses (from ARCHIVED). `target_runtime` is the CLI's `--framework` |
 | `fm.enrollment_keys.create(project, name)` | (REST) | A key devices register with; `.key` is shown only now |
 | `fm.deployments.create(project, version, strategy="ALL_AT_ONCE", target_selector=None, health_gate=None, canary_stages=None, rolling_config=None, urgent=False)` | `fleetml deploy create` | Creates a deployment; `target_selector` is the CLI's `--target`, the rest as in [Rollouts](ROLLOUTS.md) |
 | `fm.deployments.start(deployment_id)` | `fleetml deploy start` | Starts it |
@@ -179,7 +297,7 @@ parent (a project, a model) by position, and `devices.list` its `labels`.
 | `fm.devices.list(labels=None, *, project=None, limit=None, offset=None)` | `fleetml device list` | Lists devices, those with all the given labels |
 | `fm.devices.get(device_id)` | `fleetml device get` | One device |
 | `fm.telemetry.summary(version_id)` | `fleetml telemetry summary` | The last day's telemetry of a version: latency and confidence over its INFERENCE events, counts over all |
-| `fm.telemetry.events(version_id=None, device_id=None, event_type=None, *, limit=None, offset=None)` | `fleetml telemetry events` | The last day's events, newest first |
+| `fm.telemetry.events(version_id=None, device_id=None, event_type=None, *, limit=None, offset=None)` | `fleetml telemetry events` | The last day's events, newest first; `confidence_score` is `None` for an event that reported none (a MODEL_LOAD, for example) |
 | `fm.experiments.create(project, name, control, treatment, metric="latency", split=50, auto_conclude=False, target_selector=None, min_sample_size=None)` | `fleetml experiment create` | Creates an A/B experiment between two version IDs |
 | `fm.experiments.start(experiment_id)` | `fleetml experiment start` | Starts it |
 | `fm.experiments.get(experiment_id)`, `.list(*, project=None, limit=None, offset=None)` | `fleetml experiment get`, `list` | One experiment, or the list |

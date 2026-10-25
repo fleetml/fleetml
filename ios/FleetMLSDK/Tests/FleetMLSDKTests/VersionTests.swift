@@ -5,6 +5,6 @@ import XCTest
 /// that bumps the iOS SDK changes this line with FleetML.sdkVersion.
 final class VersionTests: XCTestCase {
     func testSDKVersionIsTheRelease() {
-        XCTAssertEqual(FleetML.sdkVersion, "0.9.1")
+        XCTAssertEqual(FleetML.sdkVersion, "0.10.0")
     }
 }

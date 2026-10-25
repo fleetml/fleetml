@@ -15,8 +15,8 @@ flowchart LR
     agent[Linux agent]
   end
   subgraph server[FleetML server]
-    rest[REST API :18080<br/>Gin]
-    grpc[gRPC API :19090]
+    rest[REST API<br/>Gin]
+    grpc[gRPC API]
     reg[Registry]
     dep[Deploy engine]
     intel[Intelligence<br/>profiler, selector]

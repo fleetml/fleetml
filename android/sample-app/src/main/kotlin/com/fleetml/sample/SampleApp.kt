@@ -27,7 +27,20 @@ class SampleApp : Application(), FleetMLCallback {
 
     override fun onCreate() {
         super.onCreate()
-        settings()?.let { startSdk(it) }
+        // A build that carries an enrollment key (-PfleetmlEnrollmentKey or
+        // ORG_GRADLE_PROJECT_fleetmlEnrollmentKey) connects to the build's host
+        // on its first start, without a tap on Save and connect, and again
+        // whenever a new build brings another key; otherwise the saved settings
+        // (the config screen's) win.
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val build = fromBuild(BuildConfig.FLEETML_ENROLLMENT_KEY, BuildConfig.FLEETML_DEBUG_HOST, BuildConfig.FLEETML_DEBUG_PORT)
+        val (s, fromBuild) = startSettings(build, settings(), prefs.getString(BUILD_KEY, null)) ?: return
+        if (fromBuild) {
+            prefs.edit().putString(BUILD_KEY, s.enrollmentKey).apply()
+            connect(s)
+        } else {
+            startSdk(s)
+        }
     }
 
     fun settings(): Settings? {
@@ -79,5 +92,18 @@ class SampleApp : Application(), FleetMLCallback {
 
     companion object {
         private const val PREFS = "sample_settings"
+        /** The build key last applied, so a reinstall of the same build keeps what the config screen saved. */
+        private const val BUILD_KEY = "build_enrollment_key"
+
+        /** The settings a build carries: its key, debug host (the emulator's 10.0.2.2 when none) and port, or null without a key. */
+        fun fromBuild(enrollmentKey: String, debugHost: String, debugPort: Int = 19090): Settings? =
+            if (enrollmentKey.isBlank()) null else Settings(debugHost.ifBlank { "10.0.2.2" }, debugPort, enrollmentKey.trim())
+
+        /** What to start with, and whether it is the build's: a build key not applied before, else the saved settings. */
+        fun startSettings(build: Settings?, saved: Settings?, lastBuildKey: String?): Pair<Settings, Boolean>? = when {
+            build != null && build.enrollmentKey != lastBuildKey -> build to true
+            saved != null -> saved to false
+            else -> null
+        }
     }
 }

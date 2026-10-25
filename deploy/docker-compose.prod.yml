@@ -116,7 +116,7 @@ services:
       - server
 
   # docker compose -f deploy/docker-compose.prod.yml --profile observability up -d:
-  # Prometheus (internal) and Grafana on :13000 with the FleetML dashboard.
+  # Prometheus (internal) and Grafana on :13000 (FLEETML_GRAFANA_PORT) with the FleetML dashboard.
   # Anonymous users can only view; Grafana asks for a new admin password at the
   # first login (admin/admin).
   prometheus:
@@ -136,7 +136,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "13000:3000"
+      - "${FLEETML_GRAFANA_PORT:-13000}:3000"
 
 volumes:
   pgdata:

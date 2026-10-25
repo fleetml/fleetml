@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The Windows qs_run workflow's quickstart in WSL 2
-# (.github/workflows/windows-run.yml): runs the "Run FleetML" qs_block of
+# (.github/workflows/windows-run.yml): runs Get started's start block of
 # docs/QUICKSTART.md and the tour's two setup blocks and sections 1 to 3 in one bash
 # session, as a reader pastes them, each qs_block read from the docs at qs_run time;
 # then checks what they printed against the docs' text, as scripts/e2e.sh and
@@ -42,6 +42,16 @@ qs_check() {
   echo "Expect: $what"
   echo "Got:    $got"
   if "$@"; then echo PASS; else qs_note "FAILED: $what"; echo "FAILED: $what"; exit 1; fi
+}
+
+# qs_golden <id>: the bash block after the docs' <!-- golden: <id> --> marker,
+# without the list item's indentation (Get started is a numbered list).
+qs_golden() {
+  tr -d '\r' <"$QS_DOCS" | awk -v id="$1" '
+    $0 ~ "^ *<!-- golden: " id "( |-->)" { f = 1; next }
+    f && !p && /^ *```bash$/ { match($0, /^ */); ind = RLENGTH; p = 1; next }
+    p && /^ *```$/ { exit }
+    p { print substr($0, ind + 1) }'
 }
 
 # qs_block <heading> [n]: the n-th bash block after the heading in the docs.
@@ -95,9 +105,10 @@ qs_wait_fleet() {
   return 1
 }
 
-# Run FleetML. "On Windows" runs it from ~; here from the new $QS_WORK, so
-# the block's `git clone ... && cd fleetml` makes $QS_CLONE.
-qs_code=$(qs_block '## Run FleetML')
+# Get started's step 2, which starts the stack. "On Windows" runs it from ~;
+# here from the new $QS_WORK, so the block's `git clone ... && cd fleetml`
+# makes $QS_CLONE.
+qs_code=$(qs_golden start)
 if [ "${REPO_PRIVATE:-}" = true ]; then
   qs_code=$(printf '%s\n' "$qs_code" | sed "s|^git clone https://github.com/fleetml/fleetml.git |git clone '$QS_CHECKOUT' fleetml |")
   qs_check "the block's first line clones from GitHub (replaced for a private repository)" "$(printf '%s\n' "$qs_code" | head -1)" \

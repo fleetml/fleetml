@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import os
 import time
-from typing import Any, Collection, Dict, List, Mapping, Optional, Sequence, Union
+from typing import Any, Callable, Collection, Dict, List, Mapping, Optional, Sequence, TypeVar, Union
 
 import httpx
 
@@ -26,6 +25,13 @@ from fleetml.types import (
     Version,
     from_list,
 )
+
+T = TypeVar("T")
+
+# The status changes push(promote=True) makes from each status to reach
+# ACTIVE, one step at a time as the server requires; an ACTIVE version keeps
+# its status, and from ARCHIVED the server refuses the first step.
+_PROMOTE_STEPS: Dict[str, Sequence[str]] = {"DRAFT": ("STAGED", "ACTIVE"), "STAGED": ("ACTIVE",), "ACTIVE": ()}
 
 DEFAULT_SERVER = "http://localhost:18080"
 
@@ -147,18 +153,23 @@ class FleetML:
         try:
             model_obj = self.models.create(project, model, framework=target_runtime, task=task)
         except FleetMLError as create_err:
-            found = [m for m in self.models.list(project) if m.name == model]
-            if not found:
+            found = self._find(
+                lambda limit, offset: self.models.list(project, limit=limit, offset=offset), lambda m: m.name == model
+            )
+            if found is None:
                 raise create_err
-            model_obj = found[0]
+            model_obj = found
 
         try:
             version_obj = self.versions.create(model_obj.id, version)
         except FleetMLError as create_err:
-            found_v = [v for v in self.versions.list(model_obj.id) if v.version == version]
-            if not found_v:
+            found_v = self._find(
+                lambda limit, offset: self.versions.list(model_obj.id, limit=limit, offset=offset),
+                lambda v: v.version == version,
+            )
+            if found_v is None:
                 raise create_err
-            version_obj = found_v[0]
+            version_obj = found_v
 
         created = self._request(
             "POST",
@@ -183,12 +194,25 @@ class FleetML:
 
         self._request("POST", f"/variants/{variant_id}/finalize")
         if promote:
-            # DRAFT -> STAGED -> ACTIVE, as the CLI does (a version that is
-            # already further along keeps its status).
-            for status in ("STAGED", "ACTIVE"):
-                with contextlib.suppress(FleetMLError):
-                    self._request("PATCH", f"/versions/{version_obj.id}/status", {"status": status})
+            # From the version's status to ACTIVE, as the CLI does: an ACTIVE
+            # version stays as it is, and a refused step (from ARCHIVED) raises.
+            current = self.versions.get(version_obj.id).status
+            for status in _PROMOTE_STEPS.get(current, ("STAGED", "ACTIVE")):
+                self._request("PATCH", f"/versions/{version_obj.id}/status", {"status": status})
         return self.versions.get(version_obj.id)
+
+    @staticmethod
+    def _find(fetch: Callable[[int, int], List[T]], match: Callable[[T], bool]) -> Optional[T]:
+        """The first item of a list that matches, read 100 at a time (the server's page cap)."""
+        offset = 0
+        while True:
+            page = fetch(100, offset)
+            for item in page:
+                if match(item):
+                    return item
+            if len(page) < 100:
+                return None
+            offset += 100
 
     def wait_for_deployment(
         self,
@@ -269,6 +293,7 @@ class Versions(_API):
         """Moves a version to ``status`` (STAGED, ACTIVE or ARCHIVED), like
         ``fleetml ver promote``. To ACTIVE, a DRAFT version goes through
         STAGED first, as the server's lifecycle requires."""
+        status = status.upper()
         if status == "ACTIVE" and self.get(version_id).status == "DRAFT":
             self._c._request("PATCH", f"/versions/{version_id}/status", {"status": "STAGED"})
         return Version.from_api(self._c._request("PATCH", f"/versions/{version_id}/status", {"status": status}))
