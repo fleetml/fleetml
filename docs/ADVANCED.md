@@ -153,6 +153,88 @@ it: add the port to `~/.fleetml.env` as above and leave the override file
 out of every later compose command, the [Upgrading](#upgrading) block
 included.
 
+## Linux agent: a server on another machine
+
+The agent talks to the server in two ways, and both must reach it from this
+machine:
+
+| | Port | Set by | Where |
+|---|---|---|---|
+| Registration and heartbeats (gRPC) | 19090 | you | `server: <server address>:19090` in the agent's config |
+| Model downloads (presigned URLs) | 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
+
+The server hands out each model as a download URL for its object store's
+public address, `S3_PUBLIC_ENDPOINT`. In the quickstart's compose stack that
+is `localhost:19100`, which only the server's own machine reaches. There are
+two ways out:
+
+- **On the server**, whoever runs it saves an address of the server that
+  this machine reaches as the stack's `S3_PUBLIC_ENDPOINT` (in the
+  quickstart's `~/.fleetml.env`, so every later compose command keeps it) and
+  restarts the server with it, in the stack's clone:
+
+  ```bash
+  . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<server address>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+  source ~/.fleetml.env
+  docker compose -f deploy/docker-compose.prod.yml up -d
+  ```
+
+  On the server's machine, this shows the value in use:
+
+  ```bash
+  docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
+  ```
+
+- **On this machine**, when the server stays as it is: `download_host_override`
+  in the agent's config sends every download, full model or delta, to an
+  address of the server's object store that this machine reaches, with the
+  URL's path and signature unchanged (the request keeps the original host in
+  its `Host` header, which the signature covers). The example config ships it
+  commented out; together with the two settings every machine needs:
+
+  ```bash
+  sudo sed -i -e 's|^server: .*|server: <server address>:19090|' \
+    -e 's|^enrollment_key: .*|enrollment_key: "<enrollment key>"|' \
+    -e 's|^# download_host_override: .*|download_host_override: "<server address>:19100"|' \
+    /etc/fleetml-agent/config.yaml
+  ```
+
+  At start the agent then logs
+  `level=INFO msg="model downloads go to download_host_override" host=<server address>:19100`,
+  and the next heartbeat's download succeeds.
+
+**The symptom** of an unreachable download address: the agent registers and
+heartbeats normally, and the server reports the deployment `COMPLETE`, which
+means assigned, not delivered. Only the agent's log shows the failure, on
+every heartbeat:
+
+```text
+level=WARN msg="download failed" model=iris version=1.0.0 error="downloading: Get \"http://localhost:19100/fleetml-models/models/<project>/iris/1.0.0/INT8_TFLITE.bin\": dial tcp [::1]:19100: connect: connection refused"
+```
+
+**From the CLI**, `fleetml deploy get <deployment ID> | jq -c .devices`
+counts the devices that report the model loaded (`{"loaded":0,"targeted":1}`
+while downloads fail), and `fleetml device get <device ID> | jq .last_model_event`
+shows the agent's `MODEL_LOAD_FAILED` with the error once the agent's next
+telemetry flush has sent it (30 seconds by default). `loaded` counts the
+devices whose last heartbeat reported the version, so it turns to 1 one
+heartbeat (60 seconds by default) after the agent logs `model active`; it is
+counted each time you ask, so a deployment that a newer one replaced counts
+down to 0 as its devices move on.
+
+A server in production sits behind a TLS proxy with a real host name: then
+`tls: true`, `server: <host name>:443` (or the proxy's gRPC port) and an
+`S3_PUBLIC_ENDPOINT` on the proxy too, and no override
+([CONFIG.md](CONFIG.md#docker-compose) has the compose settings).
+
+On Windows, the agent can run in the same WSL 2 Ubuntu as the quickstart's
+stack, where `server: localhost:19090` and the stack's default
+`S3_PUBLIC_ENDPOINT` should work as they are, since Docker Desktop publishes
+19090 and 19100 there too; current Ubuntu images for WSL run systemd, and
+without it `install.sh` takes the [no-systemd path](LINUX_AGENT.md#without-systemd-and-in-containers).
+None of this is verified on Windows by CI, which runs Docker Engine inside
+the distribution rather than Docker Desktop.
+
 ## Kubernetes instead of compose
 
 On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
