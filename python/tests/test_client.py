@@ -622,13 +622,13 @@ def test_list_arguments_are_keyword_only() -> None:
     whole server; ``project``, ``limit`` and ``offset`` are keyword-only."""
     fm = FleetML(SERVER, api_key="k", transport=httpx.MockTransport(lambda r: httpx.Response(500)))
     calls: List[Callable[[], Any]] = [
-        lambda: fm.deployments.list("p1"),  # type: ignore[call-arg]
-        lambda: fm.experiments.list("p1"),  # type: ignore[call-arg]
-        lambda: fm.devices.list(None, "p1"),  # type: ignore[call-arg]
-        lambda: fm.projects.list(10),  # type: ignore[call-arg]
-        lambda: fm.models.list("p1", 10),  # type: ignore[call-arg]
-        lambda: fm.versions.list("m1", 10),  # type: ignore[call-arg]
-        lambda: fm.telemetry.events("v1", None, None, 10),  # type: ignore[call-arg]
+        lambda: fm.deployments.list("p1"),  # type: ignore[call-arg, misc, unused-ignore]
+        lambda: fm.experiments.list("p1"),  # type: ignore[call-arg, misc, unused-ignore]
+        lambda: fm.devices.list(None, "p1"),  # type: ignore[call-arg, misc, unused-ignore]
+        lambda: fm.projects.list(10),  # type: ignore[call-arg, misc, unused-ignore]
+        lambda: fm.models.list("p1", 10),  # type: ignore[call-arg, misc, unused-ignore]
+        lambda: fm.versions.list("m1", 10),  # type: ignore[call-arg, misc, unused-ignore]
+        lambda: fm.telemetry.events("v1", None, None, 10),  # type: ignore[call-arg, misc, unused-ignore]
     ]
     for call in calls:
         with pytest.raises(TypeError, match="positional argument"):
