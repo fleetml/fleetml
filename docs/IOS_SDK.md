@@ -89,8 +89,8 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
 5. **Put the simulator on it.** This builds the sample app, starts an iPhone
    simulator, installs the app and launches it with the enrollment key in
-   its environment, then waits until the model is active (a few minutes the
-   first time, for the build):
+   its environment, then waits until the SDK logs the model active (a few
+   minutes the first time, for the build):
 
    <!-- golden: ios-simulator device -->
    ```bash
@@ -99,11 +99,11 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath ios/SampleApp/build build
    xcrun simctl boot $SIM 2>/dev/null; open -a Simulator
    xcrun simctl install $SIM ios/SampleApp/build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
-   SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun simctl launch --terminate-running-process --stdout="$PWD/sample.log" $SIM com.fleetml.sample
-   for i in $(seq 60); do grep 'Model ready' sample.log && break; sleep 2; done
+   SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun simctl launch --terminate-running-process $SIM com.fleetml.sample
+   for i in $(seq 60); do xcrun simctl spawn $SIM log show --last 2m --info --style compact --predicate 'subsystem == "com.fleetml.sdk"' 2>/dev/null | grep 'is active' && break; sleep 2; done
    ```
 
-   You should see `FleetMLSample: Model ready: iris 1.0.0`, and the app's
+   You should see `[com.fleetml.sdk:FleetML] Model iris 1.0.0 is active`, and the app's
    screen **Active model: iris 1.0.0**. Tap **Classify sample flower** to
    run it.
 
@@ -136,15 +136,15 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    line again. The phone's screen then shows **Active model: iris 1.0.0**.
 
 7. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it):
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
    printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
    ```
 
-   Open <http://localhost> and paste the key into the login box. You should see the
-   Overview page; **Devices** lists the simulator (and the iPhone), and **Deployments** one
+   You should see the Overview page; **Devices** lists the simulator (and the iPhone), and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 8. **Clean up**: the app on the simulator and the phone, the build, the
@@ -154,7 +154,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    ```bash
    xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM
    [ -z "${PHONE:-}" ] || xcrun devicectl device uninstall app --device $PHONE com.fleetml.sample
-   rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj sample.log
+   rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
    rm -f ~/.fleetml.env
    ```
