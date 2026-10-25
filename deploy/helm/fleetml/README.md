@@ -24,22 +24,23 @@ terminal and keep it open until the end. Before you start: Docker, `kind`,
 Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
 [README's Get started](../../../README.md#get-started)).
 
-1. **Check the tools:**
+1. **Check the tools**, with this terminal's `kubectl` and `helm` pointed at
+   a kubeconfig file of their own, so your other clusters and contexts stay
+   as they are:
 
    <!-- golden: helm-tools -->
    ```bash
+   export KUBECONFIG=$HOME/.kube/fleetml-kind.yaml
    kind version && helm version --short && kubectl version --client && jq --version && fleetml version
    ```
 
    You should see `kind v` and `✓ fleetml v`.
 
-2. **A cluster**, with its own kubeconfig file, so your other clusters and
-   contexts stay as they are:
+2. **A cluster**, written into that file:
 
    <!-- golden: helm-cluster -->
    ```bash
    git clone https://github.com/fleetml/fleetml.git && cd fleetml
-   export KUBECONFIG=$HOME/.kube/fleetml-kind.yaml
    kind create cluster --name fleetml
    ```
 
