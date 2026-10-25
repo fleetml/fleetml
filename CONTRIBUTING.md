@@ -18,7 +18,7 @@ expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 | iOS SDK | Xcode 16 or later |
 
 ```bash
-make dev            # creates .env, starts the dev stack, runs the server on :18080 / :19090
+make dev            # creates .env, starts the dev stack, runs the server on its REST and gRPC ports
 cd dashboard && npm ci && npm run dev   # dashboard on :5173
 ```
 

@@ -163,8 +163,8 @@ the latest release.
 
 If the Release workflow failed, or to attach binaries to a release made before
 it existed, run it by hand: **Actions → Release → Run workflow** on `main`,
-with the tag (`v0.1.0`). It builds that tag's source and replaces the assets
-(`gh release upload --clobber`); the notes stay as they are. v0.4.0 was
+with the tag (`v0.1.0`). It builds that tag's source and replaces the
+release's assets; the notes stay as they are. v0.4.0 was
 released before the workflow existed: run it once by hand with `v0.4.0` to
 back-fill its binaries (they report 0.4.0, the version in that tag's source).
 

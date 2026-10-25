@@ -96,15 +96,15 @@ zsh, on macOS or Linux) and keep it open until the end.
    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it):
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
    printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
    ```
 
-   Open <http://localhost> and paste the key into the login box. You should see the
-   Overview page; **Devices** lists one device, and **Deployments** one
+   You should see the Overview page; **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the device, the server and all its data, the virtual
@@ -143,14 +143,17 @@ unit tests on `windows-latest`, and its live test on Linux.
 from fleetml import FleetML
 
 fm = FleetML()                                         # FLEETML_SERVER and FLEETML_API_KEY
-fm = FleetML("http://localhost:18080", api_key="...")  # or explicitly
+fm = FleetML("<server URL>", api_key="...")             # or explicitly
 ```
 
-The server defaults to `FLEETML_SERVER`, then `http://localhost:18080`; the
-API key (an admin key, as for the CLI) to `FLEETML_API_KEY`. With the
-quickstart's server, the admin key is `FLEETML_ADMIN_KEY` in
-`~/.fleetml.env` ([Run FleetML](QUICKSTART.md#run-fleetml)):
-`source ~/.fleetml.env && export FLEETML_API_KEY=$FLEETML_ADMIN_KEY`. `FleetML` is a
+The server defaults to `FLEETML_SERVER`, then `http://localhost` on the
+quickstart's default REST port; the API key (an admin key, as for the CLI)
+to `FLEETML_API_KEY`. With the quickstart's server, both come from
+`~/.fleetml.env` ([the settings file](ADVANCED.md#the-settings-file-fleetmlenv)),
+the saved REST port included:
+`source ~/.fleetml.env && export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY`.
+The simulator line the tour prints takes `--grpc localhost:${FLEETML_GRPC_PORT:-19090}`
+on a stack whose gRPC port was moved. `FleetML` is a
 context manager (`with FleetML() as fm:`), or call `fm.close()`.
 
 ## The tour in Python

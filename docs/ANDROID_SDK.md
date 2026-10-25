@@ -100,7 +100,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    export ANDROID_SERIAL=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
    adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
    adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost)
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090})
    adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity
    adb logcat -s FleetML:I -e 'is active' -m 1
    ```
@@ -110,15 +110,15 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    run it.
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it):
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
    printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
    ```
 
-   Open <http://localhost> and paste the key into the login box. You should see the
-   Overview page; **Devices** lists one device, and **Deployments** one
+   You should see the Overview page; **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the app, the forwards, the server and all its data, and
@@ -291,7 +291,9 @@ dependencies {
 
 The manifest names the application class and a launcher activity, with an
 AppCompat theme (an `AppCompatActivity` under any other theme stops at launch
-with `You need to use a Theme.AppCompat theme`):
+with `You need to use a Theme.AppCompat theme`), and the SDK's backup rules,
+which keep its encrypted registration out of backups
+([Enrollment and identity](#enrollment-and-identity)):
 
 ```xml
 <!-- app/src/main/AndroidManifest.xml -->
@@ -299,7 +301,9 @@ with `You need to use a Theme.AppCompat theme`):
     <application
         android:name=".MyApp"
         android:label="MyApp"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+        android:fullBackupContent="@xml/fleetml_backup_rules"
+        android:dataExtractionRules="@xml/fleetml_data_extraction_rules">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -345,7 +349,7 @@ on Linux, `sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk` on Windows
 and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
 with `package com.example.myapp` on top; for a server on your machine, the
 two debug files of [On your phone](#on-your-phone). With `JAVA_HOME` at a
-JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
+JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=localhost`
 installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$EK`).
 After a deployment to `app=myapp` the screen reads `Server reached: true`
 and `Model: 1.0.0`.
@@ -371,9 +375,10 @@ android {
     buildTypes {
         debug {
             // A server on your machine: localhost for a phone over USB, 10.0.2.2 for the emulator,
-            // the machine's LAN address for a phone over Wi-Fi.
+            // the machine's LAN address for a phone over Wi-Fi; the port is the
+            // stack's gRPC port (-PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}).
             buildConfigField("String", "FLEETML_HOST", "\"${project.findProperty("fleetmlDebugHost") ?: "localhost"}\"")
-            buildConfigField("int", "FLEETML_PORT", "19090")
+            buildConfigField("int", "FLEETML_PORT", "${project.findProperty("fleetmlDebugPort") ?: "19090"}")
             buildConfigField("boolean", "FLEETML_TLS", "false")
         }
     }
@@ -381,9 +386,13 @@ android {
 ```
 
 Without `buildFeatures { buildConfig = true }`, an AGP 8 project stops with
-`Unresolved reference: BuildConfig`. The build gets the values on the command
-line, `./gradlew :app:installDebug -PfleetmlEnrollmentKey=<enrollment key>`,
-or from `~/.gradle/gradle.properties`, outside the project
+`Unresolved reference: BuildConfig`. The build gets the values as Gradle
+properties: the enrollment key from the environment,
+`ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug`
+(Gradle reads `ORG_GRADLE_PROJECT_<name>` as the property `<name>`, and the
+key stays off the command line, where `-PfleetmlEnrollmentKey=` would show it
+to anyone who lists processes), the host as `-PfleetmlDebugHost=...`, or both
+from `~/.gradle/gradle.properties`, outside the project
 (`fleetmlEnrollmentKey=...`, `fleetmlHost=...`). The enrollment key comes from
 `fleetml enrollment-key create --project <project ID>`, which prints it once
 ([Publish and deploy](#publish-and-deploy-with-the-cli)). The SDK's classes are
@@ -506,7 +515,7 @@ the labels the app sets (`app=myapp` above). It needs the `fleetml` CLI
 
 The two models are the sample's, from the root of a clone; push your own
 `.tflite` files instead. With the quickstart's server, `FLEETML_SERVER` is
-`http://localhost:18080` and the key `$FLEETML_ADMIN_KEY` after
+`http://localhost:${FLEETML_REST_PORT:-18080}` and the key `$FLEETML_ADMIN_KEY` after
 `source ~/.fleetml.env`:
 
 ```bash
@@ -552,7 +561,7 @@ versions freeze the process outright.
 
 A phone reaches a server on your machine over USB, as `localhost` through
 `adb` port forwards, or over Wi-Fi at the machine's LAN address. Both talk
-plain HTTP to it (gRPC on 19090, model downloads on 19100), which Android
+plain HTTP to it (gRPC, and model downloads on the object store's port), which Android
 blocks by default, so debug builds get a network security config that allows
 it to those addresses only; release builds keep Android's default
 ([Production checklist](#production-checklist)). The server is the one from the
@@ -602,23 +611,26 @@ maintainers run it by hand.
    machine as `localhost` (again after each reconnect of the cable):
 
    ```bash
-   adb reverse tcp:18080 tcp:18080
-   adb reverse tcp:19090 tcp:19090
-   adb reverse tcp:19100 tcp:19100
+   . ~/.fleetml.env
+   adb reverse tcp:${FLEETML_REST_PORT:-18080} tcp:${FLEETML_REST_PORT:-18080}
+   adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
+   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
    ```
 
-   19100 matters as much as 19090: the server hands out model downloads as
-   presigned URLs for its `S3_PUBLIC_ENDPOINT`, `localhost:19100` in the
-   quickstart, so without that forward the phone registers and then fails
-   every download ([CONFIG.md](CONFIG.md#network-and-storage)). On the dev
-   stack (`make dev`), forward 19000 instead of 19100, and on a stack started
-   with `FLEETML_S3_PUBLIC_PORT`, that port. If the server's
+   The model files' port matters as much as the gRPC port: the server hands
+   out model downloads as presigned URLs for its `S3_PUBLIC_ENDPOINT`,
+   `localhost` on that port in the quickstart, so without that forward the
+   phone registers and then fails every download
+   ([CONFIG.md](CONFIG.md#network-and-storage)). The lines read the saved
+   ports, so a stack started with other ports needs no change. On the dev
+   stack (`make dev`), forward 19000, its object store, instead of the
+   model files' port. If the server's
    `S3_PUBLIC_ENDPOINT` is your LAN address (after [Over Wi-Fi](#over-wi-fi)),
    downloads go there instead, also over USB: the phone must be on that
    network and the debug network security config must allow the address, or
    every download fails with `CLEARTEXT communication to <LAN IP> not permitted`;
-   or set it back to `localhost:19100` in `~/.fleetml.env` and restart the
-   server. This shows the value in use:
+   or set it back to `localhost` and the model files' port in
+   `~/.fleetml.env` and restart the server. This shows the value in use:
 
    ```bash
    docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
@@ -629,7 +641,7 @@ maintainers run it by hand.
    (`$EK`), and start the app:
 
    ```bash
-   ./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK
+   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
    adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
    ```
 
@@ -662,8 +674,8 @@ At warning level or above it logs why registration, a heartbeat or a
 download failed, one line each, such as an unreachable host or a refused
 enrollment key; the stack trace of each failure follows at debug level, which
 `adb logcat FleetML:I *:S` leaves out (`FleetML:D` shows them, with the
-debug-level lines such as `Telemetry flushed`). A missing 19100 forward shows as
-`Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:19100`
+debug-level lines such as `Telemetry flushed`). A missing forward of the model files' port shows as
+`Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:<model files port>`
 on every heartbeat.
 
 After fixing something (a port forward, a key, a deployment), the app does
@@ -761,8 +773,8 @@ back.
 ## Production checklist
 
 - **TLS.** FleetML does not terminate TLS: put a proxy in front that does,
-  for gRPC (19090; gRPC needs HTTP/2 end to end) and for the object store's
-  downloads (19100, or your S3 endpoint), see the
+  for gRPC (the gRPC port; gRPC needs HTTP/2 end to end) and for the object
+  store's downloads (the model files' port, or your S3 endpoint), see the
   [trust boundaries](ARCHITECTURE.md#trust-boundaries) and, on Kubernetes, the
   [Helm chart](../deploy/helm/fleetml/README.md). The app then uses
   `serverPort = 443` and `useTls = true`, the release values in
@@ -771,6 +783,12 @@ back.
   address phones reach from the public internet, since every download URL is
   signed for it ([CONFIG.md](CONFIG.md#network-and-storage)); with an object
   store behind the same proxy, its public host name on 443.
+- **Backups.** Point the app at the SDK's backup rules, as the
+  [skeleton's manifest](#a-new-project-from-the-command-line) does, or add
+  the SDK's exclude line to the app's own rules
+  ([Enrollment and identity](#enrollment-and-identity)): a restored copy of
+  the encrypted registration cannot be read on the new phone, which makes
+  the SDK register again.
 - **Release builds** carry no network security config: the cleartext config
   lives in `src/debug` only, so a release build keeps Android's default and
   talks TLS only.
@@ -793,21 +811,21 @@ back.
 ## Emulator
 
 The emulator reaches the machine it runs on as `10.0.2.2`, so the debug build
-gets that host: `-PfleetmlDebugHost=10.0.2.2`. That covers gRPC on 19090.
+gets that host: `-PfleetmlDebugHost=10.0.2.2`. That covers gRPC.
 Model files are another matter: the server hands each one out as a URL for
-`localhost:19100` (the quickstart's `S3_PUBLIC_ENDPOINT`), and `localhost`
+`localhost` on the model files' port (the quickstart's `S3_PUBLIC_ENDPOINT`), and `localhost`
 inside the emulator is the emulator itself. Forward that one port once per
 emulator start, before the app's first download, with `ANDROID_SERIAL` set to
 the emulator (the name `adb devices` lists) when a phone is attached too:
 
 ```bash
 export ANDROID_SERIAL=emulator-5554
-adb reverse tcp:19100 tcp:19100
-./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=10.0.2.2
+adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
+ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2
 ```
 
 Without the forward the app registers and then logs
-`Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:19100`
+`Download of <variant ID> interrupted at 0 bytes: Failed to connect to localhost/127.0.0.1:<model files port>`
 on every heartbeat. With the server's `S3_PUBLIC_ENDPOINT` on your LAN address
 ([Over Wi-Fi](#over-wi-fi)), downloads go there instead, and the emulator's
 debug network security config must allow that address too
@@ -824,7 +842,8 @@ the server from the [quickstart](QUICKSTART.md#run-fleetml) (the production
 compose stack, with the admin key in `$FLEETML_ADMIN_KEY`) and the `fleetml`
 CLI. It runs from the root of a clone, since the sample app and models are in
 the repository. Contributors on the dev stack (`make dev`) use the key from
-`.env` and port 19000 instead of 19100.
+`.env` and the dev stack's object store port, 19000, instead of the model
+files' port.
 
 1. Start the server with the quickstart's "Run FleetML" block (or
    `source ~/.fleetml.env` in a new shell).
@@ -834,17 +853,17 @@ the repository. Contributors on the dev stack (`make dev`) use the key from
 
    ```bash
    export ANDROID_SERIAL=emulator-5554
-   adb reverse tcp:19100 tcp:19100
+   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
    ```
 
-   The sample app connects to `10.0.2.2:19090` by default.
+   The sample app connects to `10.0.2.2` on the gRPC port by default.
 
 3. Publish the sample models, create an enrollment key and deploy 1.0.0 to the
    sample app's label (`app=sample`), as in [Publish and
    deploy](#publish-and-deploy-with-the-cli) with these names:
 
    ```bash
-   export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
    P=$(fleetml project create --name android-demo -o json | jq -r .id)
    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
    fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
@@ -856,8 +875,9 @@ the repository. Contributors on the dev stack (`make dev`) use the key from
    fleetml deploy start $D
    ```
 
-4. Build and install the sample app with the key prefilled (or type it on the
-   config screen), open it and tap **Save and connect**. A fresh clone has no
+4. Build and install the sample app with the key (it connects by itself on
+   its first start; or type the settings on its config screen and tap
+   **Save and connect**), and open it. A fresh clone has no
    `android/local.properties`, so Gradle on the command line finds the Android
    SDK through `ANDROID_HOME` (`$HOME/Library/Android/sdk` on macOS,
    `$HOME/Android/Sdk` on Linux, where Android Studio puts it), and it needs JDK
@@ -867,13 +887,14 @@ the repository. Contributors on the dev stack (`make dev`) use the key from
    ```bash
    export ANDROID_HOME=$HOME/Library/Android/sdk JAVA_HOME=/opt/homebrew/opt/openjdk@17
    cd android
-   ./gradlew :sample-app:installDebug -PfleetmlEnrollmentKey=$EK
+   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
    adb shell am start -n com.fleetml.sample/.MainActivity
    ```
 
-   On an emulator where the sample app ran before, its saved settings win
-   over the prefilled key: check the key on the screen, or
-   `adb shell pm clear com.fleetml.sample` first.
+   A build with a key it has not used before connects with that key, also
+   where the sample app ran before; a reinstall of the same build keeps
+   what its config screen saved, and `adb shell pm clear com.fleetml.sample`
+   starts it from nothing.
 
    The app registers, downloads iris 1.0.0, validates it and shows
    **Active model: iris 1.0.0**; logcat shows the lines in [Over
@@ -942,7 +963,7 @@ the stack's `~/.fleetml.env` in Ubuntu, and `deploy create` without
 ```powershell
 git clone https://github.com/fleetml/fleetml.git $HOME\fleetml
 cd $HOME\fleetml
-$env:FLEETML_SERVER = 'http://localhost:18080'
+$env:FLEETML_SERVER = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf http://localhost:%s ${FLEETML_REST_PORT:-18080}'
 $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
 $P = (fleetml project create --name "android-windows-$(Get-Date -Format yyyyMMdd-HHmmss)" -o json | ConvertFrom-Json).id
 fleetml push models\iris\iris_v1.tflite --project $P --model iris --version 1.0.0
@@ -966,11 +987,13 @@ $env:JAVA_HOME = (Get-ChildItem "$env:ProgramFiles\Eclipse Adoptium" -Directory 
 $env:Path += ";$env:ANDROID_HOME\platform-tools"
 adb devices
 $env:ANDROID_SERIAL = '<the phone''s serial>'
-adb reverse tcp:18080 tcp:18080
-adb reverse tcp:19090 tcp:19090
-adb reverse tcp:19100 tcp:19100
+$rest, $grpc, $s3 = (wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && echo ${FLEETML_REST_PORT:-18080} ${FLEETML_GRPC_PORT:-19090} ${FLEETML_S3_PUBLIC_PORT:-19100}').Split(' ')
+adb reverse tcp:$rest tcp:$rest
+adb reverse tcp:$grpc tcp:$grpc
+adb reverse tcp:$s3 tcp:$s3
 cd android
-.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=localhost"
+$env:ORG_GRADLE_PROJECT_fleetmlEnrollmentKey = $EK
+.\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=localhost" "-PfleetmlDebugPort=$grpc"
 adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
 adb logcat -s FleetML
 ```
@@ -980,24 +1003,32 @@ second run of the block makes a new project instead of stopping with
 `project already exists` and an empty `$P`. `java -version` prints
 `openjdk version "17.0...` (Temurin). The `-P`
 arguments are in quotes because PowerShell splits an unquoted
-`-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`.
-The reverses reach the ports Docker Desktop publishes on Windows. If you
-moved the model files' port with `FLEETML_S3_PUBLIC_PORT` (for example out of
-a reserved range, [On Windows](QUICKSTART.md#on-windows)), use your port in
-place of 19100 here, in the firewall rule below and on the emulator; the
-`sed` line below reads it from `~/.fleetml.env`. The app's
-config screen shows host `localhost`, port `19090` and the key; tap
-**Save and connect**. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
+`-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`,
+and does not expand a `$variable` in an unquoted `-P` argument either. The
+enrollment key goes to Gradle as `$env:ORG_GRADLE_PROJECT_fleetmlEnrollmentKey`,
+which Gradle reads as the property and which keeps it off the build's
+command line, where Task Manager and `Get-CimInstance Win32_Process` show
+it to every process of the user. The `$rest, $grpc, $s3` line reads the
+stack's three ports from the Ubuntu shell's `~/.fleetml.env`, so a port
+moved out of a reserved range ([On Windows](QUICKSTART.md#on-windows),
+[Other ports](ADVANCED.md#other-ports)) needs no change here, in the
+firewall rule below or on the emulator. The reverses reach the ports Docker
+Desktop publishes on Windows. The app connects by itself on its first
+start (a build with a key does), with host `localhost`, the gRPC port and
+the key on its config screen. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
 which is the emulator's address for the machine and does not work on a
 phone.) Logcat then shows the lines of [Over USB](#over-usb), among them
 `Registered as device <device ID>`, `Model iris 1.0.0 passed validation`
 and `Model iris 1.0.0 is active`, and the app's screen `Model ready: iris 1.0.0`.
 `adb logcat` runs until Ctrl+C: stop it (or open a second window) before
 the next steps.
-A phone that ran the sample app before keeps its saved host and key, which
-win over the build's: `adb shell pm clear com.fleetml.sample` resets them
-(it deletes the app's data), and a stale key shows as
-`Registration failed: UNAUTHENTICATED: unauthenticated: invalid or revoked enrollment key`.
+A rebuild with another key connects with it, also on a phone where the
+sample app ran before; a reinstall of the same build keeps what its config
+screen saved. `adb shell pm clear com.fleetml.sample` resets the app (it
+deletes the app's data). A stale key shows as
+`Registration failed: UNAUTHENTICATED: unauthenticated: invalid or revoked enrollment key`,
+and a stale host as
+`Registration failed: UNAVAILABLE: connect failed: ECONNREFUSED (Connection refused)`.
 
 **Over Wi-Fi**, the phone and the Windows machine on the same network:
 
@@ -1016,10 +1047,12 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
    Network and internet, Wi-Fi, the network, Private network; or
    `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`;
    `Get-NetConnectionProfile` lists the interface aliases, if yours is not
-   `Wi-Fi`) and let TCP 19090 and 19100 in on private networks only:
+   `Wi-Fi`) and let the gRPC and model files' ports in on private networks
+   only, read from the Ubuntu shell's `~/.fleetml.env`:
 
    ```powershell
-   New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow -Profile Private
+   $grpc, $s3 = (wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && echo ${FLEETML_GRPC_PORT:-19090} ${FLEETML_S3_PUBLIC_PORT:-19100}').Split(' ')
+   New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort $grpc,$s3 -Action Allow -Profile Private
    ```
 
    `Remove-NetFirewallRule -DisplayName FleetML` removes it when you are
@@ -1034,20 +1067,20 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
    ```powershell
    adb reverse --remove-all
    adb shell pm clear com.fleetml.sample
-   .\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=<LAN IP>"
+   .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=<LAN IP>" "-PfleetmlDebugPort=$grpc"
    adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
    ```
 
-   Tap **Save and connect**; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`
+   The app connects by itself; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`
    on the LAN address, downloads go there also over USB and on the emulator,
    so those need `-PfleetmlDebugHost=<LAN IP>` too (and the host typed on
    the screen: `localhost` over USB, `10.0.2.2` on the emulator), or the
-   endpoint back to `localhost:19100` in `~/.fleetml.env`.
+   endpoint back to `localhost` and the model files' port in `~/.fleetml.env`.
 
 **On the emulator**: the same PowerShell lines with
-`$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:19100 tcp:19100`
-(the emulator reaches the machine's 19090 at `10.0.2.2` by itself), and
-`.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK"`
+`$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:$s3 tcp:$s3`
+(the emulator reaches the machine's gRPC port at `10.0.2.2` by itself), and
+`.\gradlew.bat :sample-app:installDebug "-PfleetmlDebugPort=$grpc"`
 without `-PfleetmlDebugHost`; the screen then shows `10.0.2.2`. Android Studio
 instead of PowerShell: [ADVANCED.md](ADVANCED.md#android-on-windows-android-studio).
 
@@ -1110,8 +1143,11 @@ After that the SDK:
   `android:dataExtractionRules="@xml/fleetml_data_extraction_rules"` on
   `<application>`), or, if your app has its own rules files (Android Studio's
   template creates two), add the SDK's
-  `<exclude domain="sharedpref" path="fleetml_credentials.xml" />` lines to
-  them. The SDK does not set these attributes itself: a library that did
+  `<exclude domain="sharedpref" path="fleetml_credentials.xml" />` line to
+  them: in `fullBackupContent`'s file inside `<full-backup-content>`, and in
+  `dataExtractionRules`'s file inside both `<cloud-backup>` and
+  `<device-transfer>`, as the SDK's own `fleetml_data_extraction_rules.xml`
+  has it. The SDK does not set these attributes itself: a library that did
   would break the build of every app with its own rules.
 
 ## Models: download, verify, validate, activate
@@ -1214,7 +1250,7 @@ through the REST API that the server stored the event. With the dev stack
 FLEETML_API_KEY=$(grep '^FLEETML_ADMIN_KEY=' .env | cut -d= -f2) ./scripts/android-e2e.sh
 ```
 
-The script forwards ports 19000 and 19100, so it runs against the quickstart's
+The script forwards the dev stack's object store port and the quickstart's model files' port, so it runs against the quickstart's
 server too (`FLEETML_API_KEY=$FLEETML_ADMIN_KEY`). It needs `ANDROID_HOME` (or
 `local.properties`) as in the runbook's step 4, and runs Gradle with JDK 17
 whatever `JAVA_HOME` says: from `JAVA_HOME_17` if it is set, otherwise from
@@ -1285,7 +1321,8 @@ unmetered instead).
 ![Sample app](screenshots/android-sample.png)
 
 `android/sample-app` is the reference integration: a config screen (host, port,
-enrollment key), the SDK owned by the `Application`, a bundled Iris TFLite
+enrollment key; the key shows in clear there, so crop it out of screenshots
+you share), the SDK owned by the `Application`, a bundled Iris TFLite
 model (`models/iris`, Apache-2.0) used until the server assigns one, and
 inference telemetry. Cleartext traffic is allowed only in debug builds and only
 to `10.0.2.2`, `localhost`, `127.0.0.1` and the address given as

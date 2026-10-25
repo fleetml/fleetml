@@ -231,10 +231,10 @@ The phone and the machine that runs the server must be on the same network.
 5. Build with the address as the debug host:
 
    ```bash
-   ./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=<LAN IP>
+   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=<LAN IP> -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
    ```
 
-   For the sample app, `./gradlew :sample-app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=<LAN IP>`
+   For the sample app, `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :sample-app:installDebug -PfleetmlDebugHost=<LAN IP> -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}`
    in the clone's `android` folder: its config screen then shows the
    address.
 
@@ -261,8 +261,13 @@ machine:
 
 | | Port | Set by | Where |
 |---|---|---|---|
-| Registration and heartbeats (gRPC) | 19090 | you | `server: <server address>:19090` in the agent's config |
-| Model downloads (presigned URLs) | 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
+| Registration and heartbeats (gRPC) | the gRPC port: 19090, or the stack's `FLEETML_GRPC_PORT` | you | `server: <server address>:<gRPC port>` in the agent's config |
+| Model downloads (presigned URLs) | the model files' port: 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
+
+The agent's machine has no `~/.fleetml.env` to read them from: ask whoever
+runs the server which ports the stack uses (`grep -o 'FLEETML_[A-Z_]*PORT=[0-9]*' ~/.fleetml.env`
+on the server's machine prints them), and put them in place of `<gRPC port>`
+and `<model files port>` below.
 
 The server hands out each model as a download URL for its object store's
 public address, `S3_PUBLIC_ENDPOINT`. In the quickstart's compose stack that
@@ -294,15 +299,22 @@ two ways out:
   commented out; together with the two settings every machine needs:
 
   ```bash
-  sudo sed -i -e 's|^server: .*|server: <server address>:19090|' \
-    -e 's|^enrollment_key: .*|enrollment_key: "<enrollment key>"|' \
-    -e 's|^# download_host_override: .*|download_host_override: "<server address>:19100"|' \
-    /etc/fleetml-agent/config.yaml
+  sudo sed -i -e 's|^server: .*|server: <server address>:<gRPC port>|' \
+    -e 's|^# download_host_override: .*|download_host_override: "<server address>:<model files port>"|' \
+    -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
+  read -rs EK
+  printf 'enrollment_key: "%s"\n' "$EK" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
   ```
 
-  At start the agent then logs
-  `level=INFO msg="model downloads go to download_host_override" host=<server address>:19100`,
-  and the next heartbeat's download succeeds.
+  `read -rs` waits for the enrollment key (paste it and press Enter; it is
+  not shown), and `printf`, a shell builtin, hands it to `tee` on its input,
+  so the key is on no command line and in no shell history. At start the
+  agent then logs
+  `level=INFO msg="model downloads go to download_host_override" host=<server address>:<model files port>`,
+  and the next heartbeat's download succeeds. With the override set, the URL
+  in a `download failed` line shows the override's host and port, so a
+  `connection refused` there means a wrong override port, not a wrong
+  `S3_PUBLIC_ENDPOINT`.
 
 **The symptom** of an unreachable download address: the agent registers and
 heartbeats normally, and the server reports the deployment `COMPLETE`, which
@@ -350,6 +362,32 @@ version IDs, the enrollment key) to that file, next to a compose stack's
 secrets if one runs on the same machine: they change nothing on that stack,
 and the compose [Clean up](QUICKSTART.md#clean-up) removes them with the
 file.
+
+## Helm chart variants
+
+The [chart README](../deploy/helm/fleetml/README.md)'s Get started installs
+the chart with a secrets file, its bundled services and local ports 38080,
+39090 and 39100 for REST, gRPC and the object store. The variants:
+
+**A Secret of your own instead of the file.** A Secret of your own with the keys `JWT_SECRET`,
+`SIGNING_MASTER_KEY`, `FLEETML_ADMIN_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+and `POSTGRES_PASSWORD` works the same way: `--set secrets.existingSecret=<name>`,
+except that a change to your Secret rolls nothing: after one, run
+`kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
+
+**Other local ports.** If something on this machine already listens on one
+of the three ports (`lsof -nP -iTCP:<port> -sTCP:LISTEN` prints it), change
+it in step 4's first line (`REST=... GRPC=... S3=...`) before the install,
+and every later line follows. Check with `lsof` rather than waiting for an
+error: kubectl reports `address already in use` only against another
+kubectl, and on macOS a port-forward on a port that Docker Desktop
+publishes starts without a word and takes `localhost` from the container.
+
+**External services and TLS**: the chart README's
+[Production](../deploy/helm/fleetml/README.md#production).
+
+**Images that are not released yet**: the end of the chart README's
+[Values](../deploy/helm/fleetml/README.md#values).
 
 ## Upgrading
 

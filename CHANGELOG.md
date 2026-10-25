@@ -20,8 +20,9 @@ change. Two refused requests answer differently (under Changed), and
   or a negative `offset` answers `400 VALIDATION_ERROR` naming the range,
   for example `limit must be between 1 and 100, got 500`, instead of being
   clamped without a word (`GET /devices` had no cap at all). A client that
-  asked for more than 100 pages with `offset`; the CLI, the dashboard and
-  the Python client's own calls already do (review 6).
+  asked for more than 100 must page with `offset`, as the CLI and the
+  dashboard already do (review 6; the Python client's `push` pages since
+  0.10.0).
 - `DEPENDENCY_TIMEOUT` is the total time start-up waits for Postgres, the
   object store and NATS together, not the time for each; the Helm chart's
   `180s` and the compose default `60s` stay. Meanwhile `/livez` answers 200

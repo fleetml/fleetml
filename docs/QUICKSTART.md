@@ -90,15 +90,15 @@ and keep it open until the end.
    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it):
+   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
+   key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
    printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
    ```
 
-   Open <http://localhost> and paste the key into the login box. You should see the
-   Overview page; **Devices** lists one device, and **Deployments** one
+   You should see the Overview page; **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**, when you are done (after the [tour](#tour), if you take it:
@@ -213,8 +213,8 @@ which CI does not exercise.
 
 Docker Desktop publishes the containers' ports on Windows too, so the
 dashboard opens in a Windows browser at http://localhost, and PowerShell
-reaches the REST API at `localhost:18080` (for example
-`Invoke-RestMethod http://localhost:18080/readyz`). The tour below runs only
+reaches the REST API on `localhost` too (for example
+`Invoke-RestMethod "$env:FLEETML_SERVER/readyz"` after step 5). The tour below runs only
 in the Ubuntu shell, since its blocks are bash and use `jq`; single CLI
 commands, such as `fleetml project list` or a push, work from PowerShell too
 with the CLI from [Get the CLI](#get-the-cli).
@@ -313,14 +313,14 @@ program, also when it is started from a terminal. The CLI keeps its settings in 
 ([CONFIG.md](CONFIG.md#cli)).
 
 `fleetml version` prints the release, for example `✓ fleetml v0.9.1`. In PowerShell,
-point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
+point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
 `fleetml config set-key <the admin key>`, which saves the key in
 `%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
 prints the same projects as in WSL (`No results.` before the tour). Pushing
 from Windows works too, because Docker Desktop also publishes the object
-store's port 19100 on Windows. With a clone on the Windows side (which the
+store's port on Windows. With a clone on the Windows side (which the
 Android SDK's Windows steps use anyway), from its folder:
 `fleetml push models\iris\iris_v1.tflite --project <project ID> --model iris --version 1.0.0`;
 or with the clone in the Ubuntu file system, which Windows sees under
@@ -348,7 +348,7 @@ in the repository (it reports its version as `dev`).
 The server image contains the CLI too, so without installing anything,
 `docker compose -f deploy/docker-compose.prod.yml exec -e FLEETML_API_KEY=$FLEETML_ADMIN_KEY server fleetml project list`
 runs it next to the server. Every command works that way except
-`fleetml push`: its upload goes to `localhost:19100`, which inside the
+`fleetml push`: its upload goes to `S3_PUBLIC_ENDPOINT`, `localhost` on the model files' port, which inside the
 container is not the object store.
 
 ## Tour
@@ -463,7 +463,7 @@ of past telemetry as a drift baseline:
 
 ```bash
 EK=$(fleetml enrollment-key create --project $P --name tour -o json | jq -r .key)
-FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --devices 20 --label app=tour \
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:${FLEETML_GRPC_PORT:-19090} --devices 20 --label app=tour \
   --error-rate 2.0.0=0.4 --latency 2.1.0=14 --history 168h > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"tour"}' -o json | jq -r .id)
@@ -479,7 +479,8 @@ The deployment goes to all devices at once, so it starts as `COMPLETE`
 RAM, chipset). The simulator keeps running in the background through section
 5; `kill $SIM` in [Clean up](#clean-up) stops it. Its log is
 `/tmp/fleetml-sim.log`, one file per machine: two tours on one machine at
-the same time would write to the same file.
+the same time would write to the same file, and Clean up's `rm` removes it
+for both.
 
 `COMPLETE` means assigned, not delivered: each device still downloads and
 verifies the model. This counts the targeted devices and those that report
@@ -578,7 +579,7 @@ Now the devices get slower:
 
 ```bash
 kill $SIM; sleep 1
-FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
+FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:${FLEETML_GRPC_PORT:-19090} --devices 20 --label app=tour --latency 1.0.0=34 > /tmp/fleetml-sim.log 2>&1 &
 SIM=$!
 (umask 077; grep -v '^export SIM=' ~/.fleetml.env > ~/.fleetml.env.new; echo "export SIM=$SIM" >> ~/.fleetml.env.new; mv ~/.fleetml.env.new ~/.fleetml.env)
 sleep 20
@@ -630,14 +631,14 @@ dashboard to anonymous visitors, who can only view. To edit, sign in as
 
 `source ~/.fleetml.env` gives compose the stack's secrets and its saved
 `S3_PUBLIC_ENDPOINT`: without that variable, `up -d` would recreate the
-server with `localhost:19100`, and a phone or second machine set up through
+server with `localhost` on the default model files' port, and a phone or second machine set up through
 a device guide would then fail its downloads. The command runs the one-shot
 `migrate` service again, which finds nothing to do; the server keeps
 running and the data stays.
 
 With the dev stack (`make dev`, server on the host), use
 `docker compose -f deploy/docker-compose.yml --profile observability up -d`;
-Prometheus is then on `:19091` and scrapes the server on `:18080`.
+Prometheus is then on `:19091` and scrapes the server on its REST port.
 
 ### Next: a real device
 

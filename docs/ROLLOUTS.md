@@ -378,8 +378,8 @@ In a second terminal, define a few helpers:
 ```bash
 export FLEETML_API_KEY=$(grep '^FLEETML_ADMIN_KEY=' .env | cut -d= -f2)
 api() {
-  if [ -n "$3" ]; then curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' -d "$3" "localhost:18080$2"
-  else curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" "localhost:18080$2"; fi
+  if [ -n "$3" ]; then curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" -H 'Content-Type: application/json' -d "$3" "localhost:${FLEETML_REST_PORT:-18080}$2"
+  else curl -s -X "$1" -H "Authorization: Bearer $FLEETML_API_KEY" "localhost:${FLEETML_REST_PORT:-18080}$2"; fi
 }
 upload() {
   local out=$(api POST /api/v1/versions/$1/variants "{\"quantization\":\"INT8\",\"target_runtime\":\"TFLITE\",\"blob_size_bytes\":$(wc -c < "$2" | tr -d ' '),\"blob_sha256\":\"${3:-$(shasum -a 256 "$2" | cut -d' ' -f1)}\"}")
@@ -388,11 +388,11 @@ upload() {
 }
 g() { grpcurl -plaintext -import-path proto -proto fleetml/v1/device.proto -proto fleetml/v1/telemetry.proto "$@"; }
 register() { g -d "{\"fingerprint\":\"$(openssl rand -hex 32)\",\"os\":\"ANDROID\",\"ram_mb\":4096,\"enrollment_key\":\"$1\",\"labels\":$2}" \
-  localhost:19090 fleetml.device.v1.DeviceService/Register | jq -r '"\(.deviceId) \(.authToken)"'; }
-heartbeat() { g -H "authorization: Bearer $1" -d "{\"loaded_models\":${2:-[]}}" localhost:19090 fleetml.device.v1.DeviceService/Heartbeat; }
+  localhost:${FLEETML_GRPC_PORT:-19090} fleetml.device.v1.DeviceService/Register | jq -r '"\(.deviceId) \(.authToken)"'; }
+heartbeat() { g -H "authorization: Bearer $1" -d "{\"loaded_models\":${2:-[]}}" localhost:${FLEETML_GRPC_PORT:-19090} fleetml.device.v1.DeviceService/Heartbeat; }
 report() { local ev="{\"model_version_id\":\"$2\",\"type\":\"$4\",\"latency_ms\":20,\"experiment_arm_id\":\"${5:-}\"}"
   g -H "authorization: Bearer $1" -d "{\"events\":[$(for i in $(seq $3); do printf '%s,' "$ev"; done | sed 's/,$//')]}" \
-  localhost:19090 fleetml.telemetry.v1.TelemetryService/ReportBatch; }
+  localhost:${FLEETML_GRPC_PORT:-19090} fleetml.telemetry.v1.TelemetryService/ReportBatch; }
 ```
 
 `upload <version ID> <file> [sha256]` creates an INT8/TFLITE variant, PUTs the
