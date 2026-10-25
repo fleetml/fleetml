@@ -279,10 +279,13 @@ jobs:
         run: |
           . .github\windows-run\helpers.ps1
           $version = Invoke-NativeAllowFail wsl --version
-          $status = Invoke-NativeAllowFail wsl --status
+          # Without WSL installed, wsl.exe writes UTF-16 whatever WSL_UTF8 says:
+          # drop the NULs so the note reads as text.
+          $status = "$(Invoke-NativeAllowFail wsl --status)" -replace "`0", ''
           $statusCode = $ExitCode
           if ($statusCode -ne 0 -or $status -match 'not supported|Virtual Machine Platform|not installed|enable virtuali[sz]ation') {
             Set-StepOutput wsl2 false
+            Set-StepOutput result 'skipped (WSL 2 not available on this runner)'
             $first = @($status -split "`n" | Where-Object { $_.Trim() }) | Select-Object -First 2
             Add-Note "wsl --status (exit $statusCode): $($first -join ' ')"
             Write-Host 'WSL 2 unavailable on this runner: the quickstart steps are skipped.'
