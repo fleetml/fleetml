@@ -8,7 +8,8 @@ was run as written, in order.
 
 Needs Docker with Compose v2 and `openssl`. The dashboard uses port 80; the
 APIs use 18080 (REST) and 19090 (gRPC); model files are served on 19100
-(`FLEETML_S3_PUBLIC_PORT` moves it, see [CONFIG.md](CONFIG.md#docker-compose)).
+(`export FLEETML_S3_PUBLIC_PORT=<port>` before the block moves it, see
+[CONFIG.md](CONFIG.md#docker-compose)).
 The first start takes a few minutes on a cold Docker cache, to pull the base
 images and build the server and dashboard, and well under a minute when the
 images are cached.
@@ -17,7 +18,7 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell, see [On Windows](#on-wind
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' S3_PUBLIC_ENDPOINT=localhost:19100\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" > ~/.fleetml.env)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
 source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
@@ -27,7 +28,9 @@ echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetm
 
 The second line generates the stack's three secrets and saves them in
 `~/.fleetml.env`, a file only you can read, before anything starts, with
-`S3_PUBLIC_ENDPOINT`, the address devices download models from (a phone or a
+the model files' port (`FLEETML_S3_PUBLIC_PORT`, 19100 unless you set it)
+and `S3_PUBLIC_ENDPOINT`, the address devices download models from,
+`localhost` on that port (a phone or a
 second machine needs your LAN address there instead; the device guides
 change it in this file). It leaves an existing file alone, so running the
 block again reuses the saved values. **Keep the file.** The admin key in it
@@ -48,9 +51,12 @@ clipboard` on Linux).
 On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
 server instead, and the tour runs against it.
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`
 once Postgres, the object store and NATS are reachable, and the project list
-answers `{"data":[],"pagination":{...}}`: no projects yet. If nothing
+answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
+server's release, from the clone's tag (on `main` after a release it reads
+like `0.9.0-3-g1a2b3c4`: three commits past 0.9.0). To confirm the version
+later: `curl -s localhost:18080/readyz`. If nothing
 appears after about two minutes more than the build took, run
 `docker compose -f deploy/docker-compose.prod.yml ps -a` and
 `docker compose -f deploy/docker-compose.prod.yml logs server` to see which
@@ -59,8 +65,10 @@ Windows, a port can also sit in a range that Hyper-V or WSL reserves: Docker
 then fails with `bind: An attempt was made to access a socket in a way
 forbidden by its access permissions`, and
 `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists the
-reserved ranges; move the port out of them (below for port 80,
-`FLEETML_S3_PUBLIC_PORT` for 19100). More keys and their routes:
+reserved ranges; move the port out of them (below for port 80; for 19100,
+`export FLEETML_S3_PUBLIC_PORT=29100` before the block, which saves the port
+and `S3_PUBLIC_ENDPOINT=localhost:29100` together; for a stack already
+started, change both in `~/.fleetml.env` and run the `up -d` again). More keys and their routes:
 [API keys](CONFIG.md#api-keys).
 
 If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
@@ -258,7 +266,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.8.0`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.9.0`. In PowerShell,
 point it at the server with `$env:FLEETML_SERVER = 'http://localhost:18080'`
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -549,7 +557,8 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok"}`. The gRPC port also serves the standard
+`/livez` answers `{"status":"ok","version":"0.9.0"}` and `/readyz` adds the
+three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 
 Prometheus and Grafana with the FleetML dashboard (telemetry lag,
@@ -596,6 +605,11 @@ LAN address there.
 
 ### Clean up
 
+To remove only the tour's project from a server you keep, with its models,
+devices, deployments and telemetry: `kill $SIM; fleetml project delete $P`
+(it asks for no confirmation and cannot be undone). To remove the whole
+stack and its data:
+
 ```bash
 kill $SIM
 docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
@@ -614,23 +628,35 @@ new shell, `source ~/.fleetml.env` first ([Run FleetML](#run-fleetml)).
 
 ## Upgrading
 
-Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.7.0
-to 0.8.0 there are no breaking API changes (each version's "Changed" section
-lists what behaves differently), and the server applies new database
+Every release is in the [CHANGELOG](../CHANGELOG.md). From 0.6.0 to 0.8.0
+there are no breaking API changes; 0.9.0 answers a few refused requests
+with other error codes (`409 INVALID_TRANSITION` for experiments and
+versions, `400 VALIDATION_ERROR` for a `limit` that is not a number) and
+makes the Python client's `project`, `limit` and `offset` keyword-only
+(each version's "Changed" section lists what behaves differently and what
+to change), and the server applies new database
 migrations itself when it starts. Upgrade the server first, then the
 devices and the tools; each moves on its own:
 
 - **The compose stack**, in its clone, with the saved values:
 
   ```bash
-  git fetch --tags && git checkout v0.8.0
+  git fetch --tags && git checkout v0.9.0
+  grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d --build
   until curl -sf localhost:18080/readyz; do sleep 2; done; echo
   ```
 
-  The projects, devices, telemetry and the admin key stay, and devices
-  reconnect by themselves. `git checkout main` instead follows the newest
+  The second line matters for a `~/.fleetml.env` written by 0.7.0 or
+  earlier, which holds the three secrets only: the device guides of those
+  releases set `S3_PUBLIC_ENDPOINT` on the command line, so without it the
+  upgraded server would hand out `localhost:19100` and phones and agents
+  elsewhere would stop receiving models. It copies the running server's
+  value into the file once and does nothing when the file has one. The
+  last line prints `/readyz`, which ends with the new version
+  (`"version":"0.9.0"`). The projects, devices, telemetry and the admin key
+  stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](#get-the-cli) block again (it fetches the
   latest release); `fleetml version` prints the version.

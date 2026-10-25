@@ -52,8 +52,10 @@ const (
 	// fails the call instead of hanging until TCP gives up, about 15 minutes.
 	callTimeout = 30 * time.Second
 	// shutdownFlushTimeout bounds the last telemetry flush on SIGTERM. What it
-	// cannot send stays queued on disk for the next start.
-	shutdownFlushTimeout = 5 * time.Second
+	// cannot send stays queued on disk for the next start. Under 2 s: util-linux
+	// su, which supervisors used to run the agent with, SIGKILLs its child 2 s
+	// after a SIGTERM, and a stop should not wait on an unreachable server.
+	shutdownFlushTimeout = 1500 * time.Millisecond
 )
 
 // dialOptions keep the connection to the server honest: a keepalive ping

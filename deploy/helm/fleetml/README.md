@@ -44,41 +44,48 @@ devices register again with their enrollment key). A new `s3SecretKey` is
 safe: the store restarts with it. `adminKey` is stored on the first start
 only. Instead of the file, a Secret of your own with the keys `JWT_SECRET`,
 `SIGNING_MASTER_KEY`, `FLEETML_ADMIN_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
-and `POSTGRES_PASSWORD` works the same way: `--set secrets.existingSecret=<name>`.
-The chart refuses a `jwtSecret` or `signingMasterKey` shorter than 32
-characters, and the two must differ.
+and `POSTGRES_PASSWORD` works the same way: `--set secrets.existingSecret=<name>`,
+except that a change to your Secret rolls nothing: after one, run
+`kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
+The chart refuses a `jwtSecret`, `signingMasterKey` or `adminKey` shorter
+than 32 characters (the server would not start with one), and the first two
+must differ. The file name is in the repository's `.gitignore`, so a clone
+does not commit it; keep a copy outside the clone as well.
 
-Then the chart, into its own namespace:
+Then the chart, into its own namespace. The first line names the local
+ports this machine reaches the release on, the
+[quickstart's](../../../docs/QUICKSTART.md) REST, gRPC and model-file ports;
+if its compose stack runs here (or anything else holds them), make it
+`REST=28080 GRPC=29090 S3=29100`, and every later line, `Try it` included,
+uses those:
 
 ```bash
+REST=18080 GRPC=19090 S3=19100
 helm install fleetml deploy/helm/fleetml -n fleetml --create-namespace \
-  -f fleetml-secrets.yaml --set s3.publicEndpoint=localhost:19100
+  -f fleetml-secrets.yaml --set s3.publicEndpoint=localhost:$S3
 kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
-kubectl -n fleetml port-forward svc/fleetml-server 18080 19090 >/dev/null &
-kubectl -n fleetml port-forward svc/fleetml-s3 19100:8333 >/dev/null &
-until curl -sf localhost:18080/readyz; do sleep 1; done; echo
+kubectl -n fleetml port-forward svc/fleetml-server $REST:18080 $GRPC:19090 >/dev/null &
+kubectl -n fleetml port-forward svc/fleetml-s3 $S3:8333 >/dev/null &
+until curl -sf localhost:$REST/readyz; do sleep 1; done; echo
 helm test fleetml -n fleetml
 ```
 
-`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok"}`,
+`/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.9.0"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
-images, which takes a minute or two; `kubectl -n fleetml get pods` then shows
-every pod `Running` with no restarts.
+images, which takes a minute or two (the server waits up to
+`server.dependencyTimeout`, 180 s, for Postgres meanwhile);
+`kubectl -n fleetml get pods` then shows every pod `Running` with no
+restarts.
 
 `s3.publicEndpoint` is the one value the chart needs besides the secrets:
 the `host:port` where devices and the CLI reach the object store. The server
 hands out every model as a download URL signed for that address, and
-`fleetml push` uploads to it. Here it is `localhost:19100`, which the second
+`fleetml push` uploads to it. Here it is `localhost:$S3`, which the second
 port-forward serves, so it works from this machine only; a device elsewhere
 needs an address it reaches (see [Production](#production)). The URLs are
 plain `http` unless `s3.publicUseSSL=true`; `s3.useSSL` is the server's own
 connection to the store, and the bundled SeaweedFS speaks plain HTTP inside
 the cluster.
-
-The ports are the [quickstart's](../../../docs/QUICKSTART.md), so stop its
-compose stack first, or forward other local ports (`28080:18080`, say, and
-then `FLEETML_SERVER=http://localhost:28080` below; `fleetml simulate` takes
-the gRPC address separately, as `--grpc localhost:<port>`).
 
 ### Try it
 
@@ -86,12 +93,12 @@ The CLI, a model, an enrollment key, 20 simulated devices and a deployment,
 as in the [tour](../../../docs/QUICKSTART.md#tour), from the clone's root:
 
 ```bash
-export FLEETML_SERVER=http://localhost:18080 FLEETML_API_KEY=$(sed -n 's/^  adminKey: "\(.*\)"$/\1/p' fleetml-secrets.yaml)
+export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^  adminKey: "\(.*\)"$/\1/p' fleetml-secrets.yaml)
 P=$(fleetml project create --name helm-tour -o json | jq -r .id)
 fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
 V1=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
 EK=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
-fleetml simulate --enrollment-key $EK --grpc localhost:19090 --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
+fleetml simulate --enrollment-key $EK --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
 SIM=$!
 fleetml deploy start $(fleetml deploy create --project $P --version $V1 --target '{"app":"helm"}' -o json | jq -r .id)
 sleep 10; tail -1 /tmp/fleetml-helm-sim.log
@@ -120,7 +127,10 @@ SeaweedFS, which reads its credentials at start (Postgres keeps its
 password, see [Install](#install)). The data stays in the volumes, the
 server applies any new database migrations when it starts, and devices
 reconnect by themselves. A port-forward ends when the pod behind it is
-replaced: start the two `port-forward` lines again. From 0.6.0 to 0.8.0 no
+replaced: start the two `port-forward` lines again. To rotate a secret that
+may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
+registering again), edit it in `fleetml-secrets.yaml` and run the same
+upgrade. From 0.6.0 to 0.9.0 no
 upgrade needs anything else.
 
 ## Production
@@ -163,6 +173,7 @@ are most likely to set:
 | `s3.useSSL`, `s3.endpoint`, `s3.bucket` | `false`, , `fleetml-models` | The server's connection to the store (`s3.endpoint` with `seaweedfs.enabled=false`) |
 | `server.image.repository`, `.tag`, `.pullPolicy` | `ghcr.io/fleetml/fleetml-server`, the app version, `IfNotPresent` | Server image |
 | `server.replicas` | `1` | Server replicas (they share the database and the telemetry stream) |
+| `server.dependencyTimeout` | `180s` | How long the server waits at start-up for each of Postgres, the object store and NATS (`DEPENDENCY_TIMEOUT`) |
 | `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced |
 | `server.resources` | `{}` | Requests and limits for the server |
 | `server.service.type`, `.restPort`, `.grpcPort` | `ClusterIP`, `18080`, `19090` | The server's Service |
@@ -187,7 +198,9 @@ helm uninstall fleetml -n fleetml
 This keeps the volume claims of the bundled services, so the data survives a
 reinstall with the same secrets file; the Secret the chart made is deleted
 with the release, which is why the file matters. To delete the data too:
-`kubectl -n fleetml delete pvc -l app.kubernetes.io/instance=fleetml`.
+`kubectl -n fleetml delete pvc -l app.kubernetes.io/instance=fleetml`, and
+`kubectl delete namespace fleetml` removes the namespace that
+`--create-namespace` made (with anything left in it).
 `kind delete cluster --name fleetml` removes a kind cluster with everything
 in it.
 

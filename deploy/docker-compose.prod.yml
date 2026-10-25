@@ -62,6 +62,10 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      # The image label; the server itself takes its version from the
+      # clone's tag when this is dev (see the Dockerfile).
+      args:
+        VERSION: ${FLEETML_VERSION:-dev}
     ports:
       - "18080:18080"
       - "19090:19090"
@@ -69,7 +73,7 @@ services:
       DATABASE_URL: postgres://fleetml:fleetml_prod@postgres:5432/fleetml?sslmode=disable
       S3_ENDPOINT: s3:8333
       # Where clients reach the object store; presigned URLs are signed for it.
-      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-localhost:19100}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-localhost:${FLEETML_S3_PUBLIC_PORT:-19100}}
       S3_ACCESS_KEY: fleetml
       S3_SECRET_KEY: change-me-in-production
       S3_BUCKET: fleetml-models
@@ -86,6 +90,8 @@ services:
       LOG_LEVEL: info
       CORS_ORIGINS: "http://localhost"
       MIGRATE_ON_START: "true"
+      # How long start-up waits for each of Postgres, the store and NATS.
+      DEPENDENCY_TIMEOUT: ${DEPENDENCY_TIMEOUT:-60s}
       # Optional: if unset, the server generates an admin key on first start and logs it once.
       FLEETML_ADMIN_KEY: ${FLEETML_ADMIN_KEY:-}
     depends_on:
@@ -102,6 +108,8 @@ services:
     build:
       context: ../dashboard
       dockerfile: Dockerfile
+      args:
+        VERSION: ${FLEETML_VERSION:-dev}
     ports:
       - "80:80"
     depends_on:

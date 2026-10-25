@@ -105,7 +105,7 @@ The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
 `openssl`; about 2 GB of free memory for the five running containers (plus a
 one-shot `migrate` job, which `docker compose ps -a` lists as exited) and the
 two image builds; ports 80 (dashboard), 18080 (REST), 19090 (gRPC) and 19100 (model
-files; `FLEETML_S3_PUBLIC_PORT` moves it) free, and 13000 for Grafana if you
+files; `export FLEETML_S3_PUBLIC_PORT=<port>` before the block moves it) free, and 13000 for Grafana if you
 start the optional observability profile. On Windows
 FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell with Docker
 Desktop's WSL 2 backend ([On Windows](docs/QUICKSTART.md#on-windows)), and
@@ -116,7 +116,7 @@ In bash or zsh (on Windows, in the WSL 2 Ubuntu shell):
 
 ```bash
 git clone https://github.com/fleetml/fleetml.git && cd fleetml
-[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' S3_PUBLIC_ENDPOINT=localhost:19100\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" > ~/.fleetml.env)
+[ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
 source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 until curl -sf localhost:18080/readyz; do sleep 2; done; echo
@@ -124,8 +124,9 @@ curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:18080/api/v1/pro
 echo "Dashboard: http://localhost  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
 ```
 
-The second line saves three generated secrets, and the address devices
-download models from (`S3_PUBLIC_ENDPOINT`), in `~/.fleetml.env`, readable
+The second line saves three generated secrets, the model files' port and
+the address devices download models from (`S3_PUBLIC_ENDPOINT`, on that
+port), in `~/.fleetml.env`, readable
 only by you, before anything starts; it leaves an existing file alone. Keep
 it: the server stores the admin key on its first start only (later starts
 ignore `FLEETML_ADMIN_KEY`), and compose reads the file's values for every
@@ -199,12 +200,12 @@ the app needs compileSdk 34 or later and minSdk 26,
 [details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.8.0")
-implementation("org.tensorflow:tensorflow-lite:2.16.1") // if you run TFLite models
+implementation("dev.fleetml:fleetml-sdk:0.9.0")
+implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.8.0;
+(Dependency Rule **Up to Next Major Version** from 0.9.0;
 [details](docs/IOS_SDK.md#install)):
 
 ```text

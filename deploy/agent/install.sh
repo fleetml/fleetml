@@ -40,8 +40,14 @@ if [ ! -d /run/systemd/system ]; then
   install -d -m 0755 -o fleetml-agent -g fleetml-agent /var/lib/fleetml-agent
   echo "No running systemd on this machine: the service unit was not installed, and /var/lib/fleetml-agent was created for the fleetml-agent user."
   echo "Once $CONFIG is set, run the agent as that user under this machine's supervisor (runit, s6, OpenRC, supervisord, a container's entrypoint), for example:"
-  # exec: the supervisor's SIGTERM must reach the agent, not the shell su starts.
-  echo "  exec su -s /bin/sh fleetml-agent -c 'exec $RUN'"
+  if setpriv --help 2>&1 | grep -q -- --reuid; then
+    # util-linux setpriv execs the agent as the user, so the supervisor's
+    # SIGTERM reaches it (su forks, and SIGKILLs its child 2 s after a SIGTERM).
+    echo "  exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups $RUN"
+  else
+    # BusyBox has no setpriv --reuid; its su execs the shell, which execs the agent.
+    echo "  exec su -s /bin/sh fleetml-agent -c 'exec $RUN'"
+  fi
   echo "If an agent is running, restart it under the supervisor to use the new binary."
   exit 0
 fi

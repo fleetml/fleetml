@@ -133,6 +133,21 @@ class HeartbeatManagerTest {
         assertEquals(1, reRegistered)
     }
 
+    // The background job tells a refused re-registration (the project's key
+    // revoked) from an unreachable server by the failure kept here.
+    @Test
+    fun `a refused re-registration is kept as the last failure`() = runTest {
+        val api = FakeApi().apply { failWith = Status.UNAUTHENTICATED }
+        val refused = io.grpc.StatusException(Status.UNAUTHENTICATED.withDescription("invalid or revoked enrollment key"))
+        val (hb, _) = setup(MemTokens("revoked", now + 30 * day), api) { throw refused }
+        assertFalse(hb.beatOnce())
+        assertTrue(hb.lastFailure === refused)
+        assertEquals("server reached, request refused (UNAUTHENTICATED: invalid or revoked enrollment key)", describeSync(false, hb.lastFailure))
+        api.failWith = null
+        assertTrue(hb.beatOnce())
+        assertEquals(null, hb.lastFailure)
+    }
+
     @Test
     fun `connection changes are reported once and reconnecting flushes telemetry`() = runTest {
         val api = FakeApi().apply { failWith = Status.UNAVAILABLE }

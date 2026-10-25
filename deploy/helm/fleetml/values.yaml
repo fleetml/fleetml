@@ -8,6 +8,10 @@ server:
     tag: ""            # defaults to the chart's appVersion
     pullPolicy: IfNotPresent
   replicas: 1
+  # How long the server waits at start-up for each of Postgres, the object
+  # store and NATS (DEPENDENCY_TIMEOUT); inside the 200 s startup probe, so a
+  # cold install that is still pulling the Postgres image does not restart it.
+  dependencyTimeout: 180s
   # Extra environment for the server (see docs/CONFIG.md), e.g.
   #   DEPLOY_TICK_INTERVAL: 30s
   #   DASHBOARD_URL: https://fleet.example.com
@@ -36,10 +40,12 @@ dashboard:
 # chart's README shows how). Do not generate new ones for a release that has
 # data: the database password and the signing master key cannot change.
 secrets:
+  # A Secret of your own instead of the values below. Changing it rolls
+  # nothing: kubectl rollout restart statefulset/fleetml-s3 deploy/fleetml-server.
   existingSecret: ""
   jwtSecret: ""            # required, at least 32 characters
   signingMasterKey: ""     # required, at least 32 characters, not the jwtSecret; keep it
-  adminKey: ""             # optional: the first admin API key (else generated and logged once)
+  adminKey: ""             # optional, at least 32 characters: the first admin API key (else generated and logged once)
   s3AccessKey: fleetml
   s3SecretKey: ""          # required with the bundled SeaweedFS
   postgresPassword: ""     # required with the bundled Postgres

@@ -141,10 +141,14 @@ func newPushCmd() *cobra.Command {
 
 			// Step 6: Promote if requested
 			if promote {
-				// DRAFT -> STAGED -> ACTIVE
-				var stageResp map[string]interface{}
-				_ = client.Patch("/api/v1/versions/"+versionID+"/status", map[string]string{"status": "STAGED"}, &stageResp)
-				_ = client.Patch("/api/v1/versions/"+versionID+"/status", map[string]string{"status": "ACTIVE"}, &stageResp)
+				// DRAFT -> STAGED -> ACTIVE. The file is uploaded either way, so a
+				// failed promotion says what the version is left at.
+				for _, status := range []string{"STAGED", "ACTIVE"} {
+					var stageResp map[string]interface{}
+					if err := client.Patch("/api/v1/versions/"+versionID+"/status", map[string]string{"status": status}, &stageResp); err != nil {
+						return fmt.Errorf("uploaded %s as %s v%s (variant %s), but promoting it to %s failed: %w", filePath, modelName, ver, variantID, status, err)
+					}
+				}
 			}
 
 			PrintSuccess(fmt.Sprintf("Pushed %s → %s v%s (%s)", filePath, modelName, ver, quant))

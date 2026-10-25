@@ -76,7 +76,10 @@ func (h *ExperimentHandler) create(c *gin.Context) {
 }
 
 func (h *ExperimentHandler) list(c *gin.Context) {
-	limit, offset := parsePagination(c)
+	limit, offset, ok := parsePagination(c)
+	if !ok {
+		return
+	}
 	var projectID *uuid.UUID
 	if v := c.Query("project_id"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
@@ -232,7 +235,7 @@ func handleExpError(c *gin.Context, err error) {
 	case errors.Is(err, experiment.ErrInvalidInput):
 		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 	case errors.Is(err, experiment.ErrInvalidTransition):
-		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		respondError(c, http.StatusConflict, "INVALID_TRANSITION", err.Error())
 	case errors.Is(err, experiment.ErrNotDeployable):
 		respondError(c, http.StatusUnprocessableEntity, "NOT_DEPLOYABLE", err.Error())
 	default:

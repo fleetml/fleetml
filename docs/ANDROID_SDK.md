@@ -14,14 +14,14 @@ Windows and the sample app follow as variants of the same steps.
 
 ## Install
 
-The SDK is on Maven Central; 0.8.0 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.9.0 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.8.0")
+    implementation("dev.fleetml:fleetml-sdk:0.9.0")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -56,7 +56,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.8.0") {
+implementation("dev.fleetml:fleetml-sdk:0.9.0") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -89,7 +89,7 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.8.0-dev` (any version string) in the app's
+and `sdkVersion=0.9.0-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
@@ -97,8 +97,12 @@ Building the SDK from source on the command line needs JDK 17: the wrapper's
 Gradle 8.7 with AGP 8.5 fails on a newer default JDK. Point `JAVA_HOME` at it,
 for example `/opt/homebrew/opt/openjdk@17` on macOS with Homebrew or
 `/usr/lib/jvm/java-17-openjdk-amd64` on Debian and Ubuntu
-(`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with its own
-JDK, set in its Gradle settings.
+(`sudo apt install openjdk-17-jdk`). Android Studio runs Gradle with the JDK
+in its Gradle settings (Settings, Build, Execution, Deployment, Build Tools,
+Gradle, Gradle JDK), by default its bundled JetBrains Runtime, which is Java
+25 in Android Studio 2026.1: with it, Gradle 8.7 stops at once with
+`What went wrong: 25.0.2`. Pick a JDK 17 there, or point `JAVA_HOME` at one
+on the command line.
 
 ### A new project from the command line
 
@@ -147,10 +151,57 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.8.0")
+    implementation("dev.fleetml:fleetml-sdk:0.9.0")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+}
+```
+
+The manifest names the application class and a launcher activity, with an
+AppCompat theme (an `AppCompatActivity` under any other theme stops at launch
+with `You need to use a Theme.AppCompat theme`):
+
+```xml
+<!-- app/src/main/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:name=".MyApp"
+        android:label="MyApp"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+```
+
+and the activity shows whether the server was reached and which model is
+active:
+
+```kotlin
+// app/src/main/java/com/example/myapp/MainActivity.kt
+package com.example.myapp
+
+import android.os.Bundle
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.fleetml.sdk.FleetML
+import kotlinx.coroutines.launch
+
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val status = TextView(this).also { setContentView(it) }
+        lifecycleScope.launch {
+            val reached = FleetML.syncNow()
+            status.text = "Server reached: $reached\nModel: ${FleetML.activeModel("iris")?.version ?: "none yet"}"
+        }
+    }
 }
 ```
 
@@ -158,8 +209,13 @@ dependencies {
 `local.properties` (or `ANDROID_HOME`) the Android SDK's folder,
 `sdk.dir=<home>/Library/Android/sdk` on macOS. Add the `android` block of
 [Configure and start](#configure-and-start) for the server's host and key,
-the application class, an activity in `app/src/main/AndroidManifest.xml`,
-and `./gradlew :app:assembleDebug` builds it.
+and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
+with `package com.example.myapp` on top; for a server on your machine, the
+two debug files of [On your phone](#on-your-phone). `./gradlew :app:assembleDebug`
+builds it and `./gradlew :app:installDebug -PfleetmlEnrollmentKey=$EK -PfleetmlDebugHost=localhost`
+installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$EK`).
+After a deployment to `app=myapp` the screen reads `Server reached: true`
+and `Model: 1.0.0`.
 
 ## Configure and start
 
@@ -340,10 +396,17 @@ phone](#on-your-phone). The deployment starts as `COMPLETE`
 (`✓ Deployment start → COMPLETE`), which means assigned; once the app runs,
 logcat shows `Model iris 1.0.0 is active`. `fleetml deploy get $D1 | jq -c .devices`
 counts what the devices reported in their last heartbeat, so it prints
-`{"loaded":0,"targeted":1}` until the app's next heartbeat (60 seconds by
+`{"loaded":0,"targeted":0}` until the app has registered,
+`{"loaded":0,"targeted":1}` until its next heartbeat (60 seconds by
 default) and `{"loaded":1,"targeted":1}` after it; it is counted each time you
 ask, so once 2.0.0 replaces it, this deployment counts down to
 `{"loaded":0,"targeted":1}`.
+
+When you are done, on a server you keep, `fleetml project delete $P`
+removes the project with its devices, deployments and telemetry, so the
+phone's test leaves nothing behind (it asks for no confirmation and cannot
+be undone); the quickstart's [Clean up](QUICKSTART.md#clean-up) removes the
+whole stack instead.
 
 ## On your phone
 
@@ -746,16 +809,23 @@ neither a phone nor the Windows emulator, and Gradle is slow on a
 `\\wsl.localhost` path). This is the sample app on a phone over USB from
 start to end, then over Wi-Fi, then on the emulator; your own app is the same
 with `:app:installDebug` in its project. CI builds the sample app with
-`gradlew.bat` on `windows-latest`; the phone steps are run by hand.
+`gradlew.bat` on `windows-latest`; the phone steps are run by hand. This is
+for x64 Windows: on Windows on Arm the Gradle build is untested (there is no
+`windows-aarch_64` build of the protobuf compiler it fetches), as the
+quickstart says of Docker there.
 
 Once, before you start:
 
-- **Android Studio**, for the SDK, `adb` and its bundled JDK (the JBR, Java
-  17 or 21). `& "$env:ProgramFiles\Android\Android Studio\jbr\bin\java" -version`
-  checks it (an install through JetBrains Toolbox is under
-  `%LOCALAPPDATA%\Programs` instead; use that path below).
+- **Android Studio**, for the SDK and `adb`.
+- **JDK 17**, for Gradle 8.7: `winget install --id EclipseAdoptium.Temurin.17.JDK -e`.
+  Android Studio's bundled JDK (the JetBrains Runtime in its `jbr` folder) is
+  Java 25 in Android Studio 2026.1, and Gradle 8.7 does not run on it:
+  `gradlew.bat` stops at once with `What went wrong: 25.0.2`. CI builds the
+  sample app with Temurin 17, the same JDK.
 - **Git for Windows**: `winget install --id Git.Git -e`, or Android Studio's
-  File, New, Project from Version Control.
+  File, New, Project from Version Control. After a winget install, open a
+  new PowerShell window, so that `git` (and the JDK above) are on its
+  `PATH`.
 - **The `fleetml` CLI for Windows**, from [Get the CLI](QUICKSTART.md#get-the-cli).
 - **The phone**: developer options with USB debugging on, and its maker's USB
   driver on Windows (Google's for Pixel phones, from the SDK Manager) so that
@@ -774,7 +844,7 @@ git clone https://github.com/fleetml/fleetml.git $HOME\fleetml
 cd $HOME\fleetml
 $env:FLEETML_SERVER = 'http://localhost:18080'
 $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
-$P = (fleetml project create --name android-windows -o json | ConvertFrom-Json).id
+$P = (fleetml project create --name "android-windows-$(Get-Date -Format yyyyMMdd-HHmmss)" -o json | ConvertFrom-Json).id
 fleetml push models\iris\iris_v1.tflite --project $P --model iris --version 1.0.0
 $M = (fleetml model list --project $P -o json | ConvertFrom-Json)[0].id
 $V1 = (fleetml ver list --model $M -o json | ConvertFrom-Json)[0].id
@@ -791,7 +861,8 @@ key:
 
 ```powershell
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
-$env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
+$env:JAVA_HOME = (Get-ChildItem "$env:ProgramFiles\Eclipse Adoptium" -Directory -Filter 'jdk-17*')[0].FullName
+& "$env:JAVA_HOME\bin\java" -version
 $env:Path += ";$env:ANDROID_HOME\platform-tools"
 adb devices
 $env:ANDROID_SERIAL = '<the phone''s serial>'
@@ -799,11 +870,17 @@ adb reverse tcp:18080 tcp:18080
 adb reverse tcp:19090 tcp:19090
 adb reverse tcp:19100 tcp:19100
 cd android
-.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" -PfleetmlDebugHost=localhost
+.\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=localhost"
 adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
 adb logcat -s FleetML
 ```
 
+The project name carries the time, since names are unique on a server: a
+second run of the block makes a new project instead of stopping with
+`project already exists` and an empty `$P`. `java -version` prints
+`openjdk version "17.0...` (Temurin). The `-P`
+arguments are in quotes because PowerShell splits an unquoted
+`-Pname=192.168.1.23` at the first dot and Gradle then sees `-Pname=192`.
 The reverses reach the ports Docker Desktop publishes on Windows. The app's
 config screen shows host `localhost`, port `19090` and the key; tap
 **Save and connect**. (Without `-PfleetmlDebugHost` the screen shows `10.0.2.2`,
@@ -811,6 +888,8 @@ which is the emulator's address for the machine and does not work on a
 phone.) Logcat then shows the lines of [Over USB](#over-usb), among them
 `Registered as device <device ID>`, `Model iris 1.0.0 passed validation`
 and `Model iris 1.0.0 is active`, and the app's screen `Model ready: iris 1.0.0`.
+`adb logcat` runs until Ctrl+C: stop it (or open a second window) before
+the next steps.
 A phone that ran the sample app before keeps its saved host and key, which
 win over the build's: `adb shell pm clear com.fleetml.sample` resets them
 (it deletes the app's data), and a stale key shows as
@@ -831,8 +910,9 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
 
 3. In an administrator PowerShell, mark the Wi-Fi network private (Settings,
    Network and internet, Wi-Fi, the network, Private network; or
-   `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`)
-   and let TCP 19090 and 19100 in on private networks only:
+   `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`;
+   `Get-NetConnectionProfile` lists the interface aliases, if yours is not
+   `Wi-Fi`) and let TCP 19090 and 19100 in on private networks only:
 
    ```powershell
    New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort 19090,19100 -Action Allow -Profile Private
@@ -850,7 +930,7 @@ win over the build's: `adb shell pm clear com.fleetml.sample` resets them
    ```powershell
    adb reverse --remove-all
    adb shell pm clear com.fleetml.sample
-   .\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" -PfleetmlDebugHost=<LAN IP>
+   .\gradlew.bat :sample-app:installDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=<LAN IP>"
    adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
    ```
 
@@ -1044,6 +1124,12 @@ adb shell input keyevent KEYCODE_HOME
 adb shell dumpsys jobscheduler | grep "com.fleetml.sample/androidx.work"
 adb shell cmd jobscheduler run -f com.fleetml.sample <id>
 ```
+
+The job ends with one of three lines: `Background sync: server reached`,
+`Background sync: server unreachable` (no answer: the network, the address
+or the server is down), or `Background sync: server reached, request refused (UNAUTHENTICATED: ...)`
+with the server's status and message, for example a revoked enrollment key
+after the project was deleted.
 
 Then put the device on battery and on a metered network:
 

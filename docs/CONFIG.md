@@ -29,12 +29,13 @@ missing or invalid variable.
 | `S3_USE_SSL` | `false` | Reach the object store over HTTPS |
 | `S3_PUBLIC_USE_SSL` | *(`S3_USE_SSL`)* | Whether the presigned URLs for `S3_PUBLIC_ENDPOINT` are `https`. Set it when only one side has TLS: `true` with a TLS proxy (an Ingress) in front of a store the server reaches over plain HTTP, as with the Helm chart's bundled SeaweedFS (`s3.publicUseSSL`) |
 | `S3_BUCKET` | `fleetml-models` | Bucket for model files; created at start-up if missing |
-| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100`. A Linux agent that cannot reach it can send its downloads elsewhere with `download_host_override` ([LINUX_AGENT.md](LINUX_AGENT.md#server-on-another-machine)) |
+| `S3_PUBLIC_ENDPOINT` | *(unset)* | `host:port` clients (devices, the CLI, scripts) reach the object store at, when it differs from `S3_ENDPOINT`; presigned upload and download URLs are signed for it. `deploy/docker-compose.prod.yml` sets `localhost:19100` (the port follows `FLEETML_S3_PUBLIC_PORT`). A Linux agent that cannot reach it can send its downloads elsewhere with `download_host_override` ([LINUX_AGENT.md](LINUX_AGENT.md#server-on-another-machine)) |
 | `NATS_URL` | `nats://localhost:14222` | NATS server for the telemetry pipeline and alerts. JetStream must be enabled (`nats-server --jetstream`, as in both compose files): the server creates the `FLEETML_TELEMETRY` stream at startup and refuses to start without it. Servers that share a NATS share the stream, so they must also share the database |
 | `MIGRATE_ON_START` | `false` | Apply the embedded database migrations before serving (`true` in `deploy/docker-compose.prod.yml`) |
+| `DEPENDENCY_TIMEOUT` | `60s` | How long start-up waits for each of Postgres, the object store and NATS before the server exits (at least `1s`); the Helm chart sets `180s` (`server.dependencyTimeout`) |
 
-At start-up the server waits up to 60 seconds for Postgres, the object store
-and NATS, so it can start together with them.
+At start-up the server waits up to `DEPENDENCY_TIMEOUT` for each of
+Postgres, the object store and NATS, so it can start together with them.
 
 ### Access
 
@@ -140,10 +141,14 @@ publishes the dashboard on `:80`, the REST and gRPC APIs on `:18080` and
 run next to the dev stack). It reads `JWT_SECRET` and `SIGNING_MASTER_KEY`
 (required),
 `FLEETML_ADMIN_KEY` (optional) and `S3_PUBLIC_ENDPOINT` (default
-`localhost:19100`; set it to the object store's public `host:port` when
-devices are not on this machine) from the shell: the quickstart saves all
-four in `~/.fleetml.env`, which every compose command on the stack needs
+`localhost:` and the `FLEETML_S3_PUBLIC_PORT`, so moving the port moves the
+download address with it; set it to the object store's public `host:port`
+when devices are not on this machine) from the shell: the quickstart saves
+all five in `~/.fleetml.env`, which every compose command on the stack needs
 sourced first ([Run FleetML](QUICKSTART.md#run-fleetml)).
+`FLEETML_VERSION` (default `dev`) labels the two images it builds
+(`org.opencontainers.image.version`); the server reports its version from
+the clone's tag either way (`"version"` in `/readyz`).
 
 ## CLI
 
@@ -156,6 +161,7 @@ it:
 | `FLEETML_SERVER` | `http://localhost:18080` | REST API base URL |
 | `FLEETML_API_KEY` | *(unset)* | Admin API key, sent as `Authorization: Bearer` |
 | `FLEETML_OUTPUT` | `table` | `table` or `json` |
+| `FLEETML_ENROLLMENT_KEY` | *(unset)* | `fleetml simulate`'s enrollment key when `--enrollment-key` is not given, which keeps it out of the process list |
 
 ## Dashboard
 

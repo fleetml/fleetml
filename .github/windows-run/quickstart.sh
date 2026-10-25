@@ -115,8 +115,8 @@ qs_run run-fleetml "$qs_code"
 (umask 077 && printf 'export FLEETML_RUN_DIR=%q JWT_SECRET=%q SIGNING_MASTER_KEY=%q FLEETML_ADMIN_KEY=%q\n' \
   "$QS_CLONE" "$JWT_SECRET" "$SIGNING_MASTER_KEY" "$FLEETML_ADMIN_KEY" >~/.fleetml-run.env)
 qs_check "the block cloned into the script's own directory" "$PWD" test "$PWD" = "$QS_CLONE"
-ready='{"db":"connected","nats":"connected","s3":"connected","status":"ok"}'
-qs_check "/readyz answers $ready" "$(grep -o '{"db".*}' "$QS_OUT/run-fleetml" | head -1)" grep -qF "$ready" "$QS_OUT/run-fleetml"
+ready='{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"'
+qs_check "/readyz answers ${ready}<version>\"}" "$(grep -o '{"db".*}' "$QS_OUT/run-fleetml" | head -1)" grep -qF "$ready" "$QS_OUT/run-fleetml"
 qs_check 'the project list answers {"data":[],"pagination":{...}}' "$(grep -o '{"data".*' "$QS_OUT/run-fleetml" | head -1)" grep -q '^{"data":\[\],"pagination":' "$QS_OUT/run-fleetml"
 qs_check "the Dashboard line" "$(grep -c '^Dashboard: http://localhost' "$QS_OUT/run-fleetml") line(s)" grep -q '^Dashboard: http://localhost' "$QS_OUT/run-fleetml"
 qs_note "Run FleetML: readyz all connected"

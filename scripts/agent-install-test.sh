@@ -35,7 +35,7 @@ cp -r /src/agent /tmp/agent
 out=$(/tmp/agent/install.sh /src/fleetml-agent)
 echo "$out"
 grep -q "No running systemd on this machine" <<<"$out"
-grep -q "exec su -s /bin/sh fleetml-agent -c '"'"'exec /usr/local/bin/fleetml-agent" <<<"$out"
+grep -q "exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml" <<<"$out"
 ! grep -q "systemctl" <<<"$out"
 [ ! -e /etc/systemd/system/fleetml-agent.service ]
 [ "$(stat -c "%U %a" /var/lib/fleetml-agent)" = "fleetml-agent 755" ]
@@ -45,10 +45,11 @@ echo "$log"
 grep -q "fleetml-agent starting" <<<"$log"
 ! grep -q "permission denied" <<<"$log"
 [ -f /var/lib/fleetml-agent/state.json ]
-# The printed command, as a supervisor runs it: its SIGTERM stops the agent
-# (without the inner exec, su killed only its shell and the agent ran on).
+# The printed command, as a supervisor runs it: its SIGTERM reaches the agent,
+# which stops by itself (su forked and SIGKILLed it after 2 s; without an
+# inner exec it killed only its shell and the agent ran on).
 agents() { for p in /proc/[0-9]*; do tr "\0" " " <"$p/cmdline" 2>/dev/null | grep -q "^/usr/local/bin/fleetml-agent " && echo "$p"; done; true; }
-cmd=$(grep "^  exec su " <<<"$out" | sed "s/^  //")
+cmd=$(grep "^  exec setpriv " <<<"$out" | sed "s/^  //")
 sh -c "$cmd" >/tmp/agent.log 2>&1 &
 pid=$!
 for _ in $(seq 20); do [ -n "$(agents)" ] && break; sleep 0.25; done
@@ -68,7 +69,7 @@ printf "#!/bin/sh\necho \"\$*\" >> /tmp/systemctl.log\necho \"System has not bee
 out=$(/tmp/agent/install.sh /src/fleetml-agent)
 echo "$out"
 grep -q "No running systemd on this machine" <<<"$out"
-grep -q "su -s /bin/sh fleetml-agent -c" <<<"$out"
+grep -q "exec setpriv --reuid=fleetml-agent" <<<"$out"
 [ ! -e /etc/systemd/system/fleetml-agent.service ]
 [ ! -e /tmp/systemctl.log ]
 [ "$(stat -c "%U %a" /var/lib/fleetml-agent)" = "fleetml-agent 755" ]
@@ -104,6 +105,8 @@ cp -r /src/agent /tmp/agent
 out=$(/tmp/agent/install.sh /src/fleetml-agent)
 echo "$out"
 echo "$out" | grep -q "No running systemd on this machine"
+# BusyBox setpriv has no --reuid: the su form, whose su execs the shell.
+echo "$out" | grep -q "exec su -s /bin/sh fleetml-agent -c '"'"'exec /usr/local/bin/fleetml-agent"
 [ "$(id -gn fleetml-agent)" = fleetml-agent ]
 [ "$(stat -c "%U %G %a" /var/lib/fleetml-agent)" = "fleetml-agent fleetml-agent 755" ]
 [ "$(stat -c "%G %a" /etc/fleetml-agent/config.yaml)" = "fleetml-agent 640" ]

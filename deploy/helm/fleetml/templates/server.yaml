@@ -34,7 +34,8 @@ spec:
             "S3_PUBLIC_USE_SSL" .Values.s3.publicUseSSL
             "REST_PORT" "18080"
             "GRPC_PORT" "19090"
-            "MIGRATE_ON_START" "true" }}
+            "MIGRATE_ON_START" "true"
+            "DEPENDENCY_TIMEOUT" .Values.server.dependencyTimeout }}
           env:
             {{- range $k, $v := mergeOverwrite $env .Values.server.env }}
             - {name: {{ $k }}, value: {{ $v | toString | quote }}}
@@ -43,8 +44,9 @@ spec:
             httpGet: {path: /readyz, port: rest}
             periodSeconds: 5
           # /livez answers once Postgres, the object store and NATS are
-          # reachable; the server waits up to 60 s for each, so the startup
-          # probe allows 200 s before the liveness probe takes over.
+          # reachable; the server waits up to server.dependencyTimeout (180 s)
+          # for each, and the startup probe allows 200 s before the liveness
+          # probe takes over.
           startupProbe:
             httpGet: {path: /livez, port: rest}
             periodSeconds: 5

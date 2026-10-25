@@ -26,11 +26,13 @@ func TestE2E_OpsEndpoints(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(body)
 	}
-	code, _ := get("/livez")
+	code, body := get("/livez")
 	assert.Equal(t, 200, code)
-	code, body := get("/readyz")
+	assert.Contains(t, body, `"version":"`)
+	code, body = get("/readyz")
 	assert.Equal(t, 200, code)
 	assert.Contains(t, body, `"db":"connected"`)
+	assert.Contains(t, body, `"version":"`)
 
 	f := e.newFixture(t) // some API traffic to count
 	d := e.register(t, f.enrollKey, nil)

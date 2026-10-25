@@ -110,11 +110,14 @@ Every call to the server raises `fleetml.FleetMLError` when the server
 refuses it or cannot be reached (a local file that `push` cannot read raises
 Python's own `FileNotFoundError` or `OSError`). It carries `status` (the HTTP
 status, 0 when the server was not reached), `code` (the server's error code:
-`NOT_FOUND` for an unknown ID, also a version's telemetry or drift;
+`NOT_FOUND` for an unknown ID, also a version's telemetry summary or drift
+(`telemetry.events` filters, so an unknown version gives an empty list);
 `CONFLICT`, for example a project name that exists;
-`VALIDATION_ERROR`; `INVALID_TRANSITION`, a deployment or experiment asked
-to do what its status does not allow, such as starting a COMPLETE
-deployment; `INTEGRITY_ERROR`, `UNAUTHORIZED`, `NOT_DEPLOYABLE` and so on;
+`VALIDATION_ERROR`, for example a `limit` that is not an integer;
+`INVALID_TRANSITION` (409), a deployment, experiment or version asked to do
+what its status does not allow, such as starting a COMPLETE deployment,
+progressing one that is not ROLLING_OUT, concluding a CONCLUDED experiment
+or moving an ACTIVE version back to DRAFT; `INTEGRITY_ERROR`, `UNAUTHORIZED`, `NOT_DEPLOYABLE` and so on;
 `UNAVAILABLE` or `UPLOAD_FAILED` from the client) and `message` (the
 server's message, such as `project not found`):
 
@@ -135,22 +138,23 @@ IDs are strings. The responses users read are dataclasses (`Project`,
 `Model`, `Version`, `EnrollmentKey`, `Deployment`, `DeploymentHealth`,
 `Device`, `TelemetryEvent`, `TelemetrySummary`, `Experiment`,
 `ExperimentResults`, `DriftResult`) whose `raw` field holds the server's
-full JSON object; list methods take `limit` and `offset` (the server's
+full JSON object; list methods take `limit=` and `offset=` (the server's
 default page is 20), and `devices.list`, `deployments.list` and
 `experiments.list` take `project=` (a project ID); without it they list the
-whole server.
+whole server. The three are keyword-only (`*` in the table), so a project ID
+passed by position is an error rather than a page size.
 
 | Python | CLI | What it does |
 |---|---|---|
 | `fm.projects.create(name, description="")` | `fleetml project create --name` | Creates a project |
-| `fm.projects.list()` | `fleetml project list` | Lists projects |
+| `fm.projects.list(*, limit=None, offset=None)` | `fleetml project list` | Lists projects |
 | `fm.projects.get(project_id)` | `fleetml project get` | One project |
 | `fm.projects.delete(project_id)` | `fleetml project delete` | Deletes the project with its models, versions, deployments, experiments, enrollment keys, devices and their telemetry |
 | `fm.models.create(project, name, framework="TFLITE", task="CLASSIFICATION")` | `fleetml model create` | Creates a model |
-| `fm.models.list(project)` | `fleetml model list --project` | Lists a project's models |
+| `fm.models.list(project, *, limit=None, offset=None)` | `fleetml model list --project` | Lists a project's models |
 | `fm.models.get(model_id)` | `fleetml model get` | One model |
 | `fm.versions.create(model, version, metadata=None)` | `fleetml ver create --model --version` | Creates a version, with optional metadata |
-| `fm.versions.list(model)` | `fleetml ver list --model` | Lists a model's versions |
+| `fm.versions.list(model, *, limit=None, offset=None)` | `fleetml ver list --model` | Lists a model's versions |
 | `fm.versions.get(version_id)` | (REST) | One version |
 | `fm.versions.promote(version_id, status="ACTIVE")` | `fleetml ver promote` | Moves a version to STAGED, ACTIVE (through STAGED from DRAFT) or ARCHIVED |
 | `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. `target_runtime` is the CLI's `--framework` |
@@ -158,26 +162,26 @@ whole server.
 | `fm.deployments.create(project, version, strategy="ALL_AT_ONCE", target_selector=None, health_gate=None, canary_stages=None, rolling_config=None, urgent=False)` | `fleetml deploy create` | Creates a deployment; `target_selector` is the CLI's `--target`, the rest as in [Rollouts](ROLLOUTS.md) |
 | `fm.deployments.start(deployment_id)` | `fleetml deploy start` | Starts it |
 | `fm.deployments.get(deployment_id)` | `fleetml deploy get` | One deployment |
-| `fm.deployments.list(project=None)` | `fleetml deploy list --project` | Lists deployments, newest first |
+| `fm.deployments.list(*, project=None, limit=None, offset=None)` | `fleetml deploy list --project` | Lists deployments, newest first |
 | `fm.deployments.rollback(deployment_id, reason="manual rollback")` | `fleetml deploy rollback` | Rolls it back |
 | `fm.deployments.pause(deployment_id)`, `.resume(deployment_id)` | `fleetml deploy pause`, `resume` | Holds a rollout where it is, and lets it go on |
 | `fm.deployments.cancel(deployment_id)` | (REST) | Stops it; the devices it reached go back to the deployment before it |
-| `fm.deployments.progress(deployment_id)` | `fleetml deploy progress` | Moves a canary or rolling deployment to its next stage now, if the stage's minimum time and health gate allow |
-| `fm.deployments.health(deployment_id)` | `fleetml deploy health` | The current stage's health gate: `healthy`, `hold`, `reason`, `can_progress` |
+| `fm.deployments.progress(deployment_id)` | `fleetml deploy progress` | Moves a canary or rolling deployment to its next stage now, if the stage's minimum time and health gate allow (`health().can_progress`); otherwise returns it unchanged (compare `current_stage`). A deployment that is not ROLLING_OUT raises `INVALID_TRANSITION` |
+| `fm.deployments.health(deployment_id)` | `fleetml deploy health` | The current stage's health gate: `healthy`, `hold`, `reason`, `can_progress` (true when `progress` would move it now; `reason` then names the time a stage still holds) |
 | `fm.wait_for_deployment(deployment_id, timeout=600, interval=2, statuses=...)` | | Polls until COMPLETE, ROLLED_BACK, CANCELLED or FAILED (or the given statuses) |
-| `fm.devices.list(labels=None, project=None)` | `fleetml device list` | Lists devices, those with all the given labels |
+| `fm.devices.list(labels=None, *, project=None, limit=None, offset=None)` | `fleetml device list` | Lists devices, those with all the given labels |
 | `fm.devices.get(device_id)` | `fleetml device get` | One device |
 | `fm.telemetry.summary(version_id)` | `fleetml telemetry summary` | The last day's telemetry of a version: latency and confidence over its INFERENCE events, counts over all |
-| `fm.telemetry.events(version_id=None, device_id=None, event_type=None)` | `fleetml telemetry events` | The last day's events, newest first |
+| `fm.telemetry.events(version_id=None, device_id=None, event_type=None, *, limit=None, offset=None)` | `fleetml telemetry events` | The last day's events, newest first |
 | `fm.experiments.create(project, name, control, treatment, metric="latency", split=50, auto_conclude=False, target_selector=None, min_sample_size=None)` | `fleetml experiment create` | Creates an A/B experiment between two version IDs |
 | `fm.experiments.start(experiment_id)` | `fleetml experiment start` | Starts it |
-| `fm.experiments.get(experiment_id)`, `.list(project=None)` | `fleetml experiment get`, `list` | One experiment, or the list |
+| `fm.experiments.get(experiment_id)`, `.list(*, project=None, limit=None, offset=None)` | `fleetml experiment get`, `list` | One experiment, or the list |
 | `fm.experiments.pause(experiment_id)`, `.resume(experiment_id)` | `fleetml experiment pause`, `resume` | Holds it and lets it go on |
 | `fm.experiments.conclude(experiment_id, winner, note="")` | `fleetml experiment conclude` | Ends it with the winning version ID |
 | `fm.experiments.cancel(experiment_id)` | `fleetml experiment cancel` | Ends it without a winner |
 | `fm.experiments.results(experiment_id)` | `fleetml experiment results` | Both arms, the p-value and the recommendation |
 | `fm.drift.status(version_id)` | `fleetml drift status` | The latest result per metric |
-| `fm.drift.check(version_id)` | `fleetml drift check` | Runs a drift check now, one result per metric; none until the version has a baseline (telemetry from the 7 days before the last day, which the CLI tour's `--history` provides) |
+| `fm.drift.check(version_id)` | `fleetml drift check` | Runs a drift check now, one result per metric; none until the version has a baseline (telemetry from the 7 days before the last day, which the CLI tour's `fleetml simulate ... --history 168h` provides; Go durations, so `8d` is refused) |
 | `fm.drift.history(version_id)` | (REST) | The last 50 drift results, newest first |
 
 Statuses are the server's: versions DRAFT, STAGED, ACTIVE, ARCHIVED;

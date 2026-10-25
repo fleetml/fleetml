@@ -221,7 +221,7 @@ class Projects(_API):
     def create(self, name: str, description: str = "") -> Project:
         return Project.from_api(self._c._request("POST", "/projects", {"name": name, "description": description}))
 
-    def list(self, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Project]:
+    def list(self, *, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Project]:
         return from_list(self._c._request("GET", "/projects", params=self._c._page(limit, offset)), Project.from_api)
 
     def get(self, project_id: str) -> Project:
@@ -241,7 +241,7 @@ class Models(_API):
         body = {"name": name, "framework": framework, "task_type": task}
         return Model.from_api(self._c._request("POST", f"/projects/{project}/models", body))
 
-    def list(self, project: str, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Model]:
+    def list(self, project: str, *, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Model]:
         data = self._c._request("GET", f"/projects/{project}/models", params=self._c._page(limit, offset))
         return from_list(data, Model.from_api)
 
@@ -258,7 +258,7 @@ class Versions(_API):
             body["metadata"] = dict(metadata)
         return Version.from_api(self._c._request("POST", f"/models/{model}/versions", body))
 
-    def list(self, model: str, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Version]:
+    def list(self, model: str, *, limit: Optional[int] = None, offset: Optional[int] = None) -> List[Version]:
         data = self._c._request("GET", f"/models/{model}/versions", params=self._c._page(limit, offset))
         return from_list(data, Version.from_api)
 
@@ -316,7 +316,7 @@ class Deployments(_API):
         return Deployment.from_api(self._c._request("GET", f"/deployments/{deployment_id}"))
 
     def list(
-        self, limit: Optional[int] = None, offset: Optional[int] = None, project: Optional[str] = None
+        self, *, project: Optional[str] = None, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> List[Deployment]:
         """Lists deployments, newest first; with ``project``, that project's only."""
         params = self._c._page(limit, offset, project)
@@ -339,7 +339,9 @@ class Deployments(_API):
 
     def progress(self, deployment_id: str) -> Deployment:
         """Moves a canary or rolling deployment to its next stage now, if its
-        health gate allows it."""
+        health gate passes and the stage's minimum time has elapsed
+        (``health().can_progress``); otherwise returns it unchanged. A
+        deployment that is not ROLLING_OUT raises ``INVALID_TRANSITION``."""
         return Deployment.from_api(self._c._request("POST", f"/deployments/{deployment_id}/progress"))
 
     def health(self, deployment_id: str) -> DeploymentHealth:
@@ -353,9 +355,10 @@ class Devices(_API):
     def list(
         self,
         labels: Optional[Mapping[str, str]] = None,
+        *,
+        project: Optional[str] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        project: Optional[str] = None,
     ) -> List[Device]:
         """Lists devices; with ``project``, that project's only, and with
         ``labels``, only those that have all of them."""
@@ -381,6 +384,7 @@ class Telemetry(_API):
         version_id: Optional[str] = None,
         device_id: Optional[str] = None,
         event_type: Optional[str] = None,
+        *,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
     ) -> List[TelemetryEvent]:
@@ -431,7 +435,7 @@ class Experiments(_API):
         return Experiment.from_api(self._c._request("GET", f"/experiments/{experiment_id}"))
 
     def list(
-        self, limit: Optional[int] = None, offset: Optional[int] = None, project: Optional[str] = None
+        self, *, project: Optional[str] = None, limit: Optional[int] = None, offset: Optional[int] = None
     ) -> List[Experiment]:
         """Lists experiments; with ``project``, that project's only."""
         params = self._c._page(limit, offset, project)

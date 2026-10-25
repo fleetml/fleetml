@@ -82,3 +82,52 @@ func TestE2E_DeleteProjectWithTelemetry(t *testing.T) {
 	status, _, _ = e.apiError(t, "DELETE", "/api/v1/projects/"+f.project)
 	assert.Equal(t, 404, status, "a second delete")
 }
+
+// Status changes a resource's status does not allow answer 409
+// INVALID_TRANSITION for deployments, experiments and versions alike; paging
+// values that are not integers are refused; can_progress waits for the
+// stage's minimum time.
+func TestE2E_StatusAndPagingErrors(t *testing.T) {
+	e := newEnv(t)
+	f := e.newFixture(t)
+	v1, _, _ := e.newVersion(t, f, "1.0.0", "")
+	v2, _, _ := e.newVersion(t, f, "2.0.0", "")
+
+	// A version cannot go back to DRAFT once ACTIVE.
+	require.Equal(t, 200, e.call(t, "PATCH", "/api/v1/versions/"+v1+"/status", map[string]string{"status": "STAGED"}, nil))
+	require.Equal(t, 200, e.call(t, "PATCH", "/api/v1/versions/"+v1+"/status", map[string]string{"status": "ACTIVE"}, nil))
+	assert.Equal(t, 409, e.call(t, "PATCH", "/api/v1/versions/"+v1+"/status", map[string]string{"status": "DRAFT"}, nil))
+
+	// An experiment cannot be started twice.
+	var exp idOnly
+	require.Equal(t, 201, e.call(t, "POST", "/api/v1/experiments", map[string]any{"project_id": f.project, "name": "twice-" + randHex(3),
+		"control_version_id": v1, "treatment_version_id": v2}, &exp))
+	require.Equal(t, 200, e.call(t, "POST", "/api/v1/experiments/"+exp.ID+"/start", nil, nil))
+	status, code, message := e.apiError(t, "POST", "/api/v1/experiments/"+exp.ID+"/start")
+	assert.Equal(t, 409, status)
+	assert.Equal(t, "INVALID_TRANSITION", code)
+	assert.Contains(t, message, "invalid status transition")
+
+	// A canary in its first stage's hour: healthy, but not ready to progress.
+	d := e.deploy(t, map[string]any{"project_id": f.project, "model_version_id": v2, "strategy": "CANARY",
+		"canary_stages": []map[string]any{{"percentage": 50, "min_duration": "1h"}, {"percentage": 100}}})
+	require.Equal(t, "ROLLING_OUT", e.deploymentStatus(t, d), "deploy starts it")
+	var health struct {
+		CanProgress bool   `json:"can_progress"`
+		Reason      string `json:"reason"`
+	}
+	require.Equal(t, 200, e.call(t, "GET", "/api/v1/deployments/"+d+"/health", nil, &health))
+	assert.False(t, health.CanProgress)
+	assert.Contains(t, health.Reason, "stage 0 holds for its minimum time")
+
+	// A deployment that is not ROLLING_OUT does not progress.
+	require.Equal(t, 200, e.call(t, "POST", "/api/v1/deployments/"+d+"/rollback", map[string]string{"reason": "e2e"}, nil))
+	status, code, _ = e.apiError(t, "POST", "/api/v1/deployments/"+d+"/progress")
+	assert.Equal(t, 409, status)
+	assert.Equal(t, "INVALID_TRANSITION", code)
+
+	status, code, message = e.apiError(t, "GET", "/api/v1/deployments?project_id="+f.project+"&limit="+f.project)
+	assert.Equal(t, 400, status)
+	assert.Equal(t, "VALIDATION_ERROR", code)
+	assert.Equal(t, `limit must be an integer, got "`+f.project+`"`, message)
+}

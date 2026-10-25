@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -33,16 +34,19 @@ func newTelemetryEventsCmd() *cobra.Command {
 				PrintJSON(result)
 				return nil
 			}
+			versions := map[string]string{} // version ID -> its version, looked up once
 			var rows [][]string
 			for _, e := range result {
 				rows = append(rows, []string{
+					eventTime(e["recorded_at"]),
+					versionName(versions, fmt.Sprint(e["model_version_id"])),
 					fmt.Sprint(e["event_type"]),
 					fmt.Sprint(e["latency_ms"]),
 					confidence(e["confidence_score"]),
 					fmt.Sprint(e["error_message"]),
 				})
 			}
-			PrintTable([]string{"Type", "Latency(ms)", "Confidence", "Error"}, rows)
+			PrintTable([]string{"Time", "Version", "Type", "Latency(ms)", "Confidence", "Error"}, rows)
 			return nil
 		},
 	}
@@ -74,6 +78,36 @@ func newTelemetrySummaryCmd() *cobra.Command {
 
 // confidence prints a confidence score with 3 decimals: devices send float32,
 // so 0.97 arrives as 0.9700000286102295.
+// eventTime prints an event's recorded_at in local time, to the second.
+func eventTime(v interface{}) string {
+	s, _ := v.(string)
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return fmt.Sprint(v)
+	}
+	return t.Local().Format("2006-01-02 15:04:05")
+}
+
+// versionName is the version (1.0.0) of a model version ID, fetched once per
+// ID; the ID's first 8 characters if it cannot be read.
+func versionName(cache map[string]string, id string) string {
+	if v, ok := cache[id]; ok {
+		return v
+	}
+	name := id
+	if len(name) > 8 {
+		name = name[:8]
+	}
+	var ver map[string]interface{}
+	if err := client.Get("/api/v1/versions/"+id, &ver); err == nil {
+		if s, ok := ver["version"].(string); ok && s != "" {
+			name = s
+		}
+	}
+	cache[id] = name
+	return name
+}
+
 func confidence(v interface{}) string {
 	if f, ok := v.(float64); ok {
 		return fmt.Sprintf("%.3f", f)

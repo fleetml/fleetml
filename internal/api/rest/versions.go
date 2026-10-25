@@ -56,7 +56,10 @@ func (h *VersionHandler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, offset := parsePagination(c)
+	limit, offset, ok := parsePagination(c)
+	if !ok {
+		return
+	}
 	versions, total, err := h.service.ListVersions(c.Request.Context(), modelID, limit, offset)
 	if err != nil {
 		handleServiceError(c, err)

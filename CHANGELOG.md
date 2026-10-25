@@ -5,6 +5,129 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.9.0] - 2026-10-25
+
+The fixes from the fifth developer review (seven reviewers on the released
+0.8.0), and dependency updates. Two changes are visible to API clients: a
+few refused requests answer with other error codes, and three Python client
+arguments are keyword-only; both are under Changed with what to do. The
+upgrade from 0.8.0 is the [Upgrading](docs/QUICKSTART.md#upgrading) block,
+which now also keeps a 0.7.0 setup's `S3_PUBLIC_ENDPOINT`.
+
+### Changed
+
+- REST: an experiment or a model version asked for a status change its
+  status does not allow answers `409 INVALID_TRANSITION`, as deployments
+  always did, instead of `400 VALIDATION_ERROR` (the message text is the
+  same); `POST /deployments/{id}/progress` on a deployment that is not
+  `ROLLING_OUT` answers `409 INVALID_TRANSITION` instead of returning it
+  unchanged; a `limit` or `offset` that is not an integer answers
+  `400 VALIDATION_ERROR` naming the parameter instead of being ignored;
+  `can_progress` in a deployment's health is true only when `progress`
+  would move it now, and `reason` names the time a stage still holds
+  (`min_duration`, `batch_interval`). A client that branched on
+  `VALIDATION_ERROR` for those status changes checks `INVALID_TRANSITION`
+  (review 5).
+- Python client: `project`, `limit` and `offset` are keyword-only on the
+  list methods (`deployments.list`, `devices.list` after `labels`,
+  `experiments.list`, `projects.list`, `models.list` and `versions.list`
+  after their parent, `telemetry.events`). A call that passed them by
+  position, `fm.deployments.list(project_id)`, raised nothing and listed the
+  whole server; write `fm.deployments.list(project=project_id)` (review 5).
+- Dependencies: github.com/jackc/pgx/v5 5.11.0, lucide-react 1.61.0 in the
+  dashboard, org.json 20260814 in the Android SDK, actions/setup-python 7
+  in CI. The Android toolchain (AGP, Kotlin 2, Gradle 9, protobuf 4, gRPC
+  1.85) and the libraries that need it (kotlinx-coroutines 1.11, mockk
+  1.14, robolectric 4.17) move in an SDK release of their own.
+
+### Added
+
+- The Android SDK 0.9.0 is on Maven Central and the Python client 0.9.0 on
+  PyPI.
+- The server reports its version: `"version"` in `/readyz` and `/livez`,
+  and in the start log line. A server built by `docker compose` in a clone
+  takes it from the clone's tag; both images carry the
+  `org.opencontainers.image.version` label (review 5).
+- Android SDK: the background job's log line tells a refused request from an
+  unreachable server: `Background sync: server reached, request refused
+  (UNAUTHENTICATED: ...)` with the server's gRPC status and message, where
+  it said `server unreachable` before (review 5).
+- ANDROID_SDK.md: the command-line project has its manifest (AppCompat
+  theme, launcher activity) and a `MainActivity`; built from the guide and
+  run on an emulator (review 5).
+- CI's "Android sample app on Windows" job checks the JDK is 17 and builds
+  with a key and a dotted `-PfleetmlDebugHost`, quoted as the guide writes
+  it, in PowerShell 7 and in Windows PowerShell 5.1 (review 5).
+- `DEPENDENCY_TIMEOUT` (default `60s`): how long the server waits at
+  start-up for each of Postgres, the object store and NATS; the Helm chart
+  sets `180s` (`server.dependencyTimeout`), inside its 200 s startup probe
+  (review 5).
+- CLI: `fleetml telemetry events` has Time and Version columns (each
+  version looked up once); `fleetml simulate` reads the enrollment key from
+  `FLEETML_ENROLLMENT_KEY` when `--enrollment-key` is not given, which keeps
+  it out of `ps` (review 5).
+
+### Fixed
+
+- CLI: `fleetml push --promote` reports a refused promotion (`uploaded ...
+  but promoting it to STAGED failed: ...`, non-zero exit) instead of
+  printing `✓ Pushed` with the version left at DRAFT; `fleetml project
+  delete --help` says it asks for no confirmation and cannot be undone
+  (review 5).
+- Docs: `fleetml project delete $P` in QUICKSTART "Clean up" and the
+  Android guide, for a server you keep; ANDROID_SDK "From Windows": x64
+  only, a new window after winget, a time-stamped project name so the block
+  runs twice, logcat runs until Ctrl+C, `Get-NetConnectionProfile`; the
+  `deploy get` counts before the app registers (review 5).
+- IOS_SDK.md: step 1 lists what needs a hand at the phone once (Developer
+  Mode, trusting the Mac, Connect via network, Auto-Lock Never, the first
+  launch's two prompts), so the terminal steps can run unattended; step 2
+  has a Safari check of `/readyz` and the object store from the phone;
+  step 5 quotes Xcode 26's `CoreDeviceService was unable to locate a
+  device ...` next to `Connection interrupted`, and says a locked phone
+  takes the install but not the launch; `log collect` takes the phone's
+  name; step 9 says it needs Xcode and someone at the phone (review 5).
+- Linux agent: the last telemetry flush on SIGTERM is bounded at 1.5 s
+  (was 5 s), so a stop with the server unreachable takes under 2 s
+  (`systemctl stop`: 1.64 s, 5.11 s before); `install.sh` prints
+  `exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups ...`
+  for a supervisor, where `su` stayed as the agent's parent and SIGKILLed
+  it 2 s after a SIGTERM (BusyBox keeps the `su` form, which works there).
+  LINUX_AGENT.md: when the offline warning comes, the demo's server ports
+  and its `down`, the enrollment key in `docker inspect` (review 5).
+- Helm: a cold install no longer restarts the server once while the
+  Postgres image is still being pulled (the 60 s dependency wait ran out
+  first); a `secrets.adminKey` shorter than 32 characters is refused at
+  install time instead of crash-looping the server; the README's install
+  block names its local ports in one line, used everywhere, and says what
+  `existingSecret` does not roll and how to remove the namespace;
+  `fleetml-secrets*.yaml` is git- and helm-ignored (review 5).
+- ANDROID_SDK.md "From Windows" uses JDK 17 (Temurin, through winget):
+  Android Studio 2026.1 bundles Java 25, on which Gradle 8.7 stops with
+  `What went wrong: 25.0.2`; the `-P` arguments are quoted, since
+  PowerShell cuts an unquoted `-PfleetmlDebugHost=<LAN IP>` at the first
+  dot (review 5).
+- README: `tensorflow-lite:2.17.0`, as the guide and the sample app.
+- Compose: `FLEETML_S3_PUBLIC_PORT` also moves `S3_PUBLIC_ENDPOINT`'s
+  default (`localhost:<port>`), and the Run block saves the port and the
+  address together; before, a moved port left every upload and download URL
+  on 19100 (review 5).
+- QUICKSTART "Upgrading" keeps `S3_PUBLIC_ENDPOINT` for a `~/.fleetml.env`
+  written by 0.7.0 or earlier (which set it on the command line): the block
+  copies the running server's value into the file first, so phones and
+  agents keep receiving models after the upgrade (review 5).
+
+### Security
+
+- pgx 5.11.0 includes 5.10's hardening of its decoders and SCRAM against a
+  malicious or compromised database server.
+- `fleetml simulate` reads its enrollment key from `FLEETML_ENROLLMENT_KEY`,
+  which keeps it out of the process list; LINUX_AGENT.md says the
+  container one-liner's key is visible to `docker inspect` and how to keep
+  it in a read-only `config.yaml` instead.
+- Helm: `fleetml-secrets*.yaml` is git- and helm-ignored, and a short
+  `adminKey` is refused at install time.
+
 ## [0.8.0] - 2026-10-24
 
 The fixes from the fourth developer review (seven reviewers, a real Android
@@ -813,6 +936,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.9.0]: https://github.com/fleetml/fleetml/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/fleetml/fleetml/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/fleetml/fleetml/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/fleetml/fleetml/compare/v0.5.0...v0.6.0

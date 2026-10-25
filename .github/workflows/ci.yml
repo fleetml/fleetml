@@ -97,7 +97,7 @@ jobs:
         working-directory: python
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e ".[dev]"
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: python -m pip install -e "python[dev]"
@@ -191,9 +191,29 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
-      - name: gradlew.bat assembleDebug
+      - name: JDK 17, as From Windows says
         shell: pwsh
-        run: .\gradlew.bat --no-daemon :sample-app:assembleDebug -PfleetmlDebugHost=localhost
+        run: |
+          Select-String -Path "$env:JAVA_HOME\release" -Pattern JAVA_VERSION
+          if (-not (Select-String -Quiet -Path "$env:JAVA_HOME\release" -Pattern 'JAVA_VERSION="17\.')) { throw "JAVA_HOME is not a JDK 17" }
+      # The guide's gradlew.bat line as written, with a key and a dotted host
+      # in quotes (PowerShell cuts an unquoted -Pname=192.168.1.23 at the
+      # first dot), in PowerShell 7 and in Windows PowerShell 5.1; the
+      # generated network config must carry the whole address.
+      - name: gradlew.bat assembleDebug (PowerShell 7)
+        shell: pwsh
+        run: |
+          $EK = 'ci-placeholder-key'
+          .\gradlew.bat --no-daemon :sample-app:assembleDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=192.168.1.23"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet -SimpleMatch '>192.168.1.23<' sample-app\build\generated\res\fleetmlDebugNetworkConfig\xml\network_security_config.xml)) { throw "the dotted host did not reach the build" }
+      - name: gradlew.bat assembleDebug (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $EK = 'ci-placeholder-key'
+          .\gradlew.bat --no-daemon :sample-app:assembleDebug "-PfleetmlEnrollmentKey=$EK" "-PfleetmlDebugHost=10.20.30.40"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet -SimpleMatch '>10.20.30.40<' sample-app\build\generated\res\fleetmlDebugNetworkConfig\xml\network_security_config.xml)) { throw "the dotted host did not reach the build" }
 
   docs:
     name: Docs site
@@ -232,6 +252,16 @@ jobs:
           helm template t deploy/helm/fleetml --set secrets.existingSecret=fleetml,s3.publicEndpoint=s3.example.com:443 \
             --set postgres.enabled=false,postgres.url=postgres://db/fleetml,nats.enabled=false,nats.url=nats://nats:4222 \
             --set seaweedfs.enabled=false,s3.endpoint=s3.example.com:443 > /dev/null
+      - name: Rendered values
+        run: |
+          # The server waits 180 s for its dependencies, inside the startup probe.
+          helm template t deploy/helm/fleetml --set "$SECRETS,s3.publicEndpoint=x:1" | grep -q '{name: DEPENDENCY_TIMEOUT, value: "180s"}'
+          # A short adminKey is refused (the server would crash-loop on it) ...
+          if helm template t deploy/helm/fleetml --set "$SECRETS,secrets.adminKey=short,s3.publicEndpoint=x:1" > /dev/null 2>&1; then
+            echo "a 5-character adminKey was accepted" >&2; exit 1
+          fi
+          # ... unless the keys come from a Secret of your own, which the chart does not read.
+          helm template t deploy/helm/fleetml --set secrets.existingSecret=fleetml,secrets.adminKey=short,s3.publicEndpoint=x:1 > /dev/null
 
   shell:
     name: Shell scripts
