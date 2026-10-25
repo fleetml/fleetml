@@ -298,6 +298,22 @@ struct MyApp: App {
    with it `xcodebuild` stops with `No Account for Team "<ID>"`. Put the
    phone and the Mac on the same Wi-Fi network.
 
+   Everything from step 5 on needs the phone awake, unlocked and reachable,
+   and some of it needs a hand on the phone once. Do these before you
+   start, and the terminal steps can then run with the phone on the desk:
+
+   - Developer Mode on, and the Mac trusted (connect the cable once and tap
+     Trust).
+   - **Connect via network** in Xcode's Devices and Simulators window
+     (Shift-Command-2), if you want to work without the cable (step 5,
+     Wirelessly).
+   - Settings, Display & Brightness, Auto-Lock, Never, and the phone on its
+     charger.
+   - For a bundle ID the phone has not run before, the first launch in step
+     5 stops at two prompts: trust the developer (Settings, General, VPN &
+     Device Management) and allow Local Network access. After that,
+     relaunches need no hand at the phone.
+
 2. **The server, with its object store on the Mac's LAN address.** The phone
    reaches the server at the Mac's LAN address (`ipconfig getifaddr en0`,
    `en1` on some Macs), and every model download is a presigned URL for the
@@ -313,6 +329,13 @@ struct MyApp: App {
 
    If someone else runs the server, ask them to start it this way. A phone
    that registers but never downloads: it is almost always the endpoint.
+
+   Check the network path from the phone before the app: in Safari on the
+   phone, `http://<Mac LAN IP>:18080/readyz` must show `"status":"ok"`, and
+   `http://<Mac LAN IP>:19100` must answer at all (an XML error page from
+   the object store is fine). If Safari cannot load them, it is the Wi-Fi
+   (a guest network that isolates devices) or the Mac's firewall, not the
+   app or the SDK.
 
 3. **The models, the enrollment key and the deployment**, from the root of a
    clone (for the Core ML sample models; push your own `.mlmodel` instead),
@@ -434,12 +457,16 @@ struct MyApp: App {
    Devices and Simulators window (Shift-Command-2) has **Connect via
    network** for it; after that `xcrun devicectl list devices` lists it as
    available without the cable, and the same `install` and `launch` lines
-   work. A phone that is asleep or out of reach is listed as `unavailable`,
-   and `install` fails with `Connection interrupted`: wake and unlock it, or
-   use the cable.
+   work. A phone that is asleep or out of reach is listed as `unavailable`
+   (or `disconnected` until the next command reaches it), and `install`
+   fails with `Connection interrupted`, or with Xcode 26
+   `CoreDeviceService was unable to locate a device matching the requested device identifier`
+   (`com.apple.dt.CoreDeviceError error 1011`): wake and unlock it, or use
+   the cable. A locked phone that is reachable still takes the `install`;
+   only the `launch` needs it unlocked.
 
-   **Keep the phone unlocked with the app in front for steps 6 to 8** (for
-   the test, Settings, Display & Brightness, Auto-Lock, Never). iOS refuses
+   **Keep the phone unlocked with the app in front from the launch to step
+   8** (step 1's list: Auto-Lock, Never). iOS refuses
    to launch an app on a locked phone (`Unable to launch com.example.myapp
    because the device was not, or could not be, unlocked`), and an app that
    nobody looks at is suspended within about a minute, which stops the SDK's
@@ -460,9 +487,13 @@ struct MyApp: App {
    archive:
 
    ```bash
-   sudo log collect --device-name '<device>' --last 10m --output fleetml.logarchive
+   sudo log collect --device-name '<phone name>' --last 10m --output fleetml.logarchive
    /usr/bin/log show fleetml.logarchive --info --predicate 'subsystem == "com.fleetml.sdk"'
    ```
+
+   `--device-name` takes the phone's name, as `xcrun devicectl list devices`
+   lists it, not the identifier the step 5 lines accept (with one phone
+   attached, `--device` alone picks it).
 
    When it does not get that far:
 
@@ -507,7 +538,9 @@ struct MyApp: App {
    reconnect.
 
 9. **Background refresh** (with the three settings of step 4 and
-   `FleetML.registerBackgroundTask()`). The simulator cannot run background
+   `FleetML.registerBackgroundTask()`). This is the one step that needs
+   Xcode and someone at the phone; the steps before it run from a terminal.
+   The simulator cannot run background
    tasks, so test it on the phone: run the app from Xcode, send it to the
    background, pause it in Xcode's debugger (the LLDB prompt needs the
    debugger attached, which a `devicectl` launch does not have), enter

@@ -53,6 +53,14 @@ change APIs).
 
 ### Fixed
 
+- IOS_SDK.md: step 1 lists what needs a hand at the phone once (Developer
+  Mode, trusting the Mac, Connect via network, Auto-Lock Never, the first
+  launch's two prompts), so the terminal steps can run unattended; step 2
+  has a Safari check of `/readyz` and the object store from the phone;
+  step 5 quotes Xcode 26's `CoreDeviceService was unable to locate a
+  device ...` next to `Connection interrupted`, and says a locked phone
+  takes the install but not the launch; `log collect` takes the phone's
+  name; step 9 says it needs Xcode and someone at the phone (review 5).
 - Linux agent: the last telemetry flush on SIGTERM is bounded at 1.5 s
   (was 5 s), so a stop with the server unreachable takes under 2 s
   (`systemctl stop`: 1.64 s, 5.11 s before); `install.sh` prints
