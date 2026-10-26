@@ -51,20 +51,33 @@ version as `dev`; in WSL, install Go from [go.dev](https://go.dev/doc/install): 
 
 ## Troubleshooting
 
-**The server never answers** (step 2 keeps waiting). The first start takes a
-few minutes on a cold Docker cache, most of it pulling the base images and
-building the server and dashboard images; with the images cached, well under
-a minute. If nothing appears after about two minutes more than the build
-took, run `docker compose -f deploy/docker-compose.prod.yml ps -a` and
-`docker compose -f deploy/docker-compose.prod.yml logs server` to see which
-container stopped and why (a port already in use is the usual cause: see
-[Other ports](#other-ports)). On Windows, a port can also sit in a range
-that Hyper-V or WSL reserves: Docker then fails with `bind: An attempt was
-made to access a socket in a way forbidden by its access permissions`, and
-`netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists the
-reserved ranges; move the port out of them as [Other ports](#other-ports)
-says for a stack that has started once (the settings file already exists,
-so exporting the variable no longer helps).
+**Not ready after 3 minutes** (step 2 prints `Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md`).
+The first start takes a few minutes on a cold Docker cache, most of it
+pulling the base images and building the server and dashboard images; the
+3 minutes start after the build, when the stack starts. Look at what step 2
+printed above the message:
+
+- `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
+  Windows, `bind: An attempt was made to access a socket in a way forbidden
+  by its access permissions`): another program holds that port, and the
+  container that needs it stays `Created`
+  (`docker compose -f deploy/docker-compose.prod.yml ps -a` shows it). Move
+  the port: step 2 already saved the settings file, so add the port to it as
+  [Other ports](#other-ports) says for a stack that has started once, for
+  example for the REST API:
+
+  ```bash
+  echo 'export FLEETML_REST_PORT=28080' >> ~/.fleetml.env
+  source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
+  for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; sleep 2; done; echo
+  ```
+
+  You should see the `/readyz` line; then go on with step 3. On Windows,
+  `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists
+  the ranges Hyper-V and WSL keep; pick a port outside them.
+- Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
+  shows which container stopped, and
+  `docker compose -f deploy/docker-compose.prod.yml logs server` why.
 
 **`/readyz`** answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`
 once Postgres, the object store and NATS are reachable, and the project list
@@ -512,7 +525,7 @@ devices and the tools; each moves on its own:
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
   docker compose -f deploy/docker-compose.prod.yml up -d --build
-  until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+  for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
   ```
 
   The `grep` line matters for a `~/.fleetml.env` written by 0.7.0 or

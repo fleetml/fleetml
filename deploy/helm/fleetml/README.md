@@ -78,7 +78,7 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
    kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
    kubectl -n fleetml port-forward svc/fleetml-server $REST:18080 $GRPC:19090 >/dev/null &
    kubectl -n fleetml port-forward svc/fleetml-s3 $S3:8333 >/dev/null &
-   until curl -sf localhost:$REST/readyz; do sleep 1; done; echo
+   for i in $(seq 180); do curl -sf localhost:$REST/readyz && break; [ $i = 180 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 1; done; echo
    helm test fleetml -n fleetml
    ```
 
