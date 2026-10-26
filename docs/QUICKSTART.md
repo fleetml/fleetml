@@ -417,10 +417,13 @@ picks the tour up from the repository root with
 
 ```bash
 source ~/.fleetml.env
+export PATH="$HOME/.local/bin:$PATH"
 export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+fleetml project list
 ```
 
-(and the `export PATH` line above again if you built the CLI from source).
+You should see the tour's project, `tour`, in the list. (If you built the
+CLI from source, its `export PATH` line above instead of the second line.)
 If the simulator's shell was closed, start the simulator again there with the
 `fleetml simulate` line of section 2 (the same 20 devices register again),
 `SIM=$!` and that section's last line; `pgrep -f 'fleetml simulate'` shows
