@@ -18,7 +18,7 @@
 #
 # The blocks run as written except for three substitutions, so CI tests the
 # tree under test rather than the last release:
-#   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+#   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
 #       -> cd <this checkout>
 #   https://github.com/fleetml/fleetml/releases/latest/download/
 #       -> file://<DIR>/ with --local-release DIR (from OUT=DIR make release-binaries)
@@ -86,7 +86,7 @@ substitute() {
   [ -z "$DIST" ] || repl_dist="file://$DIST/"
   perl -pi -e '
     BEGIN { $root = shift @ARGV; $dist = shift @ARGV; $py = shift @ARGV }
-    s{^git clone https://github\.com/fleetml/fleetml\.git && cd fleetml\s*$}{cd "$root"\n};
+    s{^\[ -f deploy/docker-compose\.prod\.yml \] \|\| \{ \[ -d fleetml \] \|\| git clone https://github\.com/fleetml/fleetml\.git; cd fleetml; \}\s*$}{cd "$root"\n};
     s{https://github\.com/fleetml/fleetml/releases/latest/download/}{$dist}g if $dist ne "";
     s{\bpip install fleetml\b(?![-=.\w])}{pip install "$root/python"}g if $py ne "";
   ' "$ROOT" "$repl_dist" "$LOCAL_PY" "$1"

@@ -47,7 +47,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 
    <!-- golden: start -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -118,15 +118,17 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    missing forward, or the wrong device.
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
-   key into the login box:
+   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+   the dashboard's address: open it and paste the key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
    ```
 
-   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   You should see `Dashboard: http://localhost:<port>`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the app, the forwards, the server and all its data, and
@@ -643,7 +645,7 @@ maintainers run it by hand.
    `~/.fleetml.env` and restart the server. This shows the value in use:
 
    ```bash
-   docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
+   docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
    ```
 
 4. Build and install the debug build, whose host is `localhost`, with the
@@ -1020,7 +1022,7 @@ which Gradle reads as the property and which keeps it off the build's
 command line, where Task Manager and `Get-CimInstance Win32_Process` show
 it to every process of the user. The `$rest, $grpc, $s3` line reads the
 stack's three ports from the Ubuntu shell's `~/.fleetml.env`, so a port
-moved out of a reserved range ([On Windows](QUICKSTART.md#on-windows),
+moved out of a reserved range ([Troubleshooting](ADVANCED.md#troubleshooting),
 [Other ports](ADVANCED.md#other-ports)) needs no change here, in the
 firewall rule below or on the emulator. The reverses reach the ports Docker
 Desktop publishes on Windows. The app connects by itself on its first

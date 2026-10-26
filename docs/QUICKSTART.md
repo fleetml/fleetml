@@ -26,7 +26,7 @@ and keep it open until the end.
 
    <!-- golden: start -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -81,7 +81,7 @@ and keep it open until the end.
      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; sleep 2; done
+   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
    ```
 
    You should see `msg="model active" model=iris version=1.0.0`.
@@ -90,15 +90,17 @@ and keep it open until the end.
    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
-   key into the login box:
+   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+   the dashboard's address: open it and paste the key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
    ```
 
-   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   You should see `Dashboard: http://localhost:<port>`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**, when you are done (after the [tour](#tour), if you take it:
@@ -115,7 +117,8 @@ and keep it open until the end.
 
    You should see `Network <stack>_default  Removed`.
 
-Then: the [tour](#tour) on the same stack, before step 7. Other ports, a phone
+Then: the [tour](#tour) on the same stack, before step 7 (after it, run
+step 2 again first: it reuses the clone and starts a fresh stack). Other ports, a phone
 over Wi-Fi, Kubernetes and upgrades: [ADVANCED.md](ADVANCED.md).
 
 ## Run FleetML
@@ -136,13 +139,10 @@ On Windows, [Get started](#get-started) runs in the Ubuntu shell of WSL 2
 with Docker Desktop, PowerShell runs the Windows CLI, and a Windows browser
 shows the dashboard. Steps 1 to 3 are once per machine:
 
-1. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-   and keep **Use the WSL 2 based engine** on (Settings → General). The
-   installer needs an administrator; a daily account that is not one must be
-   in the local `docker-users` group to use Docker Desktop (Computer
-   Management, Local Users and Groups, then sign out and in again).
-2. In PowerShell opened as administrator (right-click, **Run as
-   administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu.
+1. In PowerShell opened as administrator (right-click, **Run as
+   administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu (its current LTS
+   release; the Windows run on GitHub uses the same), before Docker Desktop,
+   which needs WSL 2.
    Restart Windows if it asks to; WSL 2 also needs virtualization turned on
    in the firmware (BIOS or UEFI), which most laptops have on, and an error
    that mentions virtualization or "Virtual Machine Platform" means it is
@@ -151,17 +151,30 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    on an 8 GB laptop is about the 2 GB the stack and its two image builds
    need plus little else; a `%UserProfile%\.wslconfig` with `[wsl2]` and
    `memory=6GB`, then `wsl --shutdown`, gives it more.
+2. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+   and keep **Use the WSL 2 based engine** on (Settings → General). The
+   installer needs an administrator; a daily account that is not one must be
+   in the local `docker-users` group to use Docker Desktop (Computer
+   Management, Local Users and Groups, then sign out and in again).
 3. Start Docker Desktop, and in its Settings → Resources → WSL integration,
    turn on integration for Ubuntu. `docker` in the Ubuntu shell works only
    while Docker Desktop is running; "Cannot connect to the Docker daemon"
    there means it is not, or that the integration was turned on after the
    shell opened (open a new Ubuntu shell).
-4. In the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
+4. Check that Windows keeps none of the four ports for itself (Hyper-V and
+   WSL reserve ranges that can change at each restart): in PowerShell,
+   `netsh int ipv4 show excludedportrange protocol=tcp`. If one of Get
+   started's four ports (listed in [Other ports](ADVANCED.md#other-ports))
+   falls inside a listed range, export another port for it in the Ubuntu
+   shell before step 2, as that section says. Then
+   in the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
    (`curl` and `openssl` are already there), then `cd ~` and steps 1 to 5 of
    [Get started](#get-started) as they are. Keep the clone in the Linux file
    system (`~`), not under `/mnt/c`: files under `/mnt/c` are much slower to
    read from WSL.
-5. In PowerShell: the Windows CLI with the PowerShell block of
+5. In a normal PowerShell window (not one opened as administrator, which
+   starts in another folder and, as another account, sees another `Path`):
+   the Windows CLI with the PowerShell block of
    [Get the CLI](#get-the-cli), then the server's address and admin key from
    the Ubuntu shell's `~/.fleetml.env`:
 
@@ -172,11 +185,21 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    fleetml project list
    ```
 
-   You should see the project of step 4, `first-<time>`.
-6. The dashboard: open <http://localhost> in a Windows browser. Step 6 of
-   Get started prints the admin key in the Ubuntu shell (there is no
-   `pbcopy` there); paste it into the login box.
+   You should see the project of Get started's step 4, `first-<time>`.
+6. The dashboard: step 6 of Get started, in the Ubuntu shell, puts the admin
+   key on the Windows clipboard (`clip.exe`) and prints the dashboard's
+   address; open it in a Windows browser and paste the key into the login
+   box. If the page does not open, see
+   [Troubleshooting](ADVANCED.md#troubleshooting).
 7. Clean up: step 7 of [Get started](#get-started), in the Ubuntu shell.
+   On the Windows side, in PowerShell, the CLI and its two downloads:
+
+   ```powershell
+   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
+   ```
+
+   and its entry in the user `Path` (Settings, System, About, Advanced
+   system settings, Environment Variables). WSL and Docker Desktop stay.
 
 How it fits together, in more detail:
 
@@ -243,7 +266,7 @@ Desktop cannot be installed on the runner) and WSL's own `localhost`
 forwarding; `/readyz` and `fleetml project list` from PowerShell against that
 server; and the PowerShell block of [Get the CLI](#get-the-cli). In WSL it
 builds the CLI from source (the tour's first block) rather than installing
-the Linux release as step 5 does. Docker Desktop itself (steps 1 and 3, the
+the Linux release as Get started's step 3 does. Docker Desktop itself (steps 1 and 3, the
 ports it publishes) and the port-80 override are not exercised by CI.
 
 ## Get the CLI
@@ -279,6 +302,11 @@ Expand-Archive fleetml.zip -DestinationPath "$env:LOCALAPPDATA\fleetml" -Force
 $env:Path += ";$env:LOCALAPPDATA\fleetml"
 fleetml version
 ```
+
+You should see `fleetml-windows-<arch>.zip`'s check pass silently and
+`✓ fleetml v<version>` (Windows PowerShell 5.1 shows the tick as `?`). In
+Windows PowerShell 5.1, `$ProgressPreference = 'SilentlyContinue'` first
+makes the downloads much faster.
 
 The PowerShell block leaves `fleetml.zip` and `SHA256SUMS` in the folder it
 ran in; delete them once `fleetml version` answers. Running it again adds
@@ -353,7 +381,9 @@ container is not the object store.
 
 ## Tour
 
-The tour runs from the repository root, in the same shell as the stack (it
+The tour needs a running stack and the CLI: Get started's steps 2 and 3 (if
+step 7 cleaned up, run step 2 again: it reuses the clone). It runs from the
+repository root, in the same shell as the stack (it
 uses `FLEETML_ADMIN_KEY`), and needs `jq` and the `fleetml` CLI on the `PATH`:
 the release from [Get the CLI](#get-the-cli). Without it, build the CLI from
 source with Go 1.26 or later and put it on the `PATH` for this shell:

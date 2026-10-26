@@ -44,7 +44,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
    <!-- golden: start -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -198,15 +198,17 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
      answer means the network or the Mac's firewall keeps the phone out.
 
 7. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
-   key into the login box:
+   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+   the dashboard's address: open it and paste the key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
    ```
 
-   You should see the Overview page; **Devices** lists the iPhone (and the
+   You should see `Dashboard: http://localhost:<port>`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists the iPhone (and the
    simulator, if you did step 5: the Chipset column tells them apart), and
    **Deployments** one `COMPLETE` deployment of iris 1.0.0.
 
@@ -549,7 +551,7 @@ struct MyApp: App {
    `"status":"ok"`, and `http://<Mac LAN IP>:<model files port>` must answer
    at all (an XML error page from the object store is fine). The stack's
    ports are in `~/.fleetml.env`, which
-   `grep -o 'FLEETML_[A-Z_]*PORT=[0-9]*' ~/.fleetml.env` prints (the REST
+   `grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env` prints (the REST
    port is `FLEETML_REST_PORT`, the model files' `FLEETML_S3_PUBLIC_PORT`).
    If Safari cannot load them on those ports, it is the Wi-Fi (a guest
    network that isolates devices) or the Mac's firewall, not the app or the

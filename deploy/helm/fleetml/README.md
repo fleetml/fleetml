@@ -10,8 +10,8 @@ suit evaluation and small fleets; for production, see
 repository: there is no chart repository or OCI package.
 
 Needs a Kubernetes cluster, `kubectl`, Helm 3 and `openssl`, and for the
-last steps the [`fleetml` CLI](../../../docs/QUICKSTART.md#get-the-cli) and
-`jq`. [Get started](#get-started) makes the cluster with
+last steps the `fleetml` CLI (step 3 of the
+[README's Get started](../../../README.md#get-started)) and `jq`. [Get started](#get-started) makes the cluster with
 [kind](https://kind.sigs.k8s.io/), in Docker.
 
 ## Get started
@@ -40,7 +40,7 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
 
    <!-- golden: helm-cluster -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    kind create cluster --name fleetml
    ```
 
@@ -64,14 +64,15 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
 
    You should see nothing: the block prints no secret.
 
-4. **Install the chart** and wait for it. The first line names the local
-   ports this machine reaches the release on (other than the quickstart's,
-   so both can run here); they are variables of this shell, so in a new
-   terminal (for [Upgrading](#upgrading)) set the same line again first:
+4. **Install the chart** and wait for it. The first line names the four
+   local ports this machine reaches the release on (other than the
+   quickstart's, so both can run here); they are variables of this shell,
+   so in a new terminal (for [Upgrading](#upgrading)) set the same line
+   again first:
 
    <!-- golden: helm-install -->
    ```bash
-   REST=38080 GRPC=39090 S3=39100
+   REST=38080 GRPC=39090 S3=39100 DASH=38800
    helm install fleetml deploy/helm/fleetml -n fleetml --create-namespace \
      -f fleetml-secrets.yaml --set s3.publicEndpoint=localhost:$S3
    kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
@@ -81,7 +82,9 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
    helm test fleetml -n fleetml
    ```
 
-   You should see `"status":"ok"` and `Succeeded`.
+   You should see `"status":"ok"` and `Succeeded`. The chart's own notes,
+   printed in the middle, show the same port-forwards for later: this block
+   already started them.
 
 5. **Put devices on it**: the CLI, the sample model, an enrollment key, 20
    simulated devices and a deployment, as in the
@@ -93,8 +96,8 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
    P=$(fleetml project create --name helm-tour -o json | jq -r .id)
    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
    V1=$(fleetml ver list --model $(fleetml model list --project $P -o json | jq -r '.[0].id') -o json | jq -r '.[0].id')
-   EK=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
-   FLEETML_ENROLLMENT_KEY=$EK fleetml simulate --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
+   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name helm -o json | jq -r .key)
+   fleetml simulate --grpc localhost:$GRPC --devices 20 --label app=helm --seed helm-tour > /tmp/fleetml-helm-sim.log 2>&1 &
    SIM=$!
    fleetml deploy start $(fleetml deploy create --project $P --version $V1 --target '{"app":"helm"}' -o json | jq -r .id)
    sleep 10; tail -1 /tmp/fleetml-helm-sim.log
@@ -102,29 +105,35 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
 
    You should see `✓ Deployment start → COMPLETE` and `simulator: iris 1.0.0 on 20`.
 
-6. **See it in the dashboard.** This forwards it to <http://localhost:8080>
-   and puts the admin key on the clipboard (on a Mac; elsewhere it prints
-   it); open the page and paste the key into the login box:
+6. **See it in the dashboard.** This forwards it to the fourth port of step
+   4, puts the admin key on the clipboard (on a Mac, in WSL, or on Linux with
+   `xclip`; elsewhere it prints it) and prints the address: open it and
+   paste the key into the login box:
 
    <!-- golden: helm-dashboard manual -->
    ```bash
-   kubectl -n fleetml port-forward svc/fleetml-dashboard 8080:80 >/dev/null &
-   printf %s "$FLEETML_API_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_API_KEY"
+   kubectl -n fleetml port-forward svc/fleetml-dashboard $DASH:80 >/dev/null &
+   printf %s "$FLEETML_API_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:$DASH"
    ```
 
-   You should see the Overview page; **Devices** lists the 20 devices.
+   You should see `Dashboard: http://localhost:38800`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists the 20 devices.
 
 7. **Clean up**: the simulator, the port-forwards, the cluster with all its
    data, its kubeconfig file and the secrets file:
 
    <!-- golden: helm-cleanup cleanup -->
    ```bash
-   kill $SIM; pkill -f 'kubectl -n fleetml port-forward'
+   kill $(jobs -p) 2> /dev/null; wait 2> /dev/null
    kind delete cluster --name fleetml
    rm -f "$KUBECONFIG" fleetml-secrets.yaml /tmp/fleetml-helm-sim.log
    ```
 
-   You should see `Deleting cluster "fleetml"`.
+   You should see `Deleting cluster "fleetml"`. The first line stops this
+   terminal's background jobs: the simulator and the port-forwards.
+   `kubectl` keeps a cache of the cluster's API in `~/.kube/cache`, which
+   does no harm (`rm -rf ~/.kube/cache` removes it).
 
 Then [Upgrading](#upgrading), [Production](#production) and the
 [values](#values); a Secret of your own, other local ports and unreleased

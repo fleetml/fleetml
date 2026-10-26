@@ -39,7 +39,7 @@ and keep it open until the end.
 
    <!-- golden: start -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -93,7 +93,7 @@ and keep it open until the end.
      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; sleep 2; done
+   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
    ```
 
    You should see `msg="model active" model=iris version=1.0.0`.
@@ -103,15 +103,17 @@ and keep it open until the end.
    machine's ports, which a container reaches as `host.docker.internal`.
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
-   key into the login box:
+   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+   the dashboard's address: open it and paste the key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
    ```
 
-   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   You should see `Dashboard: http://localhost:<port>`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the device, the server and all its data, and the saved
@@ -285,7 +287,7 @@ fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
 export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name edge -o json | jq -r .key); echo "$FLEETML_ENROLLMENT_KEY"
-fleetml deploy start $(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":"factory-1"}' -o json | jq -r .id)
+D=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":"factory-1"}' -o json | jq -r .id); fleetml deploy start $D
 ```
 
 `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
@@ -298,21 +300,32 @@ With the quickstart on the same machine as the CLI, `FLEETML_SERVER` is
 `http://localhost:${FLEETML_REST_PORT:-18080}` and the key `$FLEETML_ADMIN_KEY` after
 `source ~/.fleetml.env`.
 
-Then, on the agent's machine, set `server` and `enrollment_key` (and
-`download_host_override` if the server needs it) with the lines in
-[ADVANCED.md](ADVANCED.md#linux-agent-a-server-on-another-machine), which
-take the key without putting it on a command line, and start the service:
+Then, on the agent's machine, set `server` and `enrollment_key` in its
+config, with the server's address and its gRPC port in place of the
+placeholders (which address and ports, and when `download_host_override`
+is needed too: [ADVANCED.md](ADVANCED.md#linux-agent-a-server-on-another-machine)),
+and start the service:
 
 ```bash
+sudo sed -i -e 's|^server: .*|server: <server address>:<gRPC port>|' \
+  -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
+read -rs FLEETML_ENROLLMENT_KEY
+printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
 sudo systemctl enable --now fleetml-agent
 journalctl -u fleetml-agent -f
 ```
 
-Without systemd, start the `setpriv` command (on BusyBox, the `su` form)
-from [Without systemd](#without-systemd-and-in-containers) under the
-supervisor instead.
-`sed` is on every image, BusyBox included; with an editor, `sudo vi
-/etc/fleetml-agent/config.yaml` does the same. Leave `tls: false` for the
+`read -rs` waits for the enrollment key the first block printed (paste it
+and press Enter; it is not shown), and `printf`, a shell builtin, hands it
+to `tee`, so the key is on no command line and in no shell history. `sed`
+is on every image, BusyBox included; with an editor, `sudo vi
+/etc/fleetml-agent/config.yaml` does the same. Without systemd, start the
+`setpriv` command (on BusyBox, the `su` form) from
+[Without systemd](#without-systemd-and-in-containers) under the supervisor
+instead of the two `systemctl` and `journalctl` lines; to try it in a shell
+first (a container you are in, for example), run that command with `sudo`
+and without `exec`: the agent runs in the foreground and logs there, and
+Ctrl-C stops it. Leave `tls: false` for the
 quickstart's compose server, which speaks plain gRPC on its gRPC port, and set it to
 `true` when the server is behind a TLS proxy. Set `labels` to what your
 deployments target (the example's `site: factory-1` matches the block above):
@@ -340,7 +353,7 @@ level=INFO msg="model active" model=iris version=1.0.0 path=/var/lib/fleetml-age
 
 `/var/lib/fleetml-agent/models/iris/current` then links to the active
 version's folder ([Where models go](#where-models-go)), and
-`fleetml deploy get <deployment ID> | jq -c .devices` turns to
+`fleetml deploy get $D | jq -c .devices` turns to
 `{"loaded":1,"targeted":1}` one heartbeat later. A second version, pushed and
 deployed to the same labels in the same shell as the first block:
 
@@ -669,6 +682,26 @@ the new server until you upgrade them (a 0.8.0 agent registered, took a
 model and a delta from a 0.9.0 server, and kept its state when upgraded in
 place), and a 0.9.x agent also works with a 0.8.0 server (it registered,
 activated a model and heartbeated against one without an error).
+
+## Remove the agent
+
+On the agent's machine, the service, the binary, its config and models, and
+its user (without systemd, stop it under its supervisor instead of the first
+line):
+
+```bash
+sudo systemctl disable --now fleetml-agent
+sudo rm -f /etc/systemd/system/fleetml-agent.service /usr/local/bin/fleetml-agent && sudo systemctl daemon-reload
+sudo rm -rf /etc/fleetml-agent /var/lib/fleetml-agent
+sudo userdel fleetml-agent
+```
+
+Then on the machine with the CLI, remove the device from its project, with
+its ID from `fleetml device list --project $P`:
+
+```bash
+curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_API_KEY" "$FLEETML_SERVER/api/v1/devices/<device ID>" && echo removed
+```
 
 ## Try it locally
 

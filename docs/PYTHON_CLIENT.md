@@ -31,7 +31,7 @@ zsh, on macOS or Linux) and keep it open until the end.
 
    <!-- golden: start -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -87,7 +87,7 @@ zsh, on macOS or Linux) and keep it open until the end.
      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; sleep 2; done
+   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
    ```
 
    You should see `msg="model active" model=iris version=1.0.0`.
@@ -96,15 +96,17 @@ zsh, on macOS or Linux) and keep it open until the end.
    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
-   key into the login box:
+   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+   the dashboard's address: open it and paste the key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
    ```
 
-   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   You should see `Dashboard: http://localhost:<port>`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the device, the server and all its data, the virtual
@@ -152,15 +154,20 @@ to `FLEETML_API_KEY`. With the quickstart's server, both come from
 `~/.fleetml.env` ([the settings file](ADVANCED.md#the-settings-file-fleetmlenv)),
 the saved REST port included:
 `source ~/.fleetml.env && export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY`.
-The simulator line the tour prints takes `--grpc localhost:${FLEETML_GRPC_PORT:-19090}`
-on a stack whose gRPC port was moved. `FleetML` is a
+The simulator line the tour prints reads the stack's gRPC port from
+`~/.fleetml.env` (`--grpc localhost:${FLEETML_GRPC_PORT:-19090}`), so a moved
+port needs no change. `FleetML` is a
 context manager (`with FleetML() as fm:`), or call `fm.close()`.
 
 ## The tour in Python
 
-Run it from the root of a clone of the repository (it reads the sample models
-in `models/iris`), with the `fleetml` CLI installed for the simulated fleet
-([Get the CLI](QUICKSTART.md#get-the-cli)).
+It needs a running stack, the CLI and the client: Get started's steps 2 to 4
+(if step 7 cleaned up, run steps 2 to 4 again: step 2 reuses the clone).
+Save the script below as `tour.py` in the clone's root (it reads the sample
+models in `models/iris`) and run it with `python tour.py` in the Get started
+terminal, its virtual environment active and `FLEETML_SERVER` and
+`FLEETML_API_KEY` set (step 4 sets them). Run it as a file, not with
+`python - <<EOF`: it waits for Enter from the terminal.
 
 The [tour](QUICKSTART.md#tour)'s sections 1 to 3 against the quickstart's
 server: publish two versions of the Iris classifier, roll 1.0.0 out to a
@@ -169,8 +176,9 @@ gets a name of its own (project names are unique on a server, and the CLI
 tour's is `tour`). The fleet is the CLI's simulator: the script prints the
 line that starts it, with the enrollment key and a seed of its own (devices
 with the same seed are the same devices, so another tour's simulator keeps
-its own); run that line in another shell from the same folder, then press
-Enter:
+its own, and the gRPC port from `~/.fleetml.env`); run that line in another
+terminal, in the same folder (it starts with `source ~/.fleetml.env` and puts
+the CLI on that terminal's `PATH`), then press Enter in the first one:
 
 ```python
 import time
@@ -183,8 +191,10 @@ with FleetML() as fm:
     v2 = fm.push("models/iris/iris_v2.tflite", project=project.id, model="iris", version="2.0.0")
 
     key = fm.enrollment_keys.create(project.id, "tour")
-    print(f"FLEETML_ENROLLMENT_KEY={key.key} fleetml simulate --devices 20 --label app=tour --seed {project.name} --error-rate 2.0.0=0.4")
-    input("Start the simulator with the line above in another shell, then press Enter")
+    print(f'source ~/.fleetml.env && export PATH="$HOME/.local/bin:$PATH" && FLEETML_ENROLLMENT_KEY={key.key} fleetml simulate'
+          ' --grpc localhost:${FLEETML_GRPC_PORT:-19090}'
+          f' --devices 20 --label app=tour --seed {project.name} --error-rate 2.0.0=0.4')
+    input("Start the simulator with the line above in another terminal, then press Enter here: ")
 
     d1 = fm.deployments.create(project.id, v1.id, target_selector={"app": "tour"})
     print(fm.deployments.start(d1.id).status)  # COMPLETE: all at once
