@@ -172,8 +172,8 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    <!-- golden: ios-iphone phone -->
    ```bash
    BEFORE=$(fleetml device list --project $P -o json | jq -c 'map(.id)')
-   DEVICECTL_CHILD_FLEETML_HOST=$(ipconfig getifaddr en0) DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device $PHONE --terminate-existing com.fleetml.sample
-   for i in $(seq 60); do fleetml device list --project $P -o json | jq -e --argjson b "$BEFORE" 'map(.id) - $b | length > 0' > /dev/null && break; [ $i = 60 ] && echo "No new device after 3 minutes: see the list below this step"; sleep 3; done
+   DEVICECTL_CHILD_FLEETML_HOST=$(ipconfig getifaddr en0) DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device $PHONE --terminate-existing com.fleetml.sample &&
+     for i in $(seq 60); do fleetml device list --project $P -o json | jq -e --argjson b "$BEFORE" 'map(.id) - $b | length > 0' > /dev/null && break; [ $i = 60 ] && echo "No new device after 3 minutes: see the list below this step"; sleep 3; done
    fleetml device list --project $P
    ```
 

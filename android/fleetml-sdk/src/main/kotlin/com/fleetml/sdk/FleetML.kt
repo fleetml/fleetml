@@ -245,10 +245,13 @@ internal class FleetMLInstance(
 
     private fun onBackground() {
         foreground = false
+        // A sync the move cuts short (a download or a validation) is finished
+        // by the background job at once, not after the background interval.
+        val interrupted = heartbeat.inFlightNow
         heartbeat.stop()
         telemetryReporter.stop()
         scope.launch { telemetryReporter.flushNow() }
-        scheduleBackgroundWork()
+        scheduleBackgroundWork(interrupted)
     }
 
     private fun startTimers() {
@@ -261,15 +264,15 @@ internal class FleetMLInstance(
      * worker re-schedules after each run, so the interval follows the server's
      * DeviceConfig without re-enqueueing a periodic job.
      */
-    fun scheduleBackgroundWork() {
+    fun scheduleBackgroundWork(interrupted: Boolean = false) {
         if (foreground) return
-        val interval = BatteryPolicy.backgroundIntervalSeconds(backgroundIntervalSeconds)
+        val interval = BatteryPolicy.backgroundDelaySeconds(backgroundIntervalSeconds, interrupted)
         val request = OneTimeWorkRequestBuilder<FleetMLSyncWorker>()
             .setInitialDelay(interval, TimeUnit.SECONDS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(BACKGROUND_WORK, ExistingWorkPolicy.REPLACE, request)
-        Logger.i("In the background: next sync in ${interval}s through WorkManager")
+        Logger.i(if (interrupted) "In the background: finishing the sync through WorkManager" else "In the background: next sync in ${interval}s through WorkManager")
     }
 
     /** One heartbeat and one telemetry flush (the background job and [FleetML.syncNow]). */

@@ -35,6 +35,8 @@ class BatteryPolicyTest {
     fun `background interval never drops below the OS minimum`() {
         assertEquals(900L, BatteryPolicy.backgroundIntervalSeconds(60))
         assertEquals(3600L, BatteryPolicy.backgroundIntervalSeconds(3600))
+        assertEquals("a sync cut short runs again at once", 0L, BatteryPolicy.backgroundDelaySeconds(3600, interrupted = true))
+        assertEquals(3600L, BatteryPolicy.backgroundDelaySeconds(3600, interrupted = false))
     }
 
     @Test

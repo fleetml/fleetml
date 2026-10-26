@@ -90,25 +90,32 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 
    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
-5. **Put the phone on it.** This builds the sample app with the enrollment
-   key from step 4 and installs it, forwards the server's ports to the phone
-   (after the install, since a build can restart `adb`, which drops the
-   forwards), starts the app and waits until the model is active on the
-   phone (a minute or two the first time, for the build):
+5. **Put the phone on it.** Unlock the phone and keep its screen on until
+   this step ends: a locked phone stops the app. This builds the sample app
+   with the enrollment key from step 4 and installs it, forwards the
+   server's ports to the phone (after the install, since a build can restart
+   `adb`, which drops the forwards), starts the app and waits until the
+   model is active on the phone (a minute or two the first time, for the
+   build). It takes the first device `adb devices` lists and says which; with
+   an emulator or a second phone attached, run `export ANDROID_SERIAL=<serial>`
+   with the phone's serial from `adb devices` first:
 
    <!-- golden: android-phone device -->
    ```bash
-   export ANDROID_SERIAL=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090})
+   export ANDROID_SERIAL=${ANDROID_SERIAL:-$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')}; echo "Device: $ANDROID_SERIAL, $(adb shell getprop ro.product.model)"
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null)
    adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
    adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-   adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity
-   adb logcat -s FleetML:I -e 'is active' -m 1
+   adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity < /dev/null
+   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting"; sleep 2; done
    ```
 
-   You should see `I FleetML : Model iris 1.0.0 is active`, and the app's
-   screen **Active model: iris 1.0.0**. Tap **Classify sample flower** to
-   run it.
+   You should see `Device: ` with the phone's serial and model, `Installed on 1 device.`,
+   the two forwarded ports, then `I FleetML : Model iris 1.0.0 is active`, and the
+   app's screen **Active model: iris 1.0.0**. Tap **Classify sample flower**
+   to run it. If it says `Not active after 3 minutes`, see
+   [Troubleshooting](ADVANCED.md#troubleshooting): the phone locked, a
+   missing forward, or the wrong device.
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
    a Mac; elsewhere it prints it); then open <http://localhost> and paste the

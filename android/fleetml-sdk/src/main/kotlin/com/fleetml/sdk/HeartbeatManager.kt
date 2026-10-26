@@ -12,7 +12,9 @@ import io.grpc.StatusException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -53,6 +55,9 @@ internal class HeartbeatManager(
 
     private val inFlightLock = Any()
     private var inFlight: CompletableDeferred<Boolean>? = null
+
+    /** True while a heartbeat (and the downloads it started) is running. */
+    internal val inFlightNow: Boolean get() = synchronized(inFlightLock) { inFlight != null }
 
     fun start(scope: CoroutineScope) {
         heartbeatJob?.cancel()
@@ -114,6 +119,8 @@ internal class HeartbeatManager(
             lastFailure = null
             true
         } catch (e: StatusException) {
+            // Stopped (the app went to the background): not a failure, nothing to log.
+            currentCoroutineContext().ensureActive()
             lastFailure = e
             if (e.status.code == Status.Code.UNAUTHENTICATED) {
                 Logger.w("Token rejected by server, re-registering")
@@ -129,6 +136,7 @@ internal class HeartbeatManager(
             setConnected(false)
             false
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
             lastFailure = e
             Logger.failure("Heartbeat failed", e)
             setConnected(false)

@@ -80,6 +80,28 @@ it tried means the object store's address or port
 step 4 again, then `docker rm -f fleetml-agent` and step 5). The
 [Linux agent guide](LINUX_AGENT.md) has every line the agent logs.
 
+**The phone never shows `is active`** (Android step 5 says `Not active after
+3 minutes`). `adb logcat -d -s FleetML` shows how far the app got:
+- `In the background: ...`: the phone locked or the screen went off. Unlock
+  it, keep it on, and run step 5's last two lines again.
+- `Heartbeat failed: UNAVAILABLE` or nothing after `Starting FleetML`: the
+  phone does not reach the server. `adb reverse --list` must show both
+  ports; run step 5's two `adb reverse` lines again (a reconnected cable or a
+  restarted `adb` drops them).
+- `Registered as device`, then `Download of <variant ID> ... failed`: the
+  model files' forward is missing (the second `adb reverse` line), or the
+  server hands out an address the phone cannot reach
+  ([the download address](#a-phone-or-another-machine-the-download-address)).
+- No lines at all: the app runs on another device. Step 5's `Device:` line
+  says which; `export ANDROID_SERIAL=<serial>` from `adb devices` and run
+  step 5 again.
+
+**The iPhone never shows up** (iOS step 6c says `No new device after 3
+minutes`): step 6 lists what each error means. The simulator (iOS step 5
+says `Not active after 2 minutes`):
+`xcrun simctl spawn $SIM log show --last 5m --style compact --predicate 'subsystem == "com.fleetml.sdk"'`
+shows the SDK's lines, as above.
+
 **`fleetml` is not found** in a new terminal: the `export PATH` line of step
 3 lasts for one terminal ([Installing the tools](#installing-the-tools)).
 **`Error: ... 401`** from the CLI in a new terminal: `source ~/.fleetml.env`
