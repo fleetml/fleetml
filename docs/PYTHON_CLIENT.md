@@ -161,8 +161,10 @@ context manager (`with FleetML() as fm:`), or call `fm.close()`.
 
 ## The tour in Python
 
-It needs a running stack, the CLI and the client: Get started's steps 2 to 4
-(if step 7 cleaned up, run steps 2 to 4 again: step 2 reuses the clone).
+It needs a running stack and the client, Get started's steps 2 to 4 (if
+step 7 cleaned up, run steps 2 to 4 again: step 2 reuses the clone), and the
+`fleetml` CLI for the simulated fleet: step 3 of the
+[README's Get started](../README.md#get-started), once.
 Save the script below as `tour.py` in the clone's root (it reads the sample
 models in `models/iris`) and run it with `python tour.py` in the Get started
 terminal, its virtual environment active and `FLEETML_SERVER` and

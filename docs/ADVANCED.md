@@ -209,9 +209,15 @@ terminal the containers are `fleetml-2-server-1` and so on, the CLI
 of step 3 goes to `$HOME/.local/bin` there, and the Linux agent container of
 README and QUICKSTART step 5 needs another name: replace `fleetml-agent` in
 `--name fleetml-agent`, `docker logs fleetml-agent` and step 7's
-`docker rm -f fleetml-agent` with `fleetml-2-agent`. The first stack is not
-touched; its own terminal (or `source ~/.fleetml.env` in a new one) still
-reaches it.
+`docker rm -f fleetml-agent` with `fleetml-2-agent`. Any other terminal
+for this stack (the tours' "another terminal", for example) needs the
+block's first line too, before anything else; without it,
+`source ~/.fleetml.env` there reads the first stack's file. The first stack
+is not touched; its own terminal (or `source ~/.fleetml.env` in a new one)
+still reaches it. To remove the second stack: its Get started's last step
+in its terminal, then, in a terminal of your own home folder,
+`docker image rm fleetml-2-server fleetml-2-dashboard` and
+`rm -rf ~/fleetml-2`.
 
 Before 0.9.1, the only documented way to move the dashboard was an override
 file passed with `-f` (`dashboard-port.yml`). The env file's line replaces
