@@ -5,7 +5,7 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
-## [0.10.2] - 2026-10-27
+## [0.10.2] - 2026-10-26
 
 ### What changed for readers
 
