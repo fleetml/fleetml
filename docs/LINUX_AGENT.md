@@ -231,8 +231,8 @@ server's address and ports in place of the placeholders (the server's gRPC
 port and its model files' port; [Server on another
 machine](#server-on-another-machine) says which, and
 `-download-host-override` can go when the server's `S3_PUBLIC_ENDPOINT` is
-reachable from the container) and that key in `FLEETML_ENROLLMENT_KEY` (the
-`EK` of the CLI block: `export FLEETML_ENROLLMENT_KEY=$EK`). [Get
+reachable from the container) and that key in `FLEETML_ENROLLMENT_KEY` (the CLI block
+exports it). [Get
 started](#get-started) runs the same against a server on this machine:
 
 ```bash
@@ -284,7 +284,7 @@ P=$(fleetml project create --name edge -o json | jq -r .id)   # or P=<the projec
 fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
-EK=$(fleetml enrollment-key create --project $P --name edge -o json | jq -r .key); echo "$EK"
+export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name edge -o json | jq -r .key); echo "$FLEETML_ENROLLMENT_KEY"
 fleetml deploy start $(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":"factory-1"}' -o json | jq -r .id)
 ```
 

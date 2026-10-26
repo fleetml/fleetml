@@ -350,8 +350,8 @@ on Linux, `sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk` on Windows
 and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
 with `package com.example.myapp` on top; for a server on your machine, the
 two debug files of [On your phone](#on-your-phone). With `JAVA_HOME` at a
-JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=localhost`
-installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$EK`).
+JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=localhost`
+installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$FLEETML_ENROLLMENT_KEY`).
 After a deployment to `app=myapp` the screen reads `Server reached: true`
 and `Model: 1.0.0`.
 
@@ -389,7 +389,7 @@ android {
 Without `buildFeatures { buildConfig = true }`, an AGP 8 project stops with
 `Unresolved reference: BuildConfig`. The build gets the values as Gradle
 properties: the enrollment key from the environment,
-`ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug`
+`ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug`
 (Gradle reads `ORG_GRADLE_PROJECT_<name>` as the property `<name>`, and the
 key stays off the command line, where `-PfleetmlEnrollmentKey=` would show it
 to anyone who lists processes), the host as `-PfleetmlDebugHost=...`, or both
@@ -527,12 +527,12 @@ fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
 V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
-EK=$(fleetml enrollment-key create --project $P --name myapp -o json | jq -r .key)
+export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name myapp -o json | jq -r .key)
 D1=$(fleetml deploy create --project $P --version $V1 --target '{"app":"myapp"}' -o json | jq -r .id)
 fleetml deploy start $D1
 ```
 
-Each push prints `✓ Pushed ...`. The enrollment key is in `$EK`
+Each push prints `✓ Pushed ...`. The enrollment key is in `$FLEETML_ENROLLMENT_KEY`
 (`-o json | jq -r .key` takes the key; the plain command prints it once for
 copying); build the app with it from the same shell, as in [On your
 phone](#on-your-phone). The deployment starts as `COMPLETE`
@@ -641,10 +641,10 @@ maintainers run it by hand.
 
 4. Build and install the debug build, whose host is `localhost`, with the
    enrollment key from [Publish and deploy](#publish-and-deploy-with-the-cli)
-   (`$EK`), and start the app:
+   (`$FLEETML_ENROLLMENT_KEY`), and start the app:
 
    ```bash
-   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
+   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
    adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
    ```
 
@@ -824,7 +824,7 @@ the emulator (the name `adb devices` lists) when a phone is attached too:
 ```bash
 export ANDROID_SERIAL=emulator-5554
 adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2
+ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2
 ```
 
 Without the forward the app registers and then logs
@@ -873,7 +873,7 @@ files' port.
    M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
    V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
    V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
-   EK=$(fleetml enrollment-key create --project $P --name emulator -o json | jq -r .key)
+   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name emulator -o json | jq -r .key)
    D=$(fleetml deploy create --project $P --version $V1 --target '{"app":"sample"}' -o json | jq -r .id)
    fleetml deploy start $D
    ```
@@ -890,7 +890,7 @@ files' port.
    ```bash
    export ANDROID_HOME=$HOME/Library/Android/sdk JAVA_HOME=/opt/homebrew/opt/openjdk@17
    cd android
-   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
+   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
    adb shell am start -n com.fleetml.sample/.MainActivity
    ```
 

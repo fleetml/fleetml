@@ -190,57 +190,76 @@ a guest network that isolates devices or the machine's firewall can block.
 
 ## Android: a phone over Wi-Fi
 
-The [Android guide](ANDROID_SDK.md)'s Get started uses a USB cable. Over
-Wi-Fi instead:
+The [Android guide](ANDROID_SDK.md)'s Get started puts the phone on the
+server over its USB cable. Over Wi-Fi instead, the phone reaches the
+machine at its LAN address. Do it in the Get started terminal after step 4
+(the stack running, `FLEETML_ENROLLMENT_KEY` set), in the clone, with the
+phone and the machine on the same Wi-Fi network (not a guest network that
+keeps devices apart) and the phone unlocked. The cable stays for the
+install; nothing goes through it afterwards.
 
-
-The phone and the machine that runs the server must be on the same network.
-
-1. Find the machine's LAN address: `ipconfig getifaddr en0` on a Mac (`en1`
-   on some), `hostname -I` on Linux, and on Windows the IPv4 address
-   `ipconfig` prints for the Wi-Fi or Ethernet adapter, not WSL's `ip addr`
-   ([From Windows](ANDROID_SDK.md#from-windows)).
-2. Save that address as the server's object store address in
-   `~/.fleetml.env` ([Run FleetML](#the-settings-file-fleetmlenv)), so download
-   URLs point where the phone can reach them and every later compose command
-   keeps it, and restart the server, in the quickstart's clone:
+1. **Point the server's downloads at the machine's LAN address**, save it in
+   `~/.fleetml.env` so every later compose command keeps it, and restart the
+   server. On a Mac (`en1` instead of `en0` on some; on Linux,
+   `LAN=$(hostname -I | awk '{print $1}')`; on Windows, the IPv4 address
+   `ipconfig` prints for the Wi-Fi adapter, see
+   [From Windows](ANDROID_SDK.md#from-windows)):
 
    ```bash
-   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d
+   LAN=$(ipconfig getifaddr en0); echo "LAN address: $LAN"
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$LAN:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
    ```
 
-   The port is the stack's model files port, 19100 unless you moved it with
-   `FLEETML_S3_PUBLIC_PORT` when you started the stack (the first line reads
-   it from the file). From then on downloads go to the LAN address for every
-   device, the USB and emulator paths included ([Over USB](ANDROID_SDK.md#over-usb),
-   step 3).
+   You should see `LAN address: ` and an address such as `192.168.1.20`,
+   then `Container <stack>-server-1  Started`. From then on downloads go to
+   that address for every device, the USB and emulator paths included
+   ([Over USB](ANDROID_SDK.md#over-usb), step 3).
 
-3. Let the phone in: with the macOS firewall on, allow Docker's incoming
-   connections when macOS asks; a Linux firewall needs TCP 19090 and 19100
-   open; Windows needs the `New-NetFirewallRule` line in
+2. **Let the phone in.** With the macOS firewall on, allow Docker's incoming
+   connections when macOS asks. A Linux firewall needs TCP
+   `${FLEETML_GRPC_PORT:-19090}` and `${FLEETML_S3_PUBLIC_PORT:-19100}` open;
+   Windows needs the `New-NetFirewallRule` line in
    [From Windows](ANDROID_SDK.md#from-windows).
-4. Allow cleartext to that address: in your app, the commented line in the
-   debug network security config above, with the address in place of
-   `<LAN IP>`. The [sample app](ANDROID_SDK.md#sample-app) needs no edit: its build
-   generates the config with the address given as `-PfleetmlDebugHost`.
-   Without it the app registers (gRPC does not check the policy) and then
-   every download fails with
-   `Download of <variant ID> interrupted at 0 bytes: CLEARTEXT communication to <LAN IP> not permitted by network security policy`.
-5. Build with the address as the debug host:
+
+3. **Build the sample app with that address, install it, and start it.**
+   This removes the USB forwards first, so the phone really uses Wi-Fi; the
+   app takes the new address over the one it saved before:
 
    ```bash
-   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=<LAN IP> -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
+   adb reverse --remove-all
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=$LAN -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} </dev/null)
+   adb logcat -c && adb shell am start -S -n com.fleetml.sample/.MainActivity </dev/null
+   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting below"; sleep 2; done
    ```
 
-   For the sample app, `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :sample-app:installDebug -PfleetmlDebugHost=<LAN IP> -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}`
-   in the clone's `android` folder: its config screen then shows the
-   address.
+   You should see `Installed on 1 device.` and `I FleetML : Model iris 1.0.0 is active`,
+   and the app's screen **Active model: iris 1.0.0**, its config screen
+   showing the LAN address.
 
-The logcat lines are the same as over USB. A phone that registers but never
-downloads is almost always the object store's address: check it with
-`docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
+4. **Clean up** with Get started's step 7: it removes the app, the server
+   and its data, and `~/.fleetml.env` with the LAN address in it.
+
+Your own app over Wi-Fi: the same steps 1 and 2, then build it with
+`-PfleetmlDebugHost=$LAN` as in [Over USB](ANDROID_SDK.md#over-usb) step 4,
+and allow cleartext to that address: the commented line in your debug
+network security config ([Install](ANDROID_SDK.md#install)) with the address
+in place of `<LAN IP>`. The sample app needs no edit: its build generates the
+config with the address given as `-PfleetmlDebugHost`. Without it the app
+registers (gRPC does not check the policy) and then every download fails
+with `Download of <variant ID> interrupted at 0 bytes: CLEARTEXT communication to <LAN IP> not permitted by network security policy`.
+
+Troubleshooting:
+
+- No `is active`, and `adb logcat -s FleetML` shows `Heartbeat failed: UNAVAILABLE`:
+  the phone does not reach the gRPC port. Check that it is on the same
+  Wi-Fi as the machine, and the firewall (step 2).
+- `Registered as device`, then no download: the phone does not reach the
+  model files' port, or the server still hands out `localhost`. This shows
+  the address in use:
+  `docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
+- `In the background: next sync in 3600s`: the phone locked or the app
+  left the screen. Unlock it and run step 3's last two lines again.
 
 ## Android on Windows: Android Studio
 

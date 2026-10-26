@@ -508,7 +508,7 @@ struct MyApp: App {
    fleetml push models/iris/iris_v2.mlmodel --project $P --model iris --version 2.0.0 --framework COREML --quantization FP32 --metadata "$REQ"
    M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
    vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
-   EK=$(fleetml enrollment-key create --project $P --name myapp -o json | jq -r .key)
+   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name myapp -o json | jq -r .key)
    D1=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"app":"myapp"}' -o json | jq -r .id)
    fleetml deploy start $D1
    ```
@@ -588,7 +588,7 @@ struct MyApp: App {
    from `xcrun devicectl list devices`:
 
    ```bash
-   (umask 077; printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "${FLEETML_GRPC_PORT:-19090}" "$EK" > Secrets.xcconfig)
+   (umask 077; printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "${FLEETML_GRPC_PORT:-19090}" "$FLEETML_ENROLLMENT_KEY" > Secrets.xcconfig)
    xcodegen generate
    xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates ENABLE_PREVIEWS=NO build
    xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/MyApp.app
@@ -734,7 +734,7 @@ available iPhone simulator (on a Mac with several, a simulator of your own,
 apart; `xcrun simctl delete fleetml-test` removes it):
 
 ```bash
-(umask 077; printf 'FLEETML_SERVER_HOST = localhost\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "${FLEETML_GRPC_PORT:-19090}" "$EK" > Secrets.xcconfig)
+(umask 077; printf 'FLEETML_SERVER_HOST = localhost\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "${FLEETML_GRPC_PORT:-19090}" "$FLEETML_ENROLLMENT_KEY" > Secrets.xcconfig)
 xcodegen generate
 SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
 xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
@@ -996,7 +996,7 @@ key from `.env` instead.
    M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
    V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
    V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
-   EK=$(fleetml enrollment-key create --project $P --name simulator -o json | jq -r .key)
+   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name simulator -o json | jq -r .key)
    D=$(fleetml deploy create --project $P --version $V1 --target '{"app":"sample"}' -o json | jq -r .id)
    fleetml deploy start $D
    ```
@@ -1015,7 +1015,7 @@ key from `.env` instead.
    xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build build
    xcrun simctl boot $SIM; open -a Simulator
    xcrun simctl install $SIM build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
-   SIMCTL_CHILD_FLEETML_HOST=localhost SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$EK xcrun simctl launch --console-pty $SIM com.fleetml.sample
+   SIMCTL_CHILD_FLEETML_HOST=localhost SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun simctl launch --console-pty $SIM com.fleetml.sample
    ```
 
    On a simulator where the sample app ran before, its saved settings stay,
@@ -1061,7 +1061,7 @@ address:
 cd ios/SampleApp && xcodegen generate
 xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> ENABLE_PREVIEWS=NO build
 xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/FleetMLSample.app
-DEVICECTL_CHILD_FLEETML_HOST=<Mac LAN IP> DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$EK xcrun devicectl device process launch --device <device> --console com.fleetml.sample
+DEVICECTL_CHILD_FLEETML_HOST=<Mac LAN IP> DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device <device> --console com.fleetml.sample
 ```
 
 The trust prompt, the Local Network prompt and the error codes are as in
