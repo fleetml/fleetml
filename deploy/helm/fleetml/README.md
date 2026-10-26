@@ -158,7 +158,7 @@ than 32 characters (the server would not start with one), and the first two
 must differ. The file name is in the repository's `.gitignore`, so a clone
 does not commit it; keep a copy outside the clone as well.
 
-About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.1"}`,
+About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.2"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
 images, which takes a minute or two (the server waits meanwhile, up to
 `server.dependencyTimeout`, 180 s in total for Postgres, the object store and
@@ -221,7 +221,7 @@ simulator, a job of this terminal: start it again (step 5's
 `fleetml simulate` line) if you want it. To rotate a secret that
 may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
-upgrade. From 0.6.0 to 0.10.1 no
+upgrade. From 0.6.0 to 0.10.2 no
 upgrade needs anything else.
 
 ## Production

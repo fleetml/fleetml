@@ -5,6 +5,65 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.2] - 2026-10-27
+
+### What changed for readers
+
+On an iPhone you trust the developer once per phone: Get started's clean-up
+now leaves the sample on the phone, because iOS forgets the trust when the
+last app from your Mac is removed, and every later install from that Mac
+needs no tap. Every step that waits gives up with a pointer to
+Troubleshooting, and Troubleshooting covers the reason it gave up. Upgrading
+from 0.10.1 needs nothing; Android and iOS apps register once more after the
+update (with their token, so nothing to do).
+
+### Fixed
+
+- Get started step 2 waited forever when the stack could not start (a port
+  another program holds); it gives up after 3 minutes and points to the
+  Troubleshooting entry, which shows the taken-port case and the fix.
+- Android and iOS SDKs: an app built with another enrollment key or server
+  registered only when its labels or SDK version changed, so it stayed in its
+  old project; a new key, host or port now registers it again, and the
+  server moves it to the new key's project.
+- `fleetml simulate`: a device whose token the server refuses (after a JWT
+  secret rotation, for example) registers again with the enrollment key and
+  says so, where it retried the refused token forever without a word.
+- Server: a deployment of a model version from another project is refused
+  with 400 (deleting that other project then failed with 500), a deployment
+  in a project that does not exist answers 404 instead of 500, and a
+  deployment body that is not valid JSON says "invalid JSON body: ..."
+  instead of naming the required fields.
+- `scripts/demo.sh` and `scripts/demo-agent.sh` set their server's download
+  address themselves (in a terminal that had sourced `~/.fleetml.env` every
+  upload went to that stack's port) and print a failed push instead of
+  exiting without a word.
+- iOS Get started step 6c succeeds when run again on a phone that already
+  registered (it waits for the phone to check in, not for a new device), and
+  it recognises the untrusted and expired-profile launch failures itself.
+- Python client: `devices.list("<project ID>")` raises a TypeError that
+  names `project=` instead of an AttributeError.
+
+### Changed
+
+- iOS: trust the developer once per phone. Get started's clean-up no longer
+  uninstalls the sample from the phone; a separate line does, for when you
+  are done with FleetML.
+
+### Docs
+
+- ADVANCED's port check prints the ports in effect; the tour's second-shell
+  pickup puts the CLI on the `PATH`; the second-stack recipe keeps the
+  Android SDK, `adb`'s key, Gradle's cache and the keychain.
+- Android: `this device is already registered` with the way out, and what
+  `pm clear` costs.
+- Helm: a Secret of your own step by step, port-forwards after an upgrade or
+  uninstall, the dashboard's local port in "Try it".
+- Linux agent: the Connect and verify block runs again, the heartbeat
+  errors of a restarted server, the device ID in "Remove the agent".
+- Python: unknown filter values and query parameters give an empty list or
+  are ignored.
+
 ## [0.10.1] - 2026-10-26
 
 ### What changed for readers
@@ -1152,6 +1211,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.2]: https://github.com/fleetml/fleetml/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/fleetml/fleetml/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/fleetml/fleetml/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/fleetml/fleetml/compare/v0.9.0...v0.9.1
