@@ -906,7 +906,8 @@ files' port.
    A build with a key it has not used before connects with that key, also
    where the sample app ran before; a reinstall of the same build keeps
    what its config screen saved, and `adb shell pm clear com.fleetml.sample`
-   starts it from nothing.
+   starts it from nothing (the device's token goes too, so a key of another
+   project is then refused: see `this device is already registered` below).
 
    The app registers, downloads iris 1.0.0, validates it and shows
    **Active model: iris 1.0.0**; logcat shows the lines in [Over
