@@ -282,15 +282,18 @@ the project name `edge` and the model file are this guide's, yours will differ
 
 ```bash
 export FLEETML_SERVER=<server URL> FLEETML_API_KEY=<the key your team gave you>
-P=$(fleetml project create --name edge -o json | jq -r .id)   # or P=<the project ID your team gave you>
-fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+P=$(fleetml project list -o json | jq -r '.[] | select(.name == "edge") | .id'); [ -n "$P" ] || P=$(fleetml project create --name edge -o json | jq -r .id)
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
+[ -n "$M" ] && [ -n "$(vid 1.0.0)" ] || fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name edge -o json | jq -r .key); echo "$FLEETML_ENROLLMENT_KEY"
 D=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":"factory-1"}' -o json | jq -r .id); fleetml deploy start $D
 ```
 
-`-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
+The block can run again: it reuses the project `edge` and its iris 1.0.0
+when they are there (or `P=<the project ID your team gave you>` in place of
+the first line). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
 to a provisioning script; without `-o json`, `enrollment-key create` prints a
 table with the key once. One key enrolls any number of machines. `vid` looks
 a version up by its number, so the block picks 1.0.0 even after more versions
@@ -642,8 +645,12 @@ seconds); with telemetry queued, a `sending telemetry failed; the events
 stay queued` warning can come first. With the network removed rather than
 silent, or when the server's name resolves first to an address this
 machine has no route to (an IPv6 one, as `host.docker.internal` can in a
-container), the error can read `connect: network is unreachable` instead. The
-first failed heartbeat is logged once, and the recovery once:
+container), the error can read `connect: network is unreachable` instead;
+with the server stopped and started again rather than silent, it reads
+`connection refused` while it is down, or
+`error reading server preface: ... use of closed network connection` at the
+moment it goes. The first failed heartbeat is logged once, and the recovery
+once:
 
 ```text
 level=WARN msg="heartbeat failed; retrying every heartbeat, models stay active and telemetry stays queued" error="rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout"
@@ -685,19 +692,21 @@ activated a model and heartbeated against one without an error).
 
 ## Remove the agent
 
-On the agent's machine, the service, the binary, its config and models, and
-its user (without systemd, stop it under its supervisor instead of the first
-line):
+On the agent's machine, first this machine's device ID, which the agent
+logged when it registered (without systemd, in the agent's own log), then
+the service, the binary, its config and models, and its user (without
+systemd, stop it under its supervisor instead of the `systemctl` line):
 
 ```bash
+journalctl -u fleetml-agent -o cat | grep -o 'device_id=[^ ]*' | tail -1
 sudo systemctl disable --now fleetml-agent
 sudo rm -f /etc/systemd/system/fleetml-agent.service /usr/local/bin/fleetml-agent && sudo systemctl daemon-reload
 sudo rm -rf /etc/fleetml-agent /var/lib/fleetml-agent
 sudo userdel fleetml-agent
 ```
 
-Then on the machine with the CLI, remove the device from its project, with
-its ID from `fleetml device list --project $P`:
+You should see `device_id=` and the ID. Then on the machine with the CLI,
+remove the device from its project, with that ID:
 
 ```bash
 curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_API_KEY" "$FLEETML_SERVER/api/v1/devices/<device ID>" && echo removed

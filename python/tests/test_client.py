@@ -626,6 +626,13 @@ def test_devices_by_project_and_get(fake: Fake) -> None:
     assert fm.devices.get("dev1").project_id == "p1"
 
 
+def test_devices_list_with_a_project_id_by_position(fake: Fake) -> None:
+    fm = fake.client()
+    with pytest.raises(TypeError, match="project=<id>"):
+        fm.devices.list("p1")  # type: ignore[arg-type]
+    assert fake.requests == [], "nothing is sent"
+
+
 def test_telemetry_events_without_a_confidence(fake: Fake) -> None:
     # The server stores no confidence as 0, as for a MODEL_LOAD; the CLI shows it blank.
     load = {"device_id": "dev1", "model_version_id": "v1", "event_type": "MODEL_LOAD", "latency_ms": 0,
