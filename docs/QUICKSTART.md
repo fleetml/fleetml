@@ -46,7 +46,7 @@ and keep it open until the end.
    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
    export PATH="$HOME/.local/bin:$PATH"
    fleetml version

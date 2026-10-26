@@ -64,7 +64,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
    export PATH="$HOME/.local/bin:$PATH"
    fleetml version
@@ -157,8 +157,9 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
      xcrun devicectl device install app --device $PHONE ios/SampleApp/build/Build/Products/Debug-iphoneos/FleetMLSample.app
    ```
 
-   You should see `Container <stack>-server-1  Started`, then (after a few
-   minutes the first time) `App installed:` and `bundleID: com.fleetml.sample`.
+   You should see the stack's containers (`Container <stack>-server-1  Started`
+   the first time, `Running` after), then (after a few minutes the first
+   time) `App installed:` and `bundleID: com.fleetml.sample`.
    A line `IDERunDestination: Supported platforms for the buildables in the current scheme is empty`
    is harmless.
 

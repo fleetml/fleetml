@@ -42,7 +42,8 @@ The CLI comes from the release as Get started's step 3 installs it. On
 Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`. Keep the
 `export PATH` line in `~/.bashrc` or `~/.zshrc` (many Linux distributions
 already have `~/.local/bin` on the `PATH`); for every user of the machine,
-`sudo mv fleetml /usr/local/bin/` in place of the `mkdir` and `mv`. From
+`sudo tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C /usr/local/bin fleetml` in place
+of the `mkdir` and `tar` line. From
 source, with Go 1.26: `go build -o bin/fleetml ./cmd/fleetml` (it reports its
 version as `dev`; in WSL, install Go from [go.dev](https://go.dev/doc/install): Ubuntu's
 `golang` package is older). The other platforms and the PowerShell block are in
