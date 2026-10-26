@@ -186,11 +186,13 @@ and the model files on 29100:
 echo 'export FLEETML_DASHBOARD_PORT=8081' >> ~/.fleetml.env
 echo 'export FLEETML_S3_PUBLIC_PORT=29100 S3_PUBLIC_ENDPOINT=localhost:29100' >> ~/.fleetml.env
 source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
-grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env | sort -u
+(. ~/.fleetml.env; env | grep -E '^(FLEETML_[A-Z0-9_]*PORT|S3_PUBLIC_ENDPOINT)=' | sort)
 ```
 
-You should see the stack's containers `Started`, then each port the file
-sets (the last line of each wins). Then go on with Get started's step 3 (or
+You should see the stack's containers `Started`, then the ports and the
+download address in effect, one per line (`FLEETML_DASHBOARD_PORT=8081`,
+`FLEETML_S3_PUBLIC_PORT=29100`, `S3_PUBLIC_ENDPOINT=localhost:29100`, and the
+two you did not move). Then go on with Get started's step 3 (or
 the step that failed). `source ~/.fleetml.env` also brings back the secrets
 and the saved `S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset.
 
@@ -370,7 +372,7 @@ machine:
 | Model downloads (presigned URLs) | the model files' port: 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
 
 The agent's machine has no `~/.fleetml.env` to read them from: ask whoever
-runs the server which ports the stack uses (`grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env`
+runs the server which ports the stack uses (`(. ~/.fleetml.env; env | grep -E '^(FLEETML_[A-Z0-9_]*PORT|S3_PUBLIC_ENDPOINT)=' | sort)`
 on the server's machine prints them), and put them in place of `<gRPC port>`
 and `<model files port>` below.
 

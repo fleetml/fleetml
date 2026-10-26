@@ -552,7 +552,7 @@ struct MyApp: App {
    `"status":"ok"`, and `http://<Mac LAN IP>:<model files port>` must answer
    at all (an XML error page from the object store is fine). The stack's
    ports are in `~/.fleetml.env`, which
-   `grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env` prints (the REST
+   `(. ~/.fleetml.env; env | grep -E '^(FLEETML_[A-Z0-9_]*PORT|S3_PUBLIC_ENDPOINT)=' | sort)` prints (the REST
    port is `FLEETML_REST_PORT`, the model files' `FLEETML_S3_PUBLIC_PORT`).
    If Safari cannot load them on those ports, it is the Wi-Fi (a guest
    network that isolates devices) or the Mac's firewall, not the app or the
