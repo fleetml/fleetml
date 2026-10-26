@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +14,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 )
@@ -55,4 +61,47 @@ func TestDownloadVerifiesSHA(t *testing.T) {
 	sum := sha256.Sum256([]byte("model"))
 	assert.NoError(t, download(context.Background(), srv.URL, hex.EncodeToString(sum[:])))
 	assert.ErrorContains(t, download(context.Background(), srv.URL, "00"), "sha256 mismatch")
+}
+
+// fakeDevices refuses the first heartbeat of each token it is told to and
+// counts registrations; the embedded interface leaves the other RPCs out.
+type fakeDevices struct {
+	fleetmlv1.DeviceServiceClient
+	registered int
+	refuse     string
+}
+
+func (f *fakeDevices) Register(_ context.Context, _ *fleetmlv1.RegisterRequest, _ ...grpc.CallOption) (*fleetmlv1.RegisterResponse, error) {
+	f.registered++
+	return &fleetmlv1.RegisterResponse{DeviceId: "dev-1", AuthToken: fmt.Sprintf("token-%d", f.registered)}, nil
+}
+
+func (f *fakeDevices) Heartbeat(ctx context.Context, _ *fleetmlv1.HeartbeatRequest, _ ...grpc.CallOption) (*fleetmlv1.HeartbeatResponse, error) {
+	md, _ := metadata.FromOutgoingContext(ctx)
+	if got := md.Get("authorization"); len(got) == 1 && got[0] == "Bearer "+f.refuse {
+		return nil, status.Error(codes.Unauthenticated, "invalid token")
+	}
+	return &fleetmlv1.HeartbeatResponse{}, nil
+}
+
+// After a JWT secret rotation the server refuses every device token: each
+// simulated device registers again with the enrollment key, says so once,
+// and checks in with its new token on the next tick.
+func TestRefusedTokenRegistersAgain(t *testing.T) {
+	devs := &fakeDevices{}
+	d := &simDevice{n: 3, fp: "fp", loaded: map[string]*fleetmlv1.ModelAssignment{}, arms: map[string]string{}, seen: map[string]bool{}, rng: rand.New(rand.NewSource(1))}
+	require.NoError(t, d.register(context.Background(), simConfig{}, devs))
+	assert.Equal(t, "token-1", d.token)
+
+	devs.refuse = "token-1"
+	var out bytes.Buffer
+	d.tick(context.Background(), simConfig{}, devs, nil, &out)
+	assert.Equal(t, 2, devs.registered)
+	assert.Equal(t, "token-2", d.token)
+	assert.Equal(t, "simulator: device 3: token refused, registered again\n", out.String())
+
+	out.Reset()
+	d.tick(context.Background(), simConfig{}, devs, nil, &out)
+	assert.Equal(t, 2, devs.registered, "the new token is accepted: no further registration")
+	assert.Empty(t, out.String())
 }

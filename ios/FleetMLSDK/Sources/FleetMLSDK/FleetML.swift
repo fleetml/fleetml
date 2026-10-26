@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 #if canImport(UIKit)
@@ -23,7 +24,7 @@ import BackgroundTasks
 /// runs one heartbeat and one telemetry flush. Models download only as the
 /// `DownloadPolicy` allows, unless the deployment is urgent.
 public enum FleetML {
-    public static let sdkVersion = "0.10.1"
+    public static let sdkVersion = "0.10.2"
 
     /// The identifier of the background refresh task. Add it to the app's
     /// `BGTaskSchedulerPermittedIdentifiers`, enable the "fetch" background mode,
@@ -207,8 +208,20 @@ final class Instance {
         }
     }
 
+    /// What the device registered with. A new SDK version, labels, server or
+    /// enrollment key registers it again (with its token, so another project's
+    /// key moves it there); a signature saved by an older SDK differs too, so
+    /// such a device registers once more.
     private var signature: String {
-        FleetML.sdkVersion + "|" + config.labels.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        Instance.registrationSignature(sdkVersion: FleetML.sdkVersion, labels: config.labels,
+                                       host: config.serverHost, port: config.serverPort, enrollmentKey: config.enrollmentKey)
+    }
+
+    /// The key is kept as a SHA-256 digest only.
+    static func registrationSignature(sdkVersion: String, labels: [String: String], host: String, port: Int, enrollmentKey: String) -> String {
+        let key = SHA256.hash(data: Data(enrollmentKey.trimmingCharacters(in: .whitespaces).utf8)).map { String(format: "%02x", $0) }.joined()
+        let pairs = labels.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+        return sdkVersion + "|" + pairs + "|" + host + ":" + String(port) + "|" + key
     }
 
     private var needsRegistration: Bool { !tokens.isRegistered || tokens.registrationSignature != signature }

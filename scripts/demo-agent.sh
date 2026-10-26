@@ -69,7 +69,8 @@ go build -o "$WORK/server" ./cmd/server
 go build -o "$WORK/fleetml" ./cmd/fleetml
 go build -o "$WORK/fleetml-agent" ./cmd/fleetml-agent
 env DATABASE_URL="$PG_HOST_URL/$DB?sslmode=disable" MIGRATE_ON_START=true \
-  S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
+  S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_PUBLIC_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" \
+  S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
   NATS_URL="nats://localhost:$NATS_PORT" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
   SIGNING_MASTER_KEY="$(head -c 32 /dev/urandom | base64)" \
   REST_PORT="$REST_PORT" GRPC_PORT="$GRPC_PORT" FLEETML_ADMIN_KEY="$KEY" \
@@ -111,7 +112,11 @@ STORY=$(date +%s)
 say "1. Four edge boxes run iris 1.0.0"
 for v in 1.0.0:iris_v1 2.0.0:iris_v2; do
   show "fleetml push models/iris/${v#*:}.tflite --model iris --version ${v%%:*}"
-  "$WORK/fleetml" push "models/iris/${v#*:}.tflite" --project "$P" --model iris --version "${v%%:*}" >/dev/null 2>&1
+  if ! out=$("$WORK/fleetml" push "models/iris/${v#*:}.tflite" --project "$P" --model iris --version "${v%%:*}" 2>&1); then
+    printf '%s\n' "$out" | sed 's/^/  /'
+    echo "demo-agent: pushing ${v#*:} failed (the lines above say why); the server's log is $WORK/server.log" >&2
+    exit 1
+  fi
 done
 M=$(api GET "/api/v1/projects/$P/models" | jq -r '.data[0].id')
 version_id() { api GET "/api/v1/models/$M/versions" | jq -r --arg v "$1" '.data[] | select(.version == $v) | .id'; }

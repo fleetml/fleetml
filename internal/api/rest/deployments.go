@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 
 	"github.com/fleetml/fleetml/internal/deploy"
@@ -54,7 +55,12 @@ type createDeploymentRequest struct {
 func (h *DeploymentHandler) create(c *gin.Context) {
 	var req createDeploymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id and model_version_id are required")
+		var missing validator.ValidationErrors
+		if errors.As(err, &missing) {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id and model_version_id are required")
+		} else {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid JSON body: "+err.Error())
+		}
 		return
 	}
 	d, err := h.service.Create(c.Request.Context(), deploy.CreateInput{

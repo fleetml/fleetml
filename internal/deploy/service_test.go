@@ -246,6 +246,10 @@ func (f fakeVersions) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, e
 func (f fakeVersions) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
 	return nil, nil
 }
+func (f fakeVersions) ProjectExists(context.Context, uuid.UUID) (bool, error) { return true, nil }
+func (f fakeVersions) VersionProject(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
 
 // currentVersion reports a fixed current version for every model.
 type currentVersion struct{ id uuid.UUID }
@@ -253,6 +257,45 @@ type currentVersion struct{ id uuid.UUID }
 func (c currentVersion) ReadyVariantCount(context.Context, uuid.UUID) (int, error) { return 1, nil }
 func (c currentVersion) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
 	return &c.id, nil
+}
+func (c currentVersion) ProjectExists(context.Context, uuid.UUID) (bool, error) { return true, nil }
+func (c currentVersion) VersionProject(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
+
+// projects knows which projects exist and which project each version is in.
+type projects struct {
+	exist    map[uuid.UUID]bool
+	versions map[uuid.UUID]uuid.UUID
+}
+
+func (p projects) ReadyVariantCount(context.Context, uuid.UUID) (int, error) { return 1, nil }
+func (p projects) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
+	return nil, nil
+}
+func (p projects) ProjectExists(_ context.Context, id uuid.UUID) (bool, error) {
+	return p.exist[id], nil
+}
+func (p projects) VersionProject(_ context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return p.versions[id], nil
+}
+
+// A deployment belongs to its project: a version of another project is
+// refused with a validation error, an unknown project with not found.
+func TestCreate_VersionMustBelongToTheProject(t *testing.T) {
+	mine, other, v := uuid.New(), uuid.New(), uuid.New()
+	svc := NewService(newMockRepo(), nil)
+	svc.SetVersionChecker(projects{exist: map[uuid.UUID]bool{mine: true, other: true}, versions: map[uuid.UUID]uuid.UUID{v: other}})
+
+	_, err := svc.Create(context.Background(), CreateInput{ProjectID: mine, ModelVersionID: v})
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.ErrorContains(t, err, "belongs to another project")
+
+	_, err = svc.Create(context.Background(), CreateInput{ProjectID: uuid.New(), ModelVersionID: v})
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	_, err = svc.Create(context.Background(), CreateInput{ProjectID: other, ModelVersionID: v})
+	assert.NoError(t, err)
 }
 
 func TestCreate_RecordsPreviousVersion(t *testing.T) {

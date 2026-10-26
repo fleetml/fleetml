@@ -61,7 +61,8 @@ NATS_PORT=$(docker port "$NATS_NAME" 4222/tcp | head -1 | sed 's/.*://')
 go build -o "$WORK/server" ./cmd/server
 go build -o "$WORK/fleetml" ./cmd/fleetml
 env DATABASE_URL="$PG_HOST_URL/$DB?sslmode=disable" MIGRATE_ON_START=true \
-  S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
+  S3_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" S3_PUBLIC_ENDPOINT="localhost:${FLEETML_S3_PORT:-19000}" \
+  S3_ACCESS_KEY=fleetml S3_SECRET_KEY=fleetml-dev-secret \
   NATS_URL="nats://localhost:$NATS_PORT" JWT_SECRET="$(head -c 32 /dev/urandom | base64)" \
   SIGNING_MASTER_KEY="$(head -c 32 /dev/urandom | base64)" \
   REST_PORT="$REST_PORT" GRPC_PORT="$GRPC_PORT" FLEETML_ADMIN_KEY="$KEY" \
@@ -77,7 +78,12 @@ say "1. Publish three versions of a model"
 P=$(api POST /api/v1/projects '{"name":"demo"}' | jq -r .data.id)
 for v in 1.0.0:iris_v1 2.0.0:iris_v2 2.1.0:iris_v2; do
   show "fleetml push models/iris/${v#*:}.tflite --model iris --version ${v%%:*}"
-  "$WORK/fleetml" push "models/iris/${v#*:}.tflite" --project "$P" --model iris --version "${v%%:*}" 2>/dev/null | grep -i pushed | sed 's/^/  /'
+  if ! out=$("$WORK/fleetml" push "models/iris/${v#*:}.tflite" --project "$P" --model iris --version "${v%%:*}" 2>&1); then
+    printf '%s\n' "$out" | sed 's/^/  /'
+    echo "demo: pushing ${v#*:} failed (the lines above say why); the server's log is $WORK/server.log" >&2
+    exit 1
+  fi
+  printf '%s\n' "$out" | grep -i pushed | sed 's/^/  /'
 done
 M=$(api GET "/api/v1/projects/$P/models" | jq -r '.data[0].id')
 version_id() { api GET "/api/v1/models/$M/versions" | jq -r --arg v "$1" '.data[] | select(.version == $v) | .id'; }

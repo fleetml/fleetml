@@ -385,8 +385,14 @@ class Devices(_API):
         limit: Optional[int] = None,
         offset: Optional[int] = None,
     ) -> List[Device]:
-        """Lists devices; with ``project``, that project's only, and with
-        ``labels``, only those that have all of them."""
+        """Lists devices; with ``project=`` (a project ID), that project's
+        only, and with ``labels`` (a mapping, the one positional argument),
+        only those that have all of them."""
+        if labels is not None and not isinstance(labels, Mapping):
+            raise TypeError(
+                "devices.list() takes labels as a mapping; pass a project ID as project=<id>"
+                f" (got {type(labels).__name__} {labels!r} by position)"
+            )
         params = self._c._page(limit, offset, project)
         for k, v in (labels or {}).items():
             params[f"label.{k}"] = v

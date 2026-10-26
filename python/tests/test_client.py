@@ -79,7 +79,7 @@ DEPLOYMENT = {
 
 
 def test_version_is_the_package_version() -> None:
-    assert fleetml.__version__ == "0.10.1"
+    assert fleetml.__version__ == "0.10.2"
 
 
 def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fake: Fake) -> None:
@@ -624,6 +624,13 @@ def test_devices_by_project_and_get(fake: Fake) -> None:
     assert [d.id for d in fm.devices.list(project="p1", labels={"app": "demo"})] == ["dev1"]
     assert dict(fake.requests[-1].url.params) == {"project_id": "p1", "label.app": "demo"}
     assert fm.devices.get("dev1").project_id == "p1"
+
+
+def test_devices_list_with_a_project_id_by_position(fake: Fake) -> None:
+    fm = fake.client()
+    with pytest.raises(TypeError, match="project=<id>"):
+        fm.devices.list("p1")  # type: ignore[arg-type]
+    assert fake.requests == [], "nothing is sent"
 
 
 def test_telemetry_events_without_a_confidence(fake: Fake) -> None:

@@ -243,3 +243,20 @@ func TestDeployListByProject(t *testing.T) {
 	w := doJSON(r, "GET", "/api/v1/deployments?project_id=not-a-uuid", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// A body that is not the expected JSON says why; one without the required
+// IDs says which are required.
+func TestDeployCreate_BadBodies(t *testing.T) {
+	r, _ := setupDeployTestRouter()
+	w := doJSON(r, "POST", "/api/v1/deployments", map[string]interface{}{
+		"project_id": uuid.New().String(), "model_version_id": uuid.New().String(), "strategy": "CANARY",
+		"canary_stages": []map[string]interface{}{{"percentage": 10, "min_duration": 300}},
+	})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid JSON body: ")
+	assert.Contains(t, w.Body.String(), "min_duration")
+
+	w = doJSON(r, "POST", "/api/v1/deployments", map[string]interface{}{"strategy": "CANARY"})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "project_id and model_version_id are required")
+}

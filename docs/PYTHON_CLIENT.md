@@ -35,7 +35,7 @@ zsh, on macOS or Linux) and keep it open until the end.
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
-   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
    curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
@@ -280,6 +280,10 @@ whole server. `project`, `limit` and `offset` are keyword-only on every list
 method (`*` in the table), so a project ID passed by position is an error
 rather than a page size; only `models.list` and `versions.list` take their
 parent (a project, a model) by position, and `devices.list` its `labels`.
+A filter value nothing matches (an `event_type` the server does not have, a
+label no device carries) gives an empty list, not an error, and the REST API
+ignores a query parameter it does not know (`?status=` on deployments, for
+example), the way most list endpoints do.
 
 | Python | CLI | What it does |
 |---|---|---|

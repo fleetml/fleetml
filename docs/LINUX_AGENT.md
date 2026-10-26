@@ -43,7 +43,7 @@ and keep it open until the end.
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
-   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
    curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
@@ -160,7 +160,7 @@ first, `shasum -a 256 -c` in place of `sha256sum -c`); in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
-`fleetml-agent 0.10.1`. To build the agent from source instead, `make
+`fleetml-agent 0.10.2`. To build the agent from source instead, `make
 build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
 and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
@@ -282,15 +282,18 @@ the project name `edge` and the model file are this guide's, yours will differ
 
 ```bash
 export FLEETML_SERVER=<server URL> FLEETML_API_KEY=<the key your team gave you>
-P=$(fleetml project create --name edge -o json | jq -r .id)   # or P=<the project ID your team gave you>
-fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+P=$(fleetml project list -o json | jq -r '.[] | select(.name == "edge") | .id'); [ -n "$P" ] || P=$(fleetml project create --name edge -o json | jq -r .id)
 M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 vid() { fleetml ver list --model $M -o json | jq -r --arg v "$1" '.[] | select(.version == $v) | .id'; }
+[ -n "$M" ] && [ -n "$(vid 1.0.0)" ] || fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
 export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name edge -o json | jq -r .key); echo "$FLEETML_ENROLLMENT_KEY"
 D=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":"factory-1"}' -o json | jq -r .id); fleetml deploy start $D
 ```
 
-`-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
+The block can run again: it reuses the project `edge` and its iris 1.0.0
+when they are there (or `P=<the project ID your team gave you>` in place of
+the first line). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
 to a provisioning script; without `-o json`, `enrollment-key create` prints a
 table with the key once. One key enrolls any number of machines. `vid` looks
 a version up by its number, so the block picks 1.0.0 even after more versions
@@ -336,7 +339,7 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.10.1 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.10.2 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
@@ -642,8 +645,12 @@ seconds); with telemetry queued, a `sending telemetry failed; the events
 stay queued` warning can come first. With the network removed rather than
 silent, or when the server's name resolves first to an address this
 machine has no route to (an IPv6 one, as `host.docker.internal` can in a
-container), the error can read `connect: network is unreachable` instead. The
-first failed heartbeat is logged once, and the recovery once:
+container), the error can read `connect: network is unreachable` instead;
+with the server stopped and started again rather than silent, it reads
+`connection refused` while it is down, or
+`error reading server preface: ... use of closed network connection` at the
+moment it goes. The first failed heartbeat is logged once, and the recovery
+once:
 
 ```text
 level=WARN msg="heartbeat failed; retrying every heartbeat, models stay active and telemetry stays queued" error="rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout"
@@ -685,19 +692,21 @@ activated a model and heartbeated against one without an error).
 
 ## Remove the agent
 
-On the agent's machine, the service, the binary, its config and models, and
-its user (without systemd, stop it under its supervisor instead of the first
-line):
+On the agent's machine, first this machine's device ID, which the agent
+logged when it registered (without systemd, in the agent's own log), then
+the service, the binary, its config and models, and its user (without
+systemd, stop it under its supervisor instead of the `systemctl` line):
 
 ```bash
+journalctl -u fleetml-agent -o cat | grep -o 'device_id=[^ ]*' | tail -1
 sudo systemctl disable --now fleetml-agent
 sudo rm -f /etc/systemd/system/fleetml-agent.service /usr/local/bin/fleetml-agent && sudo systemctl daemon-reload
 sudo rm -rf /etc/fleetml-agent /var/lib/fleetml-agent
 sudo userdel fleetml-agent
 ```
 
-Then on the machine with the CLI, remove the device from its project, with
-its ID from `fleetml device list --project $P`:
+You should see `device_id=` and the ID. Then on the machine with the CLI,
+remove the device from its project, with that ID:
 
 ```bash
 curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_API_KEY" "$FLEETML_SERVER/api/v1/devices/<device ID>" && echo removed

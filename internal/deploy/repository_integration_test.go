@@ -80,6 +80,25 @@ func TestAdapters_Integration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, n, "FAILED variants do not count")
 
+	ok, err := versions.ProjectExists(ctx, fx.ProjectID)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = versions.ProjectExists(ctx, uuid.New())
+	require.NoError(t, err)
+	assert.False(t, ok)
+	owner, err := versions.VersionProject(ctx, v2)
+	require.NoError(t, err)
+	assert.Equal(t, fx.ProjectID, owner)
+	owner, err = versions.VersionProject(ctx, uuid.New())
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Nil, owner, "no such version")
+
+	// The service refuses a version of another project.
+	svc := NewService(NewRepo(pool), nil)
+	svc.SetVersionChecker(versions)
+	_, err = svc.Create(ctx, CreateInput{ProjectID: dbtest.NewVersion(t, pool).ProjectID, ModelVersionID: v2})
+	assert.ErrorIs(t, err, ErrInvalidInput)
+
 	cur, err := versions.CurrentVersion(ctx, fx.ProjectID, v2)
 	require.NoError(t, err)
 	assert.Nil(t, cur, "nothing deployed yet")

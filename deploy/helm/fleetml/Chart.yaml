@@ -2,8 +2,8 @@ apiVersion: v2
 name: fleetml
 description: FleetML server, dashboard and (optionally) its Postgres, NATS and S3-compatible store
 type: application
-version: 0.10.1
-appVersion: "0.10.1"
+version: 0.10.2
+appVersion: "0.10.2"
 home: https://github.com/fleetml/fleetml
 sources:
   - https://github.com/fleetml/fleetml

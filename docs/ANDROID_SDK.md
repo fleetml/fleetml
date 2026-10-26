@@ -51,7 +51,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
-   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
    curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
@@ -150,14 +150,14 @@ with the same server and key. The emulator instead of a phone:
 
 ## Install
 
-The SDK is on Maven Central; 0.10.1 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.10.2 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.1")
+    implementation("dev.fleetml:fleetml-sdk:0.10.2")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -192,7 +192,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.1") {
+implementation("dev.fleetml:fleetml-sdk:0.10.2") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -225,7 +225,7 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.10.1-dev` (any version string) in the app's
+and `sdkVersion=0.10.2-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
@@ -292,7 +292,7 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.1")
+    implementation("dev.fleetml:fleetml-sdk:0.10.2")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -906,7 +906,8 @@ files' port.
    A build with a key it has not used before connects with that key, also
    where the sample app ran before; a reinstall of the same build keeps
    what its config screen saved, and `adb shell pm clear com.fleetml.sample`
-   starts it from nothing.
+   starts it from nothing (the device's token goes too, so a key of another
+   project is then refused: see `this device is already registered` below).
 
    The app registers, downloads iris 1.0.0, validates it and shows
    **Active model: iris 1.0.0**; logcat shows the lines in [Over
@@ -925,11 +926,29 @@ shows `localhost` in place of `10.0.2.2`); over Wi-Fi,
 `-PfleetmlDebugHost=<LAN IP>` ([Over Wi-Fi](#over-wi-fi)). With
 `S3_PUBLIC_ENDPOINT` on the LAN address, its downloads go there on the
 emulator and over USB too, so build those with `-PfleetmlDebugHost=<LAN IP>`
-as well and type the host on the screen. A phone where the sample app ran
-before keeps its saved settings, which win over the build's:
-`adb shell pm clear com.fleetml.sample` resets them, and an old key shows in
-logcat as
+as well and type the host on the screen. A build with another host, port
+or enrollment key replaces the settings the app saved, and the SDK
+registers again with it (with the device's token, so the server moves the
+device to the new key's project); a revoked key shows in logcat as
 `Registration failed: UNAUTHENTICATED: unauthenticated: invalid or revoked enrollment key`.
+
+**`this device is already registered`** in logcat
+(`Registration failed: UNAUTHENTICATED: ... this device is already registered; re-register with its current device token or an enrollment key for its project`):
+the phone or emulator was registered in another project before and the app
+lost its device token since (an uninstall, `adb shell pm clear`), so it
+comes back with only a key of another project, which the server refuses: a
+key alone must not take a known device over. Remove the old device record
+with the admin key, then start the app again. Its ID is in the old
+project's list (`fleetml device list --project <old project ID>`, the row
+with your phone's Chipset; the dashboard's Devices page shows it too):
+
+```bash
+curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>" && echo removed
+adb shell am start -S -n com.fleetml.sample/.MainActivity
+```
+
+You should see `removed`, and in logcat `Registered as device` with a new
+ID. Building with the old project's key instead also works.
 
 ## From Windows
 

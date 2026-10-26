@@ -48,7 +48,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
-   until curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz; do sleep 2; done; echo
+   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
    curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
@@ -163,35 +163,51 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    A line `IDERunDestination: Supported platforms for the buildables in the current scheme is empty`
    is harmless.
 
-   The first time on this phone, trust the app's developer now: on the
-   phone, Settings, General, **VPN & Device Management**, the **Apple
-   Development** entry with your Apple ID, **Trust**, and **Trust** again
-   (the phone needs internet for it).
+   Trust the app's developer, once per phone: if no other app from this Mac
+   is on the phone, on the phone open Settings, General, **VPN & Device
+   Management**, the **Apple Development** entry with your Apple ID,
+   **Trust**, and **Trust** again (the phone needs internet for it). iOS
+   keeps that trust as long as any app from this Mac stays installed, so
+   later installs and rebuilds need no tap; if you are not sure, go on: 6c
+   says so if it is needed.
 
-   **6c. Start it and wait for the phone in the device list:**
+   **6c. Start it and wait for the phone to check in:**
 
    <!-- golden: ios-iphone phone -->
    ```bash
-   BEFORE=$(fleetml device list --project $P -o json | jq -c 'map(.id)')
-   DEVICECTL_CHILD_FLEETML_HOST=$(ipconfig getifaddr en0) DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device $PHONE --terminate-existing com.fleetml.sample &&
-     for i in $(seq 60); do fleetml device list --project $P -o json | jq -e --argjson b "$BEFORE" 'map(.id) - $b | length > 0' > /dev/null && break; [ $i = 60 ] && echo "No new device after 3 minutes: see the list below this step"; sleep 3; done
+   T=$(mktemp); xcrun devicectl device info details --device $PHONE --quiet --json-output "$T" > /dev/null 2>&1; MODEL=$(jq -r .result.hardwareProperties.productType "$T"); rm -f "$T"
+   SINCE=$(date -u +%Y-%m-%dT%H:%M:%S)
+   if OUT=$(DEVICECTL_CHILD_FLEETML_HOST=$(ipconfig getifaddr en0) DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device $PHONE --terminate-existing com.fleetml.sample 2>&1); then
+     echo "$OUT" | grep Launched
+     for i in $(seq 60); do fleetml device list --project $P -o json | jq -e --arg m "$MODEL" --arg t "$SINCE" 'any(.[]; .chipset == $m and .last_seen_at >= $t)' > /dev/null && break; [ $i = 60 ] && echo "The iPhone has not checked in after 3 minutes: see the list below this step"; sleep 3; done
+   elif echo "$OUT" | grep -q -i -E 'explicitly trusted|invalid code signature'; then
+     echo "Trust the developer on the phone (once): Settings, General, VPN & Device Management, Apple Development, Trust; then run this block again"
+   elif echo "$OUT" | grep -q -i -E 'expired|no longer valid'; then
+     echo "The app's 7-day signing profile has expired: run 6b again, then this block"
+   else
+     echo "$OUT" | grep -E 'ERROR|Locked|reason' | head -3
+   fi
    fleetml device list --project $P
    ```
 
    You should see `Launched application with com.fleetml.sample bundle identifier`
    and in the list a row whose Chipset is your phone's model identifier
    (such as `iPhone12,5`; the simulator's row, if you did step 5, has the
-   simulator's). The first start asks on the phone to **find devices on
-   your local network**: tap **Allow**. The phone's screen then shows
-   **Active model: iris 1.0.0**; tap **Classify sample flower** to run it.
+   simulator's). Running the block again later gives the same: it waits
+   for the phone to check in, not for a new device. The first start asks on
+   the phone to **find devices on your local network**: tap **Allow** (once
+   for this app). The phone's screen then shows **Active model: iris
+   1.0.0**; tap **Classify sample flower** to run it.
 
    If it did not work, by what the block printed:
-   - `invalid code signature, inadequate entitlements or its profile has not been explicitly trusted`:
-     trust the developer (above), then run this block again.
+   - `Trust the developer on the phone (once)`: no other app from this Mac
+     is on the phone, so iOS asks for the trust; tap it as the line says,
+     then run this block again.
+   - `The app's 7-day signing profile has expired`: run 6b, then this block.
    - `Locked`: unlock the phone, then run this block again.
    - `This provisioning profile cannot be installed on this device`: 6b built
      for another phone; check `PHONE`, then run 6b again.
-   - `No new device after 3 minutes`: tap **Allow** if the phone shows the
+   - `The iPhone has not checked in after 3 minutes`: tap **Allow** if the phone shows the
      local network question, check that the phone is on the Mac's Wi-Fi,
      then run this block again. If the app shows `Server unreachable`, open
      `http://<Mac LAN IP>:${FLEETML_REST_PORT:-18080}/readyz` in Safari on
@@ -213,19 +229,25 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    simulator, if you did step 5: the Chipset column tells them apart), and
    **Deployments** one `COMPLETE` deployment of iris 1.0.0.
 
-8. **Clean up**: the app on the simulator and the phone, the build, the
-   server and all its data, and the saved secrets:
+8. **Clean up**: the app on the simulator, the build, the server and all
+   its data, and the saved secrets. The sample stays on the phone: iOS
+   forgets the developer trust when the last app from your Mac is removed;
+   leave the sample installed and the next install from this Mac needs no
+   Trust tap:
 
    <!-- golden: ios-cleanup device cleanup -->
    ```bash
    [ -z "${SIM:-}" ] || { xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM; }
-   [ -z "${PHONE:-}" ] || xcrun devicectl device uninstall app --device $PHONE com.fleetml.sample
    rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
    rm -f ~/.fleetml.env
    ```
 
    You should see `Network <stack>_default  Removed`.
+
+   When you are done with FleetML for good, remove the sample from the phone
+   with `xcrun devicectl device uninstall app --device $PHONE com.fleetml.sample`;
+   the next install from this Mac then asks for the Trust again.
 
 Then your own app: [Install](#install) and [Configure and start](#configure-and-start),
 and [Your own app on an iPhone](#your-own-app-on-an-iphone) for its own
@@ -239,9 +261,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.1, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.1")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.1` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.2, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.2")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.2` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -264,7 +286,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.10.1        # or path: ../fleetml for a clone
+    from: 0.10.2        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -526,10 +548,10 @@ struct MyApp: App {
      Wirelessly).
    - Settings, Display & Brightness, Auto-Lock, Never, and the phone on its
      charger.
-   - For a bundle ID the phone has not run before, the first launch in step
-     5 stops at two prompts: trust the developer (Settings, General, VPN &
-     Device Management) and allow Local Network access. After that,
-     relaunches need no hand at the phone.
+   - The developer trust: once per Mac per phone, and kept while any app
+     from that Mac is installed (keep Get started's sample on the phone and
+     step 5 needs none). Local Network access: once for each app, at its
+     first launch. After that, launches need no hand at the phone.
 
 2. **The server, with its object store on the Mac's LAN address.** The phone
    reaches the server at the Mac's LAN address (`ipconfig getifaddr en0`,
@@ -552,7 +574,7 @@ struct MyApp: App {
    `"status":"ok"`, and `http://<Mac LAN IP>:<model files port>` must answer
    at all (an XML error page from the object store is fine). The stack's
    ports are in `~/.fleetml.env`, which
-   `grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env` prints (the REST
+   `(. ~/.fleetml.env; env | grep -E '^(FLEETML_[A-Z0-9_]*PORT|S3_PUBLIC_ENDPOINT)=' | sort)` prints (the REST
    port is `FLEETML_REST_PORT`, the model files' `FLEETML_S3_PUBLIC_PORT`).
    If Safari cannot load them on those ports, it is the Wi-Fi (a guest
    network that isolates devices) or the Mac's firewall, not the app or the
@@ -594,7 +616,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.10.1        # or path: ../fleetml for a clone
+       from: 0.10.2        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
@@ -665,15 +687,15 @@ struct MyApp: App {
    Command-line builds for a device fail at codesign with
    `errSecInternalComponent` on `__preview.dylib` unless `ENABLE_PREVIEWS=NO`
    is passed. `Secrets.xcconfig` holds the enrollment key, so the subshell
-   with `umask 077` writes it readable only by you. The first launch of a
-   personally signed app stops at a trust prompt: trust the developer in
-   Settings, General, VPN & Device Management, then launch again. iOS then
-   asks whether the app may find and connect to devices on the local
-   network: allow it. After a rebuild with a free team, a launch can be
-   refused once more with an error about an invalid code signature,
-   inadequate entitlements or a profile that "has not been explicitly
-   trusted", although the developer is trusted: the new build came with a
-   new 7-day profile, and the same launch line works a few minutes later.
+   with `umask 077` writes it readable only by you. The developer trust is
+   asked once per Mac per phone and stays while any app from that Mac is
+   installed: with the sample from Get started step 6 still on the phone,
+   your app's first launch needs no Trust tap; without it, the first launch
+   is refused with "has not been explicitly trusted" until you trust the
+   developer in Settings, General, VPN & Device Management. iOS then asks,
+   once for each app, whether it may find and connect to devices on the
+   local network: allow it. A launch refused because the free team's 7-day
+   profile expired needs a new build and install (the same three lines).
 
    **Wirelessly:** once the phone has been connected by cable, Xcode's
    Devices and Simulators window (Shift-Command-2) has **Connect via
