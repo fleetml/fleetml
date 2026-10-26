@@ -184,7 +184,7 @@ the cluster.
 
 [Get started](#get-started)'s step 5. The deployment starts as `COMPLETE` and the simulator's last line reads
 `simulator: iris 1.0.0 on 20`. `kill $SIM` stops the simulator; step 6 serves the dashboard at
-http://localhost:8080 (log in with the `adminKey`).
+`http://localhost:$DASH` (38800 unless you changed step 4's line; log in with the `adminKey`).
 
 ## Upgrading
 
@@ -203,10 +203,22 @@ the server pods one at a time; a changed `s3SecretKey` also restarts
 SeaweedFS, which reads its credentials at start (Postgres keeps its
 password, see [Install](#install)). The data stays in the volumes, the
 server applies any new database migrations when it starts, and devices
-reconnect by themselves. A port-forward ends when the pod behind it is
-replaced: start the server's `port-forward` line again (and the object
-store's after an `s3SecretKey` change, which replaces that pod too; with the
-old one still running, the new line stops with `address already in use`). To rotate a secret that
+reconnect by themselves. A port-forward stops working when the pod behind
+it is replaced, but keeps its local port, so starting the same line again
+stops with `address already in use`. After an upgrade (or an uninstall and
+a new install), stop this terminal's port-forwards and start step 4's two
+again:
+
+```bash
+kill $(jobs -p) 2> /dev/null; wait 2> /dev/null
+kubectl -n fleetml port-forward svc/fleetml-server $REST:18080 $GRPC:19090 >/dev/null &
+kubectl -n fleetml port-forward svc/fleetml-s3 $S3:8333 >/dev/null &
+for i in $(seq 30); do curl -sf localhost:$REST/readyz && break; sleep 1; done; echo
+```
+
+You should see the `/readyz` line. The first line also stops step 5's
+simulator, a job of this terminal: start it again (step 5's
+`fleetml simulate` line) if you want it. To rotate a secret that
 may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
 upgrade. From 0.6.0 to 0.10.1 no
@@ -279,7 +291,9 @@ reinstall with the same secrets file; the Secret the chart made is deleted
 with the release, which is why the file matters. To delete the data too:
 `kubectl -n fleetml delete pvc -l app.kubernetes.io/instance=fleetml`, and
 `kubectl delete namespace fleetml` removes the namespace that
-`--create-namespace` made (with anything left in it).
+`--create-namespace` made (with anything left in it). Stop this terminal's
+port-forwards too (`kill $(jobs -p)`): left running, they hold the local
+ports, and a new install's port-forwards stop with `address already in use`.
 `kind delete cluster --name fleetml` removes a kind cluster with everything
 in it.
 

@@ -484,11 +484,28 @@ The [chart README](../deploy/helm/fleetml/README.md)'s Get started installs
 the chart with a secrets file, its bundled services and local ports 38080,
 39090 and 39100 for REST, gRPC and the object store. The variants:
 
-**A Secret of your own instead of the file.** A Secret of your own with the keys `JWT_SECRET`,
-`SIGNING_MASTER_KEY`, `FLEETML_ADMIN_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
-and `POSTGRES_PASSWORD` works the same way: `--set secrets.existingSecret=<name>`,
-except that a change to your Secret rolls nothing: after one, run
-`kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
+**A Secret of your own instead of the file.** The chart reads the keys
+`JWT_SECRET`, `SIGNING_MASTER_KEY`, `FLEETML_ADMIN_KEY`, `S3_ACCESS_KEY`,
+`S3_SECRET_KEY` and `POSTGRES_PASSWORD` from a Secret you make. In the chart
+README's Get started, in place of step 3, in the clone and the same
+terminal (its `KUBECONFIG` from step 1):
+
+```bash
+kubectl create namespace fleetml
+(umask 077; printf 'JWT_SECRET=%s\nSIGNING_MASTER_KEY=%s\nFLEETML_ADMIN_KEY=%s\nS3_ACCESS_KEY=fleetml\nS3_SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" > fleetml-secrets.env)
+kubectl -n fleetml create secret generic fleetml-secrets --from-env-file=fleetml-secrets.env
+```
+
+You should see `namespace/fleetml created` and
+`secret/fleetml-secrets created`; the keys go through a file only you can
+read, never a command line. Then step 4 with
+`--set secrets.existingSecret=fleetml-secrets` in place of
+`-f fleetml-secrets.yaml`, and step 5 with its first line reading the admin
+key from that file:
+`export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^FLEETML_ADMIN_KEY=//p' fleetml-secrets.env)`.
+Keep `fleetml-secrets.env` as you would the secrets file, and delete it at
+clean-up with the rest. A change to your Secret rolls nothing: after one,
+run `kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
 
 **Other local ports.** If something on this machine already listens on one
 of the four ports (`lsof -nP -iTCP:<port> -sTCP:LISTEN` prints it), change
