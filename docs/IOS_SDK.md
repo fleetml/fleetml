@@ -18,8 +18,9 @@ tests come last.
 
 ## Get started
 
-The [sample app](#sample-app) on the simulator, then on your iPhone, against
-a server on your Mac: copy and paste, nothing to choose. Each step says what
+The [sample app](#sample-app) on the simulator and on your iPhone (either
+first, or only one of them), against a server on your Mac: copy and paste,
+nothing to choose. Each step says what
 you should see; if you see something else, stop there and look it up in
 [Troubleshooting](ADVANCED.md#troubleshooting). Use one terminal and keep it
 open until the end.
@@ -96,44 +97,105 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    ```bash
    (cd ios/SampleApp && xcodegen generate --quiet)
    SIM=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
-   xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath ios/SampleApp/build build
+   xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath ios/SampleApp/build build < /dev/null
    xcrun simctl boot $SIM 2>/dev/null; open -a Simulator
    xcrun simctl install $SIM ios/SampleApp/build/Build/Products/Debug-iphonesimulator/FleetMLSample.app
    SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} SIMCTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun simctl launch --terminate-running-process $SIM com.fleetml.sample
-   for i in $(seq 60); do xcrun simctl spawn $SIM log show --last 2m --info --style compact --predicate 'subsystem == "com.fleetml.sdk"' 2>/dev/null | grep 'is active' && break; sleep 2; done
+   for i in $(seq 60); do xcrun simctl spawn $SIM log show --last 2m --info --style compact --predicate 'subsystem == "com.fleetml.sdk"' 2>/dev/null | grep 'is active' && break; [ $i = 60 ] && echo "Not active after 2 minutes: see Troubleshooting"; sleep 2; done
    ```
 
    You should see `[com.fleetml.sdk:FleetML] Model iris 1.0.0 is active`, and the app's
    screen **Active model: iris 1.0.0**. Tap **Classify sample flower** to
    run it.
 
-6. **Put your iPhone on it.** Once, before: on the phone, Developer Mode
-   (Settings, Privacy & Security, Developer Mode, then restart); connect it
-   to the Mac with a cable once and tap **Trust**; in Xcode, your Apple ID
-   (Settings, Accounts) and an Apple Development certificate (Manage
-   Certificates, +). The phone and the Mac on the same Wi-Fi, the phone
-   unlocked. The block points the server's downloads at the Mac's network
-   address, which the phone reaches, then builds, installs and launches the
-   app on the phone:
+6. **Put your iPhone on it**, in three blocks: pick the phone, build and
+   install the app, then start it. This step needs steps 2 to 4 in this
+   terminal; step 5 (the simulator) is not needed, so you can do this one
+   first.
 
-   <!-- golden: ios-iphone phone -->
+   Once per phone, before the blocks:
+   - on the phone, **Developer Mode** on: Settings, Privacy & Security,
+     Developer Mode, then restart it and tap **Turn On**;
+   - connect it to the Mac with a cable, unlock it and tap **Trust** on
+     "Trust This Computer?";
+   - while you test, keep it unlocked and on the charger: Settings, Display
+     & Brightness, **Auto-Lock**, Never (a locked phone refuses the start
+     with `Locked`);
+   - in Xcode, your Apple ID (Xcode, Settings, Accounts, +) and an Apple
+     Development certificate (Manage Certificates, +).
+
+   The phone and the Mac must be on the same Wi-Fi (not a guest network
+   that keeps devices apart). The cable can stay or go.
+
+   **6a. Pick the phone.** This lists the iPhones paired with this Mac and
+   takes the one, if there is only one:
+
+   <!-- golden: ios-iphone-pick phone -->
+   ```bash
+   T=$(mktemp); xcrun devicectl list devices --quiet --json-output "$T" > /dev/null 2>&1
+   jq -r '.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired") | "\(.identifier)  \(.hardwareProperties.marketingName)"' "$T"
+   PHONE=${PHONE:-$(jq -r '[.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired")] | if length == 1 then .[0].identifier else empty end' "$T")}; rm -f "$T"
+   echo "PHONE=${PHONE:-<more than one iPhone: copy yours from the list above and run export PHONE=<its identifier>>}"
+   ```
+
+   You should see one line per iPhone, its identifier and its model (such as
+   `iPhone 11 Pro Max`), then `PHONE=` and that identifier. With more than one
+   iPhone, run `export PHONE=` with yours, then go on.
+
+   **6b. Build and install the app on it.** This points the server's
+   downloads at the Mac's network address, which the phone reaches, and
+   builds the sample app for that phone (Xcode adds the phone to your
+   signing profile the first time):
+
+   <!-- golden: ios-iphone-install phone -->
    ```bash
    . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
    TEAM=$(security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject | grep -o 'OU=[A-Z0-9]*' | cut -d= -f2)
-   PHONE=$(xcrun devicectl list devices --quiet --json-output /dev/stdout | jq -r '[.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired")][0].identifier')
-   xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath ios/SampleApp/build -allowProvisioningUpdates DEVELOPMENT_TEAM=$TEAM build
-   xcrun devicectl device install app --device $PHONE ios/SampleApp/build/Build/Products/Debug-iphoneos/FleetMLSample.app
+   (cd ios/SampleApp && xcodegen generate --quiet)
+   xcodebuild -quiet -project ios/SampleApp/FleetMLSample.xcodeproj -scheme FleetMLSample -destination "id=$PHONE" -derivedDataPath ios/SampleApp/build -allowProvisioningUpdates DEVELOPMENT_TEAM=$TEAM build < /dev/null &&
+     xcrun devicectl device install app --device $PHONE ios/SampleApp/build/Build/Products/Debug-iphoneos/FleetMLSample.app
+   ```
+
+   You should see `Container <stack>-server-1  Started`, then (after a few
+   minutes the first time) `App installed:` and `bundleID: com.fleetml.sample`.
+   A line `IDERunDestination: Supported platforms for the buildables in the current scheme is empty`
+   is harmless.
+
+   The first time on this phone, trust the app's developer now: on the
+   phone, Settings, General, **VPN & Device Management**, the **Apple
+   Development** entry with your Apple ID, **Trust**, and **Trust** again
+   (the phone needs internet for it).
+
+   **6c. Start it and wait for the phone in the device list:**
+
+   <!-- golden: ios-iphone phone -->
+   ```bash
+   BEFORE=$(fleetml device list --project $P -o json | jq -c 'map(.id)')
    DEVICECTL_CHILD_FLEETML_HOST=$(ipconfig getifaddr en0) DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device $PHONE --terminate-existing com.fleetml.sample
-   for i in $(seq 60); do fleetml device list --project $P -o json | jq -e 'length == 2' > /dev/null && break; sleep 3; done; fleetml device list --project $P
+   for i in $(seq 60); do fleetml device list --project $P -o json | jq -e --argjson b "$BEFORE" 'map(.id) - $b | length > 0' > /dev/null && break; [ $i = 60 ] && echo "No new device after 3 minutes: see the list below this step"; sleep 3; done
+   fleetml device list --project $P
    ```
 
    You should see `Launched application with com.fleetml.sample bundle identifier`
-   and two devices in the list, the simulator and the iPhone. The first
-   launch of the app on a phone stops at two prompts on the phone: trust the
-   developer (Settings, General, VPN & Device Management) and allow Local
-   Network access; after you tap them, run the `devicectl device process launch`
-   line again. The phone's screen then shows **Active model: iris 1.0.0**.
+   and in the list a row whose Chipset is your phone's model identifier
+   (such as `iPhone12,5`; the simulator's row, if you did step 5, has the
+   simulator's). The first start asks on the phone to **find devices on
+   your local network**: tap **Allow**. The phone's screen then shows
+   **Active model: iris 1.0.0**; tap **Classify sample flower** to run it.
+
+   If it did not work, by what the block printed:
+   - `invalid code signature, inadequate entitlements or its profile has not been explicitly trusted`:
+     trust the developer (above), then run this block again.
+   - `Locked`: unlock the phone, then run this block again.
+   - `This provisioning profile cannot be installed on this device`: 6b built
+     for another phone; check `PHONE`, then run 6b again.
+   - `No new device after 3 minutes`: tap **Allow** if the phone shows the
+     local network question, check that the phone is on the Mac's Wi-Fi,
+     then run this block again. If the app shows `Server unreachable`, open
+     `http://<Mac LAN IP>:${FLEETML_REST_PORT:-18080}/readyz` in Safari on
+     the phone (`ipconfig getifaddr en0` on the Mac prints the address): no
+     answer means the network or the Mac's firewall keeps the phone out.
 
 7. **See it in the dashboard.** This puts the admin key on the clipboard (on
    a Mac; elsewhere it prints it); then open <http://localhost> and paste the
@@ -144,15 +206,16 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
    ```
 
-   You should see the Overview page; **Devices** lists the simulator (and the iPhone), and **Deployments** one
-   `COMPLETE` deployment of iris 1.0.0.
+   You should see the Overview page; **Devices** lists the iPhone (and the
+   simulator, if you did step 5: the Chipset column tells them apart), and
+   **Deployments** one `COMPLETE` deployment of iris 1.0.0.
 
 8. **Clean up**: the app on the simulator and the phone, the build, the
    server and all its data, and the saved secrets:
 
    <!-- golden: ios-cleanup device cleanup -->
    ```bash
-   xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM
+   [ -z "${SIM:-}" ] || { xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM; }
    [ -z "${PHONE:-}" ] || xcrun devicectl device uninstall app --device $PHONE com.fleetml.sample
    rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
@@ -584,13 +647,14 @@ struct MyApp: App {
    the generated `Info.plist` and `.xcodeproj` out of git.
 
 5. **Build and install over USB.** Connect the phone with a cable and trust
-   the Mac on it when asked. `<device>` is the phone's name or identifier
-   from `xcrun devicectl list devices`:
+   the Mac on it when asked. `<device>` is the phone's identifier from
+   `xcrun devicectl list devices` (building for that phone, rather than for
+   any iPhone, adds it to your signing profile the first time):
 
    ```bash
    (umask 077; printf 'FLEETML_SERVER_HOST = %s\nFLEETML_SERVER_PORT = %s\nFLEETML_USE_TLS = NO\nFLEETML_ENROLLMENT_KEY = %s\n' "$(ipconfig getifaddr en0)" "${FLEETML_GRPC_PORT:-19090}" "$FLEETML_ENROLLMENT_KEY" > Secrets.xcconfig)
    xcodegen generate
-   xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates ENABLE_PREVIEWS=NO build
+   xcodebuild -project MyApp.xcodeproj -scheme MyApp -destination 'id=<device>' -derivedDataPath build -allowProvisioningUpdates ENABLE_PREVIEWS=NO build
    xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/MyApp.app
    xcrun devicectl device process launch --device <device> --console com.example.myapp
    ```
@@ -1052,14 +1116,14 @@ the keys a phone needs. After `xcodegen generate`, open
 `ios/SampleApp/FleetMLSample.xcodeproj` and, on the FleetMLSample target's
 Signing & Capabilities tab, turn on **Automatically manage signing** with
 your team; or pass the team on the command line as below, where `<team>` is
-its ID and `<device>` the phone's name or identifier from
+its ID and `<device>` the phone's identifier from
 `xcrun devicectl list devices`. The config screen's default host,
 `localhost`, is the phone itself, so on a phone always give the Mac's
 address:
 
 ```bash
 cd ios/SampleApp && xcodegen generate
-xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'generic/platform=iOS' -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> ENABLE_PREVIEWS=NO build
+xcodebuild -project FleetMLSample.xcodeproj -scheme FleetMLSample -destination 'id=<device>' -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> ENABLE_PREVIEWS=NO build
 xcrun devicectl device install app --device <device> build/Build/Products/Debug-iphoneos/FleetMLSample.app
 DEVICECTL_CHILD_FLEETML_HOST=<Mac LAN IP> DEVICECTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090} DEVICECTL_CHILD_FLEETML_ENROLLMENT_KEY=$FLEETML_ENROLLMENT_KEY xcrun devicectl device process launch --device <device> --console com.fleetml.sample
 ```
