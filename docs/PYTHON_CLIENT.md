@@ -280,6 +280,10 @@ whole server. `project`, `limit` and `offset` are keyword-only on every list
 method (`*` in the table), so a project ID passed by position is an error
 rather than a page size; only `models.list` and `versions.list` take their
 parent (a project, a model) by position, and `devices.list` its `labels`.
+A filter value nothing matches (an `event_type` the server does not have, a
+label no device carries) gives an empty list, not an error, and the REST API
+ignores a query parameter it does not know (`?status=` on deployments, for
+example), the way most list endpoints do.
 
 | Python | CLI | What it does |
 |---|---|---|
