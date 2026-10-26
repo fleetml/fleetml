@@ -108,6 +108,10 @@ step 4 again, then `docker rm -f fleetml-agent` and step 5). The
   model files' forward is missing (the second `adb reverse` line), or the
   server hands out an address the phone cannot reach
   ([the download address](#a-phone-or-another-machine-the-download-address)).
+- `this device is already registered`: the device was in another project
+  before and lost its token (uninstall, `pm clear`); remove the old device
+  record as [the Android guide](ANDROID_SDK.md#emulator-runbook) shows,
+  then start the app again.
 - No lines at all: the app runs on another device. Step 5's `Device:` line
   says which; `export ANDROID_SERIAL=<serial>` from `adb devices` and run
   step 5 again.

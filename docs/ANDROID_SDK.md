@@ -925,11 +925,29 @@ shows `localhost` in place of `10.0.2.2`); over Wi-Fi,
 `-PfleetmlDebugHost=<LAN IP>` ([Over Wi-Fi](#over-wi-fi)). With
 `S3_PUBLIC_ENDPOINT` on the LAN address, its downloads go there on the
 emulator and over USB too, so build those with `-PfleetmlDebugHost=<LAN IP>`
-as well and type the host on the screen. A phone where the sample app ran
-before keeps its saved settings, which win over the build's:
-`adb shell pm clear com.fleetml.sample` resets them, and an old key shows in
-logcat as
+as well and type the host on the screen. A build with another host, port
+or enrollment key replaces the settings the app saved, and the SDK
+registers again with it (with the device's token, so the server moves the
+device to the new key's project); a revoked key shows in logcat as
 `Registration failed: UNAUTHENTICATED: unauthenticated: invalid or revoked enrollment key`.
+
+**`this device is already registered`** in logcat
+(`Registration failed: UNAUTHENTICATED: ... this device is already registered; re-register with its current device token or an enrollment key for its project`):
+the phone or emulator was registered in another project before and the app
+lost its device token since (an uninstall, `adb shell pm clear`), so it
+comes back with only a key of another project, which the server refuses: a
+key alone must not take a known device over. Remove the old device record
+with the admin key, then start the app again. Its ID is in the old
+project's list (`fleetml device list --project <old project ID>`, the row
+with your phone's Chipset; the dashboard's Devices page shows it too):
+
+```bash
+curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>" && echo removed
+adb shell am start -S -n com.fleetml.sample/.MainActivity
+```
+
+You should see `removed`, and in logcat `Registered as device` with a new
+ID. Building with the old project's key instead also works.
 
 ## From Windows
 

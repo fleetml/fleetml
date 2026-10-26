@@ -59,11 +59,29 @@ internal class DeviceRegistrar(
         )
     }
 
-    /** True if the device must (re-)register: never registered, or labels or SDK version changed. */
+    /**
+     * True if the device must (re-)register: never registered, or the SDK
+     * version, the labels, the server or the enrollment key changed (a build
+     * with another project's key moves the device there; the server allows it
+     * because the device also presents its current token).
+     */
     fun needsRegistration(): Boolean = !tokenManager.isRegistered() || tokenManager.getRegistrationSignature() != signature()
 
     private fun signature(): String =
-        BuildConfig.SDK_VERSION + "|" + config.labels.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" }
+        registrationSignature(BuildConfig.SDK_VERSION, config.labels, config.serverHost, config.serverPort, config.enrollmentKey)
+
+    companion object {
+        /**
+         * What a registration was made with. The key is kept as a SHA-256 digest
+         * only. A signature saved by an older SDK (version and labels only)
+         * differs, so such a device registers once more, with its token.
+         */
+        internal fun registrationSignature(sdkVersion: String, labels: Map<String, String>, host: String, port: Int, enrollmentKey: String): String {
+            val key = java.security.MessageDigest.getInstance("SHA-256").digest(enrollmentKey.trim().toByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return sdkVersion + "|" + labels.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" } + "|" + host + ":" + port + "|" + key
+        }
+    }
 }
 
 /** Result of a successful device registration. */
