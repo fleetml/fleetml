@@ -23,6 +23,35 @@ type VersionChecker interface {
 	// CurrentVersion is the version of the newest COMPLETE deployment of the
 	// same model other than versionID, or nil if there is none.
 	CurrentVersion(ctx context.Context, projectID, versionID uuid.UUID) (*uuid.UUID, error)
+	// ProjectExists reports whether the project is there.
+	ProjectExists(ctx context.Context, projectID uuid.UUID) (bool, error)
+	// VersionProject is the project a model version belongs to (through its
+	// model), or uuid.Nil if there is no such version.
+	VersionProject(ctx context.Context, versionID uuid.UUID) (uuid.UUID, error)
+}
+
+// requireSameProject refuses a deployment in a project that does not exist
+// (404) or of a version that belongs to another project (400): a deployment
+// is part of its project, which deleting the version's project would break.
+func requireSameProject(ctx context.Context, v VersionChecker, projectID, versionID uuid.UUID) error {
+	if v == nil {
+		return nil
+	}
+	ok, err := v.ProjectExists(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("checking project: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("%w: project %s", ErrNotFound, projectID)
+	}
+	owner, err := v.VersionProject(ctx, versionID)
+	if err != nil {
+		return fmt.Errorf("checking the version's project: %w", err)
+	}
+	if owner != uuid.Nil && owner != projectID {
+		return fmt.Errorf("%w: model version %s belongs to another project; deploy it from that project, or push the model to this one", ErrInvalidInput, versionID)
+	}
+	return nil
 }
 
 // Service orchestrates deployment business logic.
@@ -93,6 +122,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 		return nil, fmt.Errorf("%w: strategy must be one of ALL_AT_ONCE, CANARY, ROLLING", ErrInvalidInput)
 	}
 
+	if err := requireSameProject(ctx, s.versions, input.ProjectID, input.ModelVersionID); err != nil {
+		return nil, err
+	}
 	if err := requireDeployable(ctx, s.versions, input.ModelVersionID); err != nil {
 		return nil, err
 	}

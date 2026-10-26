@@ -80,6 +80,27 @@ func (a *VersionAdapter) ReadyVariantCount(ctx context.Context, versionID uuid.U
 	return n, nil
 }
 
+func (a *VersionAdapter) ProjectExists(ctx context.Context, projectID uuid.UUID) (bool, error) {
+	var ok bool
+	if err := a.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1)`, projectID).Scan(&ok); err != nil {
+		return false, fmt.Errorf("versionAdapter.ProjectExists: %w", err)
+	}
+	return ok, nil
+}
+
+func (a *VersionAdapter) VersionProject(ctx context.Context, versionID uuid.UUID) (uuid.UUID, error) {
+	var project uuid.UUID
+	err := a.pool.QueryRow(ctx,
+		`SELECT m.project_id FROM model_versions v JOIN models m ON m.id = v.model_id WHERE v.id = $1`, versionID).Scan(&project)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, nil
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("versionAdapter.VersionProject: %w", err)
+	}
+	return project, nil
+}
+
 func (a *VersionAdapter) CurrentVersion(ctx context.Context, projectID, versionID uuid.UUID) (*uuid.UUID, error) {
 	var current uuid.UUID
 	err := a.pool.QueryRow(ctx, `
