@@ -5,6 +5,55 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.1] - 2026-10-26
+
+### What changed for readers
+
+The phone steps of Get started now work as written on a phone seen for the
+first time, and every step that waits says so when it gives up. The iOS
+guide's iPhone step picks the phone (or the one you name), builds for it so
+Xcode adds it to the signing profile, and tells you each one-time tap
+before it is due; the Android guide's phone step says which device it took
+and stops after three minutes with a pointer to Troubleshooting. ADVANCED's
+"Android: a phone over Wi-Fi" is a complete path, and "Other ports" is
+right about the settings file and has a recipe for a second stack. Step 2
+can run again from inside the clone. Upgrading from 0.10.0 needs nothing.
+
+### Fixed
+
+- Android SDK: going to the background in the middle of a sync (a phone
+  locking between download and validation) is no longer logged as
+  `Heartbeat failed`, does not mark the device offline, and the background
+  job finishes the interrupted sync at once rather than an hour later.
+- Android sample app: a build with another `-PfleetmlDebugHost` or
+  `-PfleetmlDebugPort` and the same enrollment key now connects to the new
+  address; it kept the one it had saved, so a phone moved from USB to
+  Wi-Fi went on dialling `localhost`.
+- iOS guide: Get started's iPhone step built for any iPhone, so a phone not
+  yet in the signing profile was refused at install (`This provisioning
+  profile cannot be installed on this device`); it needed the simulator
+  step first, took the first paired iPhone when there were two, waited for
+  a second device that only the simulator gave, and printed an `ERROR` line
+  from `devicectl` every time.
+- Docs: the port check in ADVANCED and the iOS guide missed
+  `FLEETML_S3_PUBLIC_PORT`; "Other ports" said an exported port moves a
+  stack that has started once (the saved settings file wins); the Wi-Fi
+  section used a `$EK` that Get started never sets; the Python tour's
+  simulator line ignored a moved gRPC port; `fleetml-prod-server-1` was
+  hard-coded where the stack can have another name.
+
+### Changed
+
+- Docs: every guide creates and reads the enrollment key as
+  `FLEETML_ENROLLMENT_KEY`. The dashboard step puts the admin key on the
+  clipboard in WSL and on Linux with `xclip` too, and prints the dashboard's
+  address. The waits for a device print a line when they give up.
+  Troubleshooting covers the Android phone, the iPhone, the simulator and a
+  dashboard that does not open. The Linux agent guide gains the config
+  lines in Connect and verify and a Remove the agent section; the Helm
+  chart's Get started has a local port for the dashboard and stops only its
+  own background jobs at clean-up.
+
 ## [0.10.0] - 2026-10-26
 
 ### What changed for readers
@@ -1101,6 +1150,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.1]: https://github.com/fleetml/fleetml/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/fleetml/fleetml/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/fleetml/fleetml/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/fleetml/fleetml/compare/v0.8.0...v0.9.0
