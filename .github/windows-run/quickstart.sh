@@ -106,13 +106,13 @@ qs_wait_fleet() {
 }
 
 # Get started's step 2, which starts the stack. "On Windows" runs it from ~;
-# here from the new $QS_WORK, so the block's `git clone ... && cd fleetml`
+# here from the new $QS_WORK, so the block's `git clone ...; cd fleetml`
 # makes $QS_CLONE.
 qs_code=$(qs_golden start)
 if [ "${REPO_PRIVATE:-}" = true ]; then
-  qs_code=$(printf '%s\n' "$qs_code" | sed "s|^git clone https://github.com/fleetml/fleetml.git |git clone '$QS_CHECKOUT' fleetml |")
+  qs_code=$(printf '%s\n' "$qs_code" | sed "s|git clone https://github.com/fleetml/fleetml.git;|git clone '$QS_CHECKOUT' fleetml;|")
   qs_check "the block's first line clones from GitHub (replaced for a private repository)" "$(printf '%s\n' "$qs_code" | head -1)" \
-    grep -q "^git clone '$QS_CHECKOUT' fleetml " <<<"$qs_code"
+    grep -q "git clone '$QS_CHECKOUT' fleetml;" <<<"$qs_code"
   # The checkout belongs to Windows (another owner as git sees it).
   git config --global --add safe.directory "$QS_CHECKOUT"
   qs_note "clone: from the checkout via /mnt (private repository)"

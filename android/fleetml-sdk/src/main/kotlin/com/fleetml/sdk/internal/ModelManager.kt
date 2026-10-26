@@ -11,6 +11,7 @@ import com.fleetml.sdk.ValidationResult
 import fleetml.device.v1.Device.ModelAssignment
 import fleetml.device.v1.Device.ModelStatus
 import fleetml.telemetry.v1.Telemetry.TelemetryEvent
+import kotlinx.coroutines.CancellationException
 
 /**
  * Applies the server's assignments: verify the signature, download
@@ -154,6 +155,8 @@ internal class ModelManager(
             }
             Logger.i("Model ${a.modelName} ${a.version} built from a ${deltaFile.length()}-byte delta instead of ${a.blobSizeBytes} bytes")
             return file
+        } catch (e: CancellationException) {
+            throw e // the sync was stopped, not the delta
         } catch (e: Exception) {
             Logger.w("Delta for ${a.modelName} ${a.version} unusable (${e.message}); downloading the full model")
             return null

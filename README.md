@@ -28,7 +28,7 @@ and keep it open until the end.
 
    <!-- golden: start -->
    ```bash
-   git clone https://github.com/fleetml/fleetml.git && cd fleetml
+   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
    docker compose -f deploy/docker-compose.prod.yml up -d --build
@@ -48,7 +48,7 @@ and keep it open until the end.
    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   tar -xzf "fleetml-$OS-$ARCH.tar.gz" fleetml && mkdir -p ~/.local/bin && mv fleetml ~/.local/bin/
+   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
    export PATH="$HOME/.local/bin:$PATH"
    fleetml version
@@ -83,7 +83,7 @@ and keep it open until the end.
      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; sleep 2; done
+   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
    ```
 
    You should see `msg="model active" model=iris version=1.0.0`.
@@ -92,15 +92,17 @@ and keep it open until the end.
    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac; elsewhere it prints it); then open <http://localhost> and paste the
-   key into the login box:
+   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+   the dashboard's address: open it and paste the key into the login box:
 
    <!-- golden: dashboard manual -->
    ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | pbcopy 2>/dev/null || echo "$FLEETML_ADMIN_KEY"
+   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
    ```
 
-   You should see the Overview page; **Devices** lists one device, and **Deployments** one
+   You should see `Dashboard: http://localhost:<port>`, and in the browser the
+   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the device, the server and all its data, and the saved
@@ -117,7 +119,9 @@ and keep it open until the end.
    You should see `Network <stack>_default  Removed`.
 
 Next: the [tour](docs/QUICKSTART.md#tour) (canary rollouts that roll
-themselves back, A/B tests, drift) against twenty simulated devices; your own
+themselves back, A/B tests, drift) against twenty simulated devices, on a
+running stack (before step 7, or after step 2 again; step 2 reuses the
+clone); your own
 [Android](docs/ANDROID_SDK.md) or [iOS](docs/IOS_SDK.md) app; a real
 [Linux machine](docs/LINUX_AGENT.md); [Python](docs/PYTHON_CLIENT.md);
 [Kubernetes](deploy/helm/fleetml); [upgrading](docs/ADVANCED.md#upgrading) a
@@ -226,12 +230,12 @@ the app needs compileSdk 34 or later and minSdk 26,
 [details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.0")
+implementation("dev.fleetml:fleetml-sdk:0.10.1")
 implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.10.0;
+(Dependency Rule **Up to Next Major Version** from 0.10.1;
 [details](docs/IOS_SDK.md#install)):
 
 ```text

@@ -37,6 +37,9 @@ internal object BatteryPolicy {
     /** The background check interval: the server's, but never below the OS minimum. */
     fun backgroundIntervalSeconds(requested: Long): Long = maxOf(MIN_BACKGROUND_INTERVAL_SECONDS, requested)
 
+    /** The first background job's delay: none for a sync the move to the background cut short, else the interval. */
+    fun backgroundDelaySeconds(requested: Long, interrupted: Boolean): Long = if (interrupted) 0 else backgroundIntervalSeconds(requested)
+
     /** The server's policy, or [fallback] when the server leaves it unspecified. */
     fun fromProto(policy: Device.DownloadPolicy, fallback: DownloadPolicy): DownloadPolicy = when (policy) {
         Device.DownloadPolicy.UNMETERED_OR_CHARGING -> DownloadPolicy.UNMETERED_OR_CHARGING

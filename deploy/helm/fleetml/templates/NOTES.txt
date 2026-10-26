@@ -6,8 +6,8 @@ Dashboard: service {{ include "fleetml.fullname" . }}-dashboard, port {{ .Values
 {{- end }}
 Devices download models from {{ .Values.s3.publicEndpoint }}; make sure they can reach it.
 
-Reach it from your machine with REST, GRPC and S3 set to your local ports
-in this shell (the chart README's Get started sets them, step 4):
+To reach it from your machine later (the chart README's Get started step 4
+has already started these), with REST, GRPC and S3 set to your local ports:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "fleetml.fullname" . }}-server $REST:{{ .Values.server.service.restPort }} $GRPC:{{ .Values.server.service.grpcPort }} >/dev/null &
 {{- if .Values.seaweedfs.enabled }}
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "fleetml.fullname" . }}-s3 $S3:8333 >/dev/null &

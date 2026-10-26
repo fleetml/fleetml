@@ -226,6 +226,46 @@ class HeartbeatManagerTest {
         assertEquals(listOf(false), connection)
     }
 
+    // Going to the background stops the loop in the middle of a heartbeat:
+    // that is not a failure, so no warning, no offline, no failure for the
+    // background job's log line.
+    @Test
+    fun `a heartbeat stopped in flight is not a failure`() = runTest {
+        val lines = mutableListOf<String>()
+        val saved = Logger.sink
+        Logger.sink = { p, m, _ -> if (p >= android.util.Log.WARN) lines += m }
+        try {
+            val api = FakeApi().apply { gate = CompletableDeferred() }
+            val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+            val beat = async { hb.beatOnce() }
+            runCurrent()
+            assertTrue("in flight while the call waits", hb.inFlightNow)
+            beat.cancel()
+            runCurrent()
+            assertFalse(hb.inFlightNow)
+            assertTrue(beat.isCancelled)
+            assertEquals(null, hb.lastFailure)
+        } finally {
+            Logger.sink = saved
+        }
+        assertEquals(emptyList<String>(), lines)
+        assertEquals(emptyList<Boolean>(), connection)
+    }
+
+    // The SDK finishes the first sync in the background at once until one
+    // heartbeat has reached the server.
+    @Test
+    fun `succeeded once only after a heartbeat reaches the server`() = runTest {
+        val api = FakeApi().apply { failWith = Status.UNAVAILABLE }
+        val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+        assertFalse(hb.succeededOnce)
+        assertFalse(hb.beatOnce())
+        assertFalse(hb.succeededOnce)
+        api.failWith = null
+        assertTrue(hb.beatOnce())
+        assertTrue(hb.succeededOnce)
+    }
+
     @Test
     fun `describe keeps a plain exception's message`() {
         assertEquals("boom", Logger.describe(IllegalStateException("boom")))

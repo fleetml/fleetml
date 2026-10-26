@@ -34,14 +34,16 @@ image builds:
 
 On Windows FleetML runs under WSL 2: the quickstart runs in a WSL 2 shell
 with Docker Desktop's WSL 2 backend ([On Windows](QUICKSTART.md#on-windows)),
-and GitHub's Windows runner exercises the CLI and the Get started blocks in
-WSL 2 (with Docker Engine there, not Docker Desktop).
+and GitHub's Windows runner exercises the Windows CLI and, on windows-latest
+only, Get started's step 2 and the tour's sections 1 to 3 in WSL 2 (with
+Docker Engine there, not Docker Desktop).
 
 The CLI comes from the release as Get started's step 3 installs it. On
 Linux without Perl, `sha256sum -c` replaces `shasum -a 256 -c`. Keep the
 `export PATH` line in `~/.bashrc` or `~/.zshrc` (many Linux distributions
 already have `~/.local/bin` on the `PATH`); for every user of the machine,
-`sudo mv fleetml /usr/local/bin/` in place of the `mkdir` and `mv`. From
+`sudo tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C /usr/local/bin fleetml` in place
+of the `mkdir` and `tar` line. From
 source, with Go 1.26: `go build -o bin/fleetml ./cmd/fleetml` (it reports its
 version as `dev`; in WSL, install Go from [go.dev](https://go.dev/doc/install): Ubuntu's
 `golang` package is older). The other platforms and the PowerShell block are in
@@ -60,14 +62,15 @@ container stopped and why (a port already in use is the usual cause: see
 that Hyper-V or WSL reserves: Docker then fails with `bind: An attempt was
 made to access a socket in a way forbidden by its access permissions`, and
 `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists the
-reserved ranges; move the port out of them with its variable before the
-block ([Other ports](#other-ports)).
+reserved ranges; move the port out of them as [Other ports](#other-ports)
+says for a stack that has started once (the settings file already exists,
+so exporting the variable no longer helps).
 
 **`/readyz`** answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.10.0-3-g1a2b3c4`: three commits past 0.10.0). To confirm the version
+like `0.10.1-3-g1a2b3c4`: three commits past 0.10.1). To confirm the version
 later: `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz`. More keys and
 their routes: [API keys](CONFIG.md#api-keys).
 
@@ -79,6 +82,35 @@ it tried means the object store's address or port
 `FLEETML_ENROLLMENT_KEY` is not set in this terminal (step 4 sets it: run
 step 4 again, then `docker rm -f fleetml-agent` and step 5). The
 [Linux agent guide](LINUX_AGENT.md) has every line the agent logs.
+
+**The phone never shows `is active`** (Android step 5 says `Not active after
+3 minutes`). `adb logcat -d -s FleetML` shows how far the app got:
+- `In the background: ...`: the phone locked or the screen went off. Unlock
+  it, keep it on, and run step 5's last two lines again.
+- `Heartbeat failed: UNAVAILABLE` or nothing after `Starting FleetML`: the
+  phone does not reach the server. `adb reverse --list` must show both
+  ports; run step 5's two `adb reverse` lines again (a reconnected cable or a
+  restarted `adb` drops them).
+- `Registered as device`, then `Download of <variant ID> ... failed`: the
+  model files' forward is missing (the second `adb reverse` line), or the
+  server hands out an address the phone cannot reach
+  ([the download address](#a-phone-or-another-machine-the-download-address)).
+- No lines at all: the app runs on another device. Step 5's `Device:` line
+  says which; `export ANDROID_SERIAL=<serial>` from `adb devices` and run
+  step 5 again.
+
+**The iPhone never shows up** (iOS step 6c says `No new device after 3
+minutes`): step 6 lists what each error means. The simulator (iOS step 5
+says `Not active after 2 minutes`):
+`xcrun simctl spawn $SIM log show --last 5m --style compact --predicate 'subsystem == "com.fleetml.sdk"'`
+shows the SDK's lines, as above.
+
+**The dashboard does not open** although step 2 printed the `/readyz`
+line: port 80 is usually taken (IIS, a VPN agent or another web server, on
+Windows especially). `docker compose -f deploy/docker-compose.prod.yml ps`
+shows the dashboard container and the port it publishes; move it as
+[Other ports](#other-ports) says for a stack that has started (the
+dashboard on 8081, for example), then open the address step 6 prints.
 
 **`fleetml` is not found** in a new terminal: the `export PATH` line of step
 3 lasts for one terminal ([Installing the tools](#installing-the-tools)).
@@ -114,38 +146,78 @@ clipboard` on Linux).
 
 Get started uses port 80 for the dashboard, 18080 for the REST API, 19090
 for the device gRPC API and 19100 for model files, and 13000 for Grafana if
-you start the optional observability profile. To use other ports, export
-`FLEETML_DASHBOARD_PORT`, `FLEETML_REST_PORT`, `FLEETML_GRPC_PORT` or
-`FLEETML_S3_PUBLIC_PORT` (and `FLEETML_GRAFANA_PORT` for Grafana) before
-Get started's step 2, for example `export FLEETML_REST_PORT=28080`: the
-block saves the first four in `~/.fleetml.env` (see
-[CONFIG.md](CONFIG.md#docker-compose)), and every later block reads them
-from there. `export FLEETML_S3_PUBLIC_PORT=29100` saves the port and
-`S3_PUBLIC_ENDPOINT=localhost:29100` together.
+you start the optional observability profile.
 
-If port 80 is taken (by IIS or a VPN agent on Windows, for example), move the
-dashboard on a stack that already runs by adding the port to `~/.fleetml.env`
-(a later line wins) and starting it again, here on http://localhost:8081;
-the same works for `FLEETML_REST_PORT` and `FLEETML_GRPC_PORT`, and
-`source ~/.fleetml.env` brings back the secrets and the saved
-`S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset:
+**Before the first start**, to use other ports, export
+`FLEETML_DASHBOARD_PORT`, `FLEETML_REST_PORT`, `FLEETML_GRPC_PORT` or
+`FLEETML_S3_PUBLIC_PORT` (and `FLEETML_GRAFANA_PORT` for Grafana) in the
+terminal, then run Get started's step 2, for example:
+
+```bash
+export FLEETML_DASHBOARD_PORT=8081 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=29090 FLEETML_S3_PUBLIC_PORT=29100
+```
+
+Step 2 saves the first four in `~/.fleetml.env` (see
+[CONFIG.md](CONFIG.md#docker-compose)), with `S3_PUBLIC_ENDPOINT` on the
+model files' port, and every later block reads them from there. It saves
+them only when that file does not exist yet, so this works before the first
+start only.
+
+**After a start**, even one that failed because a port was taken, the file
+exists and wins over anything you export. Add the port to the file instead
+(a later line wins) and start again; for the model files' port, change
+`S3_PUBLIC_ENDPOINT` with it. In the clone, for example the dashboard on 8081
+and the model files on 29100:
 
 ```bash
 echo 'export FLEETML_DASHBOARD_PORT=8081' >> ~/.fleetml.env
-source ~/.fleetml.env
-docker compose -f deploy/docker-compose.prod.yml up -d
+echo 'export FLEETML_S3_PUBLIC_PORT=29100 S3_PUBLIC_ENDPOINT=localhost:29100' >> ~/.fleetml.env
+source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
+grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env | sort -u
 ```
 
-To move the model files' port on a stack already started, change both
-`FLEETML_S3_PUBLIC_PORT` and the port in `S3_PUBLIC_ENDPOINT` in
-`~/.fleetml.env`, then `source ~/.fleetml.env` and `up -d` as above.
+You should see the stack's containers `Started`, then each port the file
+sets (the last line of each wins). Then go on with Get started's step 3 (or
+the step that failed). `source ~/.fleetml.env` also brings back the secrets
+and the saved `S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset.
 
 With a port moved, every block in the docs follows it: the blocks read the
 saved ports as `${FLEETML_REST_PORT:-18080}`, `${FLEETML_GRPC_PORT:-19090}`
-and `${FLEETML_S3_PUBLIC_PORT:-19100}` after `source ~/.fleetml.env`. In
-prose the docs name the default; use yours there. The CLI's
-`fleetml simulate` takes the gRPC port as `--grpc localhost:${FLEETML_GRPC_PORT:-19090}`,
-which the tour's lines already carry.
+and `${FLEETML_S3_PUBLIC_PORT:-19100}` after `source ~/.fleetml.env`, step 2
+prints the dashboard's address, and the CLI's `fleetml simulate` takes the
+gRPC port as `--grpc localhost:${FLEETML_GRPC_PORT:-19090}`, which the CLI
+and Python tours' lines carry. In prose the docs name the default; use
+yours there.
+
+**A second stack next to the first.** Get started runs one stack per user
+account: its settings live in `~/.fleetml.env`, and compose names the stack
+`fleetml-prod` (from the file; `docker compose -f deploy/docker-compose.prod.yml ps`
+lists its containers). Moving the ports alone does not give you a second
+stack: step 2 finds the first one's settings file and restarts that stack.
+For a second stack, open a new terminal and give it its own
+home folder for FleetML's files, its own stack name and its own ports, then
+run Get started's steps 2 to 7 there:
+
+```bash
+export DOCKER_CONFIG=$HOME/.docker HOME=$HOME/fleetml-2 COMPOSE_PROJECT_NAME=fleetml-2
+export FLEETML_DASHBOARD_PORT=8082 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=29090 FLEETML_S3_PUBLIC_PORT=29100
+mkdir -p "$HOME" && cd "$HOME"
+```
+
+(`DOCKER_CONFIG` keeps Docker's own settings where they were.) In that
+terminal the containers are `fleetml-2-server-1` and so on, the CLI
+of step 3 goes to `$HOME/.local/bin` there, and the Linux agent container of
+README and QUICKSTART step 5 needs another name: replace `fleetml-agent` in
+`--name fleetml-agent`, `docker logs fleetml-agent` and step 7's
+`docker rm -f fleetml-agent` with `fleetml-2-agent`. Any other terminal
+for this stack (the tours' "another terminal", for example) needs the
+block's first line too, before anything else; without it,
+`source ~/.fleetml.env` there reads the first stack's file. The first stack
+is not touched; its own terminal (or `source ~/.fleetml.env` in a new one)
+still reaches it. To remove the second stack: its Get started's last step
+in its terminal, then, in a terminal of your own home folder,
+`docker image rm fleetml-2-server fleetml-2-dashboard` and
+`rm -rf ~/fleetml-2`.
 
 Before 0.9.1, the only documented way to move the dashboard was an override
 file passed with `-f` (`dashboard-port.yml`). The env file's line replaces
@@ -190,57 +262,77 @@ a guest network that isolates devices or the machine's firewall can block.
 
 ## Android: a phone over Wi-Fi
 
-The [Android guide](ANDROID_SDK.md)'s Get started uses a USB cable. Over
-Wi-Fi instead:
+The [Android guide](ANDROID_SDK.md)'s Get started puts the phone on the
+server over its USB cable. Over Wi-Fi instead, the phone reaches the
+machine at its LAN address. Do it in the Get started terminal after step 4
+(the stack running, `FLEETML_ENROLLMENT_KEY` set), in the clone, with the
+phone and the machine on the same Wi-Fi network (not a guest network that
+keeps devices apart) and the phone unlocked. The cable stays for the
+install; nothing goes through it afterwards.
 
-
-The phone and the machine that runs the server must be on the same network.
-
-1. Find the machine's LAN address: `ipconfig getifaddr en0` on a Mac (`en1`
-   on some), `hostname -I` on Linux, and on Windows the IPv4 address
-   `ipconfig` prints for the Wi-Fi or Ethernet adapter, not WSL's `ip addr`
-   ([From Windows](ANDROID_SDK.md#from-windows)).
-2. Save that address as the server's object store address in
-   `~/.fleetml.env` ([Run FleetML](#the-settings-file-fleetmlenv)), so download
-   URLs point where the phone can reach them and every later compose command
-   keeps it, and restart the server, in the quickstart's clone:
+1. **Point the server's downloads at the machine's LAN address**, save it in
+   `~/.fleetml.env` so every later compose command keeps it, and restart the
+   server. On a Mac (`en1` instead of `en0` on some; on Linux,
+   `LAN=$(hostname -I | awk '{print $1}')`; on Windows, the IPv4 address
+   `ipconfig` prints for the Wi-Fi adapter, see
+   [From Windows](ANDROID_SDK.md#from-windows)):
 
    ```bash
-   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d
+   LAN=$(ipconfig getifaddr en0); echo "LAN address: $LAN"
+   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$LAN:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
    ```
 
-   The port is the stack's model files port, 19100 unless you moved it with
-   `FLEETML_S3_PUBLIC_PORT` when you started the stack (the first line reads
-   it from the file). From then on downloads go to the LAN address for every
-   device, the USB and emulator paths included ([Over USB](ANDROID_SDK.md#over-usb),
-   step 3).
+   You should see `LAN address: ` and an address such as `192.168.1.20`,
+   then `Container <stack>-server-1  Started`. From then on downloads go to
+   that address for every device, the USB and emulator paths included
+   ([Over USB](ANDROID_SDK.md#over-usb), step 3).
 
-3. Let the phone in: with the macOS firewall on, allow Docker's incoming
-   connections when macOS asks; a Linux firewall needs TCP 19090 and 19100
-   open; Windows needs the `New-NetFirewallRule` line in
+2. **Let the phone in.** With the macOS firewall on, allow Docker's incoming
+   connections when macOS asks. A Linux firewall needs TCP
+   `${FLEETML_GRPC_PORT:-19090}` and `${FLEETML_S3_PUBLIC_PORT:-19100}` open;
+   Windows needs the `New-NetFirewallRule` line in
    [From Windows](ANDROID_SDK.md#from-windows).
-4. Allow cleartext to that address: in your app, the commented line in the
-   debug network security config above, with the address in place of
-   `<LAN IP>`. The [sample app](ANDROID_SDK.md#sample-app) needs no edit: its build
-   generates the config with the address given as `-PfleetmlDebugHost`.
-   Without it the app registers (gRPC does not check the policy) and then
-   every download fails with
-   `Download of <variant ID> interrupted at 0 bytes: CLEARTEXT communication to <LAN IP> not permitted by network security policy`.
-5. Build with the address as the debug host:
+
+3. **Build the sample app with that address, install it, and start it.**
+   This removes the app from step 5 and the USB forwards first, so the app
+   starts afresh and really uses Wi-Fi (it registers again, as a second
+   device of the project, and downloads the model from the LAN address):
 
    ```bash
-   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :app:installDebug -PfleetmlDebugHost=<LAN IP> -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
+   adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=$LAN -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} </dev/null)
+   adb logcat -c && adb shell am start -S -n com.fleetml.sample/.MainActivity </dev/null
+   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting below"; sleep 2; done
    ```
 
-   For the sample app, `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$EK ./gradlew :sample-app:installDebug -PfleetmlDebugHost=<LAN IP> -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}`
-   in the clone's `android` folder: its config screen then shows the
-   address.
+   You should see `Installed on 1 device.` and `I FleetML : Model iris 1.0.0 is active`,
+   and the app's screen **Active model: iris 1.0.0**, its config screen
+   showing the LAN address.
 
-The logcat lines are the same as over USB. A phone that registers but never
-downloads is almost always the object store's address: check it with
-`docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
+4. **Clean up** with Get started's step 7: it removes the app, the server
+   and its data, and `~/.fleetml.env` with the LAN address in it.
+
+Your own app over Wi-Fi: the same steps 1 and 2, then build it with
+`-PfleetmlDebugHost=$LAN` as in [Over USB](ANDROID_SDK.md#over-usb) step 4,
+and allow cleartext to that address: the commented line in your debug
+network security config ([On your phone](ANDROID_SDK.md#on-your-phone)) with the address
+in place of `<LAN IP>`. The sample app needs no edit: its build generates the
+config with the address given as `-PfleetmlDebugHost`. Without it the app
+registers (gRPC does not check the policy) and then every download fails
+with `Download of <variant ID> interrupted at 0 bytes: CLEARTEXT communication to <LAN IP> not permitted by network security policy`.
+
+Troubleshooting:
+
+- No `is active`, and `adb logcat -s FleetML` shows `Heartbeat failed: UNAVAILABLE`:
+  the phone does not reach the gRPC port. Check that it is on the same
+  Wi-Fi as the machine, and the firewall (step 2).
+- `Registered as device`, then no download: the phone does not reach the
+  model files' port, or the server still hands out `localhost`. This shows
+  the address in use:
+  `docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
+- `In the background: next sync in 3600s`: the phone locked or the app
+  left the screen. Unlock it and run step 3's last two lines again.
 
 ## Android on Windows: Android Studio
 
@@ -265,7 +357,7 @@ machine:
 | Model downloads (presigned URLs) | the model files' port: 19100, or the stack's `FLEETML_S3_PUBLIC_PORT` | whoever runs the server | the server's `S3_PUBLIC_ENDPOINT`, or on this machine `download_host_override` |
 
 The agent's machine has no `~/.fleetml.env` to read them from: ask whoever
-runs the server which ports the stack uses (`grep -o 'FLEETML_[A-Z_]*PORT=[0-9]*' ~/.fleetml.env`
+runs the server which ports the stack uses (`grep -oE 'FLEETML_[A-Z0-9_]*PORT=[0-9]+|S3_PUBLIC_ENDPOINT=[^ ]*' ~/.fleetml.env`
 on the server's machine prints them), and put them in place of `<gRPC port>`
 and `<model files port>` below.
 
@@ -288,7 +380,7 @@ two ways out:
   On the server's machine, this shows the value in use:
 
   ```bash
-  docker inspect fleetml-prod-server-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
+  docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
   ```
 
 - **On this machine**, when the server stays as it is: `download_host_override`
@@ -302,8 +394,8 @@ two ways out:
   sudo sed -i -e 's|^server: .*|server: <server address>:<gRPC port>|' \
     -e 's|^# download_host_override: .*|download_host_override: "<server address>:<model files port>"|' \
     -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
-  read -rs EK
-  printf 'enrollment_key: "%s"\n' "$EK" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
+  read -rs FLEETML_ENROLLMENT_KEY
+  printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
   ```
 
   `read -rs` waits for the enrollment key (paste it and press Enter; it is
@@ -376,9 +468,9 @@ except that a change to your Secret rolls nothing: after one, run
 `kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
 
 **Other local ports.** If something on this machine already listens on one
-of the three ports (`lsof -nP -iTCP:<port> -sTCP:LISTEN` prints it), change
-it in step 4's first line (`REST=... GRPC=... S3=...`) before the install,
-and every later line follows. Check with `lsof` rather than waiting for an
+of the four ports (`lsof -nP -iTCP:<port> -sTCP:LISTEN` prints it), change
+it in step 4's first line (`REST=... GRPC=... S3=... DASH=...`) before the
+install, and every later line follows, step 6's dashboard address included. Check with `lsof` rather than waiting for an
 error: kubectl reports `address already in use` only against another
 kubectl, and on macOS a port-forward on a port that Docker Desktop
 publishes starts without a word and takes `localhost` from the container.
@@ -415,7 +507,7 @@ devices and the tools; each moves on its own:
   `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.10.0
+  git fetch --tags && git checkout v0.10.1
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
@@ -432,7 +524,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.10.0"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.1"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the
