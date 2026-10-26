@@ -220,10 +220,14 @@ run Get started's steps 2 to 7 there:
 ```bash
 export DOCKER_CONFIG=$HOME/.docker HOME=$HOME/fleetml-2 COMPOSE_PROJECT_NAME=fleetml-2
 export FLEETML_DASHBOARD_PORT=8082 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=29090 FLEETML_S3_PUBLIC_PORT=29100
-mkdir -p "$HOME" && cd "$HOME"
+mkdir -p "$HOME" && cd "$HOME" && ln -sfn ../Library ../.android ../.gradle .
 ```
 
-(`DOCKER_CONFIG` keeps Docker's own settings where they were.) In that
+(`DOCKER_CONFIG` keeps Docker's own settings where they were, and the
+links give the new home folder the Android SDK, `adb`'s key and Gradle's
+cache of the first, so the Android guide's step 1 and the phone work there
+as they do in your own home; on a Mac, `Library` also holds the keychain the
+iOS guide signs with.) In that
 terminal the containers are `fleetml-2-server-1` and so on, the CLI
 of step 3 goes to `$HOME/.local/bin` there, and the Linux agent container of
 README and QUICKSTART step 5 needs another name: replace `fleetml-agent` in
