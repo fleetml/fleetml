@@ -252,6 +252,20 @@ class HeartbeatManagerTest {
         assertEquals(emptyList<Boolean>(), connection)
     }
 
+    // The SDK finishes the first sync in the background at once until one
+    // heartbeat has reached the server.
+    @Test
+    fun `succeeded once only after a heartbeat reaches the server`() = runTest {
+        val api = FakeApi().apply { failWith = Status.UNAVAILABLE }
+        val (hb, _) = setup(MemTokens("tok", now + 30 * day), api)
+        assertFalse(hb.succeededOnce)
+        assertFalse(hb.beatOnce())
+        assertFalse(hb.succeededOnce)
+        api.failWith = null
+        assertTrue(hb.beatOnce())
+        assertTrue(hb.succeededOnce)
+    }
+
     @Test
     fun `describe keeps a plain exception's message`() {
         assertEquals("boom", Logger.describe(IllegalStateException("boom")))

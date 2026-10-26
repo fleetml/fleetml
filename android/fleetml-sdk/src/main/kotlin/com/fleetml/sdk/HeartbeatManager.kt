@@ -59,6 +59,10 @@ internal class HeartbeatManager(
     /** True while a heartbeat (and the downloads it started) is running. */
     internal val inFlightNow: Boolean get() = synchronized(inFlightLock) { inFlight != null }
 
+    /** True once a heartbeat has reached the server: the assignments it carried were applied. */
+    @Volatile internal var succeededOnce = false
+        private set
+
     fun start(scope: CoroutineScope) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
@@ -117,6 +121,7 @@ internal class HeartbeatManager(
             models.setSigningKeys(response.signingKeysList)
             models.apply(response.assignmentsList)
             lastFailure = null
+            succeededOnce = true
             true
         } catch (e: StatusException) {
             // Stopped (the app went to the background): not a failure, nothing to log.

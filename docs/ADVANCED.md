@@ -295,11 +295,12 @@ install; nothing goes through it afterwards.
    [From Windows](ANDROID_SDK.md#from-windows).
 
 3. **Build the sample app with that address, install it, and start it.**
-   This removes the USB forwards first, so the phone really uses Wi-Fi; the
-   app takes the new address over the one it saved before:
+   This removes the app from step 5 and the USB forwards first, so the app
+   starts afresh and really uses Wi-Fi (it registers again, as a second
+   device of the project, and downloads the model from the LAN address):
 
    ```bash
-   adb reverse --remove-all
+   adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
    (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=$LAN -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} </dev/null)
    adb logcat -c && adb shell am start -S -n com.fleetml.sample/.MainActivity </dev/null
    for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting below"; sleep 2; done

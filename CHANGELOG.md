@@ -23,8 +23,10 @@ can run again from inside the clone. Upgrading from 0.10.0 needs nothing.
 
 - Android SDK: going to the background in the middle of a sync (a phone
   locking between download and validation) is no longer logged as
-  `Heartbeat failed`, does not mark the device offline, and the background
-  job finishes the interrupted sync at once rather than an hour later.
+  `Heartbeat failed` and does not mark the device offline; the background
+  job finishes the interrupted sync, or a first sync that had not happened
+  yet (a phone locking right after it registers), at once rather than an
+  hour later.
 - Android sample app: a build with another `-PfleetmlDebugHost` or
   `-PfleetmlDebugPort` and the same enrollment key now connects to the new
   address; it kept the one it had saved, so a phone moved from USB to

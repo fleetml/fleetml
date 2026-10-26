@@ -245,9 +245,11 @@ internal class FleetMLInstance(
 
     private fun onBackground() {
         foreground = false
-        // A sync the move cuts short (a download or a validation) is finished
-        // by the background job at once, not after the background interval.
-        val interrupted = heartbeat.inFlightNow
+        // A sync the move cuts short (a download or a validation), or the first
+        // one after start-up not done yet (a phone that locks right after it
+        // registers), is finished by the background job at once, not after
+        // the background interval.
+        val interrupted = heartbeat.inFlightNow || !heartbeat.succeededOnce
         heartbeat.stop()
         telemetryReporter.stop()
         scope.launch { telemetryReporter.flushNow() }
