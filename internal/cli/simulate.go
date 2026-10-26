@@ -18,8 +18,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	fleetmlv1 "github.com/fleetml/fleetml/gen/fleetml/v1"
 )
@@ -124,6 +126,8 @@ func parseFloats(items []string) (map[string]float64, error) {
 
 // simDevice is one simulated device: what it runs and its experiment arms.
 type simDevice struct {
+	n         int    // its number in the fleet, for log lines
+	fp        string // its fingerprint, from the seed
 	id, token string
 	loaded    map[string]*fleetmlv1.ModelAssignment // model ID -> running assignment
 	arms      map[string]string                     // version ID -> arm ID
@@ -142,15 +146,11 @@ func runSimulation(ctx context.Context, c simConfig, out io.Writer) error {
 	devs := make([]*simDevice, c.devices)
 	for i := range devs {
 		sum := sha256.Sum256([]byte(fmt.Sprintf("%s/%d", c.seed, i)))
-		resp, err := devSvc.Register(ctx, &fleetmlv1.RegisterRequest{
-			Fingerprint: hex.EncodeToString(sum[:]), Os: "ANDROID", OsVersion: "14", Chipset: "simulated",
-			RamMb: 6144, HasNpu: true, HasGpu: true, AgentVersion: "simulator", Labels: c.labels, EnrollmentKey: c.enrollmentKey,
-		})
-		if err != nil {
+		devs[i] = &simDevice{n: i, fp: hex.EncodeToString(sum[:]), loaded: map[string]*fleetmlv1.ModelAssignment{},
+			arms: map[string]string{}, seen: map[string]bool{}, rng: rand.New(rand.NewSource(int64(sum[0])<<8 | int64(sum[1])))}
+		if err := devs[i].register(ctx, c, devSvc); err != nil {
 			return fmt.Errorf("registering device %d: %w", i, err)
 		}
-		devs[i] = &simDevice{id: resp.DeviceId, token: resp.AuthToken, loaded: map[string]*fleetmlv1.ModelAssignment{},
-			arms: map[string]string{}, seen: map[string]bool{}, rng: rand.New(rand.NewSource(int64(sum[0])<<8 | int64(sum[1])))}
 	}
 	_, _ = fmt.Fprintf(out, "simulator: %d devices registered\n", len(devs))
 
@@ -198,6 +198,22 @@ func fleetStatus(devs []*simDevice) string {
 	return strings.Join(parts, ", ")
 }
 
+// register registers the device (again) with the enrollment key and keeps its new token.
+func (d *simDevice) register(ctx context.Context, c simConfig, devSvc fleetmlv1.DeviceServiceClient) error {
+	resp, err := devSvc.Register(ctx, &fleetmlv1.RegisterRequest{
+		Fingerprint: d.fp, Os: "ANDROID", OsVersion: "14", Chipset: "simulated",
+		RamMb: 6144, HasNpu: true, HasGpu: true, AgentVersion: "simulator", Labels: c.labels, EnrollmentKey: c.enrollmentKey,
+	})
+	if err != nil {
+		return err
+	}
+	d.id, d.token = resp.DeviceId, resp.AuthToken
+	return nil
+}
+
+// simOut serialises the devices' log lines, which come from their goroutines.
+var simOut sync.Mutex
+
 func (d *simDevice) tick(ctx context.Context, c simConfig, devSvc fleetmlv1.DeviceServiceClient, telSvc fleetmlv1.TelemetryServiceClient, out io.Writer) {
 	auth := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+d.token)
 	req := &fleetmlv1.HeartbeatRequest{DeviceId: d.id}
@@ -205,6 +221,19 @@ func (d *simDevice) tick(ctx context.Context, c simConfig, devSvc fleetmlv1.Devi
 		req.LoadedModels = append(req.LoadedModels, &fleetmlv1.ModelStatus{ModelId: a.ModelId, Version: a.Version, VariantId: a.VariantId, Status: "LOADED"})
 	}
 	resp, err := devSvc.Heartbeat(auth, req)
+	if status.Code(err) == codes.Unauthenticated {
+		// The server refused the token (its JWT secret rotated, or the device was
+		// revoked): register again with the enrollment key, like the SDKs do.
+		rerr := d.register(ctx, c, devSvc)
+		simOut.Lock()
+		if rerr != nil {
+			_, _ = fmt.Fprintf(out, "simulator: device %d: token refused, registering again failed: %v\n", d.n, rerr)
+		} else {
+			_, _ = fmt.Fprintf(out, "simulator: device %d: token refused, registered again\n", d.n)
+		}
+		simOut.Unlock()
+		return // the next tick sends a heartbeat with the new token
+	}
 	if err != nil {
 		return // the next tick retries, like the SDKs
 	}
