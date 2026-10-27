@@ -92,7 +92,7 @@ build, when the stack starts. Look at what step 2 printed above the message:
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.10.3-3-g1a2b3c4`: three commits past 0.10.3). To confirm the version
+like `0.10.4-3-g1a2b3c4`: three commits past 0.10.4). To confirm the version
 later: `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz`. More keys and
 their routes: [API keys](CONFIG.md#api-keys).
 
@@ -602,7 +602,7 @@ devices and the tools; each moves on its own:
   `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.10.3
+  git fetch --tags && git checkout v0.10.4
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
@@ -618,7 +618,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.10.3"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.4"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the

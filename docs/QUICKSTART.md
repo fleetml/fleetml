@@ -352,7 +352,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.10.3`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.10.4`. In PowerShell,
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -658,7 +658,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.10.3"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.10.4"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 

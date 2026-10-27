@@ -158,7 +158,7 @@ than 32 characters (the server would not start with one), and the first two
 must differ. The file name is in the repository's `.gitignore`, so a clone
 does not commit it; keep a copy outside the clone as well.
 
-About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.3"}`,
+About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.4"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
 images, which takes a minute or two (the server waits meanwhile, up to
 `server.dependencyTimeout`, 180 s in total for Postgres, the object store and
