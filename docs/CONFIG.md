@@ -53,6 +53,11 @@ there.
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:18080` | Comma-separated browser origins allowed to call the REST API. `*` allows any origin without credentials |
 | `GRPC_REFLECTION` | `false` | Register gRPC server reflection, for tools like `grpcurl` without proto files |
 
+List endpoints take `limit` (1 to the page cap; above it `400` naming it)
+and `offset`, and filter by the query parameters their API documents
+(`project_id`, a version's `status`, ...); a value nothing matches gives an
+empty list, and a query parameter an endpoint does not know is ignored.
+
 ### API keys
 
 `FLEETML_ADMIN_KEY` is the first admin key. More keys, and users with roles

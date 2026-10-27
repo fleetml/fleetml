@@ -267,6 +267,17 @@ func TestDeployCreate_BadBodies(t *testing.T) {
 		"project_id": uuid.Nil.String(), "model_version_id": uuid.New().String()})
 	assert.NotContains(t, w.Body.String(), "are required")
 
+	// A misspelled key in a canary stage or at the top level is named too.
+	for _, body := range []map[string]interface{}{
+		{"strategy": "CANARY", "canary_stages": []map[string]interface{}{{"percentage": 10, "duration": "5m"}, {"percentage": 100, "min_duration": "0s"}}},
+		{"stratgy": "CANARY"},
+	} {
+		body["project_id"], body["model_version_id"] = uuid.New().String(), uuid.New().String()
+		w = doJSON(r, "POST", "/api/v1/deployments", body)
+		assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), "unknown key")
+	}
+
 	// A misspelled health_gate or rolling_config key is named, not ignored.
 	for _, body := range []map[string]interface{}{
 		{"health_gate": map[string]interface{}{"max_error": 0.05}},

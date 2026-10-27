@@ -197,3 +197,18 @@ func TestExperiments_ProjectFilterAndSplit(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 	assert.Contains(t, w.Body.String(), `"split_ratio":50`)
 }
+
+// split_ratio 0 names the value given; a winner that is not a UUID says so.
+func TestExperiments_SplitZeroAndWinnerMessages(t *testing.T) {
+	r, _ := setupExpTestRouter()
+	w := doJSON(r, "POST", "/api/v1/experiments", map[string]interface{}{"project_id": uuid.New().String(), "name": "e0",
+		"control_version_id": uuid.New().String(), "treatment_version_id": uuid.New().String(), "split_ratio": 0})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "got 0")
+	w = doJSON(r, "POST", "/api/v1/experiments/"+uuid.New().String()+"/conclude", map[string]interface{}{"winner_version_id": "abc"})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid winner_version_id")
+	w = doJSON(r, "POST", "/api/v1/experiments/"+uuid.New().String()+"/conclude", map[string]interface{}{})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "winner_version_id is required")
+}

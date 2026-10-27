@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -114,6 +115,16 @@ type CreateInput struct {
 type CanaryStageInput struct {
 	Percentage  int    `json:"percentage"`
 	MinDuration string `json:"min_duration"`
+}
+
+// UnmarshalJSON rejects a key a stage does not have (a misspelled
+// min_duration would otherwise make a 0 s stage).
+func (s *CanaryStageInput) UnmarshalJSON(b []byte) error {
+	if err := knownKeys(b, "canary_stages", "percentage", "min_duration"); err != nil {
+		return err
+	}
+	type plain CanaryStageInput
+	return json.Unmarshal(b, (*plain)(s))
 }
 
 // Create validates and creates a new deployment.

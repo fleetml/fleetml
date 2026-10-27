@@ -272,6 +272,9 @@ func (s *Service) Conclude(ctx context.Context, id, winnerVersionID uuid.UUID, n
 	if err := validateTransition(exp.Status, "CONCLUDED"); err != nil {
 		return nil, err
 	}
+	if winnerVersionID != exp.ControlVersionID && winnerVersionID != exp.TreatmentVersionID {
+		return nil, fmt.Errorf("%w: winner_version_id must be the experiment's control (%s) or treatment (%s) version", ErrInvalidInput, exp.ControlVersionID, exp.TreatmentVersionID)
+	}
 	exp.Status = "CONCLUDED"
 	exp.WinnerVersionID = &winnerVersionID
 	exp.ConclusionNote = note

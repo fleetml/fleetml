@@ -377,3 +377,19 @@ func TestCreate_SplitRatio(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 50, exp.SplitRatio)
 }
+
+// The winner is one of the two arms; any other version is refused.
+func TestConclude_WinnerMustBeAnArm(t *testing.T) {
+	svc := newTestService()
+	in := validInput()
+	exp, err := svc.Create(context.Background(), in)
+	require.NoError(t, err)
+	_, err = svc.Start(context.Background(), exp.ID)
+	require.NoError(t, err)
+	_, err = svc.Conclude(context.Background(), exp.ID, uuid.New(), "")
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "winner_version_id")
+	got, err := svc.Conclude(context.Background(), exp.ID, in.TreatmentVersionID, "")
+	require.NoError(t, err)
+	assert.Equal(t, in.TreatmentVersionID, *got.WinnerVersionID)
+}

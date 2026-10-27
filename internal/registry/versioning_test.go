@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -75,4 +76,12 @@ func TestNextVersions(t *testing.T) {
 	major, err := NextMajor("1.2.3")
 	require.NoError(t, err)
 	assert.Equal(t, "2.0.0", major)
+}
+
+// The message names the version as it was given, "v" included.
+func TestParseSemver_MessageNamesTheInput(t *testing.T) {
+	_, err := ParseSemver("v1")
+	if err == nil || !strings.Contains(err.Error(), `invalid semver "v1"`) {
+		t.Fatalf("got %v", err)
+	}
 }
