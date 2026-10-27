@@ -570,10 +570,11 @@ struct MyApp: App {
    ```bash
    . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d
+   docker compose -f deploy/docker-compose.prod.yml up -d && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz > /dev/null && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz > /dev/null && echo ready
    ```
 
-   If someone else runs the server, ask them to start it this way. A phone
+   You should see `Container <stack>-server-1  Started` and `ready`. If
+   someone else runs the server, ask them to start it this way. A phone
    that registers but never downloads: it is almost always the endpoint.
 
    Check the network path from the phone before the app: in Safari on the
@@ -1139,8 +1140,19 @@ key from `.env` instead.
    The cached model is active immediately and inference works; events are
    queued and sent once the server is back
    (`docker compose -f deploy/docker-compose.prod.yml start server`). On a
-   server that others use, launch the app with a closed port instead
-   (`-fleetmlPort 19999` as one more launch argument).
+   server that others use, launch the app with a closed port instead; the
+   launch line's `SIMCTL_CHILD_FLEETML_PORT` decides the port (a
+   `-fleetmlPort` argument next to it is overridden), so change it there:
+
+   ```bash
+   SIMCTL_CHILD_FLEETML_PORT=19999 xcrun simctl launch --terminate-running-process $SIM com.fleetml.sample
+   ```
+
+   The app starts with its cached model and logs
+   `Registration failed: deadlineExceeded` (a closed port, see
+   [When it does not connect](#when-it-does-not-connect)). The same line
+   with `SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090}` brings it
+   back; the app keeps the last port it was given.
 
 ### Physical device
 
