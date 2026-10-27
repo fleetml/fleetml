@@ -51,11 +51,14 @@ version as `dev`; in WSL, install Go from [go.dev](https://go.dev/doc/install): 
 
 ## Troubleshooting
 
-**Not ready after 3 minutes** (step 2 prints `Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md`).
-The first start takes a few minutes on a cold Docker cache, most of it
-pulling the base images and building the server and dashboard images; the
-3 minutes start after the build, when the stack starts. Look at what step 2
-printed above the message:
+**Start failed, or not ready after 3 minutes** (step 2 prints
+`Start failed: see Troubleshooting in docs/ADVANCED.md` or
+`Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md`).
+`Start failed` comes right after compose stopped with an error; `Not ready`
+after the stack started but did not answer. The first start takes a few
+minutes on a cold Docker cache, most of it pulling the base images and
+building the server and dashboard images; the 3 minutes start after the
+build, when the stack starts. Look at what step 2 printed above the message:
 
 - `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
   Windows, `bind: An attempt was made to access a socket in a way forbidden
@@ -68,13 +71,17 @@ printed above the message:
 
   ```bash
   echo 'export FLEETML_REST_PORT=28080' >> ~/.fleetml.env
-  source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
-  for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; sleep 2; done; echo
+  source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; sleep 2; done; echo
   ```
 
   You should see the `/readyz` line; then go on with step 3. On Windows,
   `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists
   the ranges Hyper-V and WSL keep; pick a port outside them.
+- `Not ready` with every container `running` (`ps -a`), and
+  `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz` prints something
+  other than FleetML's JSON (an error page, or nothing): another program
+  listens on that port on `localhost` only, which Docker on macOS and
+  Windows does not detect. Move the port as in the entry above.
 - Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
   shows which container stopped, and
   `docker compose -f deploy/docker-compose.prod.yml logs server` why.
@@ -551,8 +558,7 @@ devices and the tools; each moves on its own:
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
-  docker compose -f deploy/docker-compose.prod.yml up -d --build
-  for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
+  docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
   ```
 
   The `grep` line matters for a `~/.fleetml.env` written by 0.7.0 or
