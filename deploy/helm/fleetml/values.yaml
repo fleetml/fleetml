@@ -15,7 +15,8 @@ server:
   # Extra environment for the server (see docs/CONFIG.md), e.g.
   #   DEPLOY_TICK_INTERVAL: 30s
   #   DASHBOARD_URL: https://fleet.example.com
-  # A name the chart sets itself (DATABASE_URL, S3_BUCKET, ...) is replaced.
+  # A name the chart sets itself (DATABASE_URL, S3_BUCKET, ...) is replaced;
+  # REST_PORT and GRPC_PORT cannot be set (server.service changes the Service ports).
   env: {}
   resources: {}
   service:

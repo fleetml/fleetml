@@ -14,6 +14,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- end -}}
 
+{{- /* Labels of the StatefulSets' volumeClaimTemplates: that field cannot change
+after install, so these stay the same from one chart version to the next. */ -}}
+{{- define "fleetml.pvcLabels" -}}
+app.kubernetes.io/name: {{ .Chart.Name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
 {{- define "fleetml.selector" -}}
 app.kubernetes.io/name: {{ .root.Chart.Name }}
 app.kubernetes.io/instance: {{ .root.Release.Name }}

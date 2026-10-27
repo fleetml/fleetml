@@ -42,7 +42,7 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
-        labels: {{- include "fleetml.labels" . | nindent 10 }}
+        labels: {{- include "fleetml.pvcLabels" . | nindent 10 }}
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:

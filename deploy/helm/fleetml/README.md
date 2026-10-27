@@ -207,22 +207,40 @@ reconnect by themselves. A port-forward stops working when the pod behind
 it is replaced, but keeps its local port, so starting the same line again
 stops with `address already in use`. After an upgrade (or an uninstall and
 a new install), stop this terminal's port-forwards and start step 4's two
-again:
+and step 6's dashboard one again:
 
 ```bash
 kill $(jobs -p) 2> /dev/null; wait 2> /dev/null
 kubectl -n fleetml port-forward svc/fleetml-server $REST:18080 $GRPC:19090 >/dev/null &
 kubectl -n fleetml port-forward svc/fleetml-s3 $S3:8333 >/dev/null &
+kubectl -n fleetml port-forward svc/fleetml-dashboard $DASH:80 >/dev/null &
 for i in $(seq 30); do curl -sf localhost:$REST/readyz && break; sleep 1; done; echo
 ```
 
-You should see the `/readyz` line. The first line also stops step 5's
+You should see the `/readyz` line; the dashboard is back on
+`http://localhost:$DASH`. The first line also stops step 5's
 simulator, a job of this terminal: start it again (step 5's
 `fleetml simulate` line) if you want it. To rotate a secret that
 may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
-upgrade. From 0.6.0 to 0.10.2 no
-upgrade needs anything else.
+upgrade.
+
+**Upgrade note, for a release installed with chart 0.10.2 or older**: those
+charts put the chart version into the labels of the bundled Postgres, NATS
+and SeaweedFS volume templates, a StatefulSet field Kubernetes does not let
+an upgrade change, so the first upgrade to a newer chart stops with
+`UPGRADE FAILED: cannot patch "fleetml-nats" with kind StatefulSet: ... spec.volumeClaimTemplates: Invalid value`.
+Once, before that upgrade, remove the three StatefulSets but not their pods
+and volumes, then upgrade as above (the upgrade recreates them, they take
+over the pods, and the data stays):
+
+```bash
+kubectl -n fleetml delete statefulset fleetml-postgres fleetml-nats fleetml-s3 --cascade=orphan
+```
+
+You should see three `statefulset.apps "fleetml-<name>" deleted from fleetml namespace` lines. With
+a release name other than `fleetml`, the names start with it. Charts from
+0.10.3 on keep those labels the same, so later upgrades need nothing else.
 
 ## Production
 
@@ -253,8 +271,12 @@ upgrade needs anything else.
 
 ## Values
 
-Every value is in [values.yaml](values.yaml), with a comment. The ones you
-are most likely to set:
+Every value is in [values.yaml](values.yaml), with a comment, and
+[values.schema.json](values.schema.json) checks them on every `helm install`,
+`upgrade`, `template` and `lint`: a misspelled key, a port that is not a
+number or an `s3.publicEndpoint` with `http://` stops with the value's path
+(`at '/server/replicas': got string, want integer`). The ones you are most
+likely to set:
 
 | Value | Default | Description |
 |---|---|---|
@@ -265,7 +287,7 @@ are most likely to set:
 | `server.image.repository`, `.tag`, `.pullPolicy` | `ghcr.io/fleetml/fleetml-server`, the app version, `IfNotPresent` | Server image |
 | `server.replicas` | `1` | Server replicas (they share the database and the telemetry stream) |
 | `server.dependencyTimeout` | `180s` | How long the server waits at start-up for Postgres, the object store and NATS, in total (`DEPENDENCY_TIMEOUT`) |
-| `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced |
+| `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced, except `REST_PORT` and `GRPC_PORT`, which the chart refuses (the pod listens on 18080 and 19090; `server.service.restPort`/`grpcPort` change the Service's ports) |
 | `server.resources` | `{}` | Requests and limits for the server |
 | `server.service.type`, `.restPort`, `.grpcPort` | `ClusterIP`, `18080`, `19090` | The server's Service |
 | `dashboard.enabled`, `dashboard.image.*`, `dashboard.service.*` | `true`, the published image, `ClusterIP` port `80` | The dashboard, with `/api` proxied to the server |
