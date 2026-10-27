@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,4 +93,27 @@ func TestLoadFileConfig_WindowsLineEndings(t *testing.T) {
 	assert.Equal(t, "http://fleet.example:18080", cfg.Server)
 	assert.Equal(t, "json", cfg.Output)
 	assert.Equal(t, "k-123", cfg.APIKey)
+}
+
+// set-key without the argument reads the key from standard input (a pipe
+// here; a hidden prompt at a terminal), trimmed; an empty one is refused.
+func TestSetKeyFromStdin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	run := func(in string, args ...string) error {
+		root := NewRootCmd()
+		root.SetIn(strings.NewReader(in))
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		root.SetArgs(append([]string{"config", "set-key"}, args...))
+		return root.Execute()
+	}
+	require.NoError(t, run("key-from-stdin\n"))
+	assert.Equal(t, "key-from-stdin", LoadFileConfig().APIKey)
+	require.NoError(t, run("", "key-from-arg"))
+	assert.Equal(t, "key-from-arg", LoadFileConfig().APIKey)
+	err := run("\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no API key")
+	assert.Equal(t, "key-from-arg", LoadFileConfig().APIKey)
 }

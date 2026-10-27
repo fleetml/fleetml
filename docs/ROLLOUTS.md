@@ -152,6 +152,12 @@ request it gets the default:
 {"max_error_rate": 0.05, "min_events": 20, "max_latency_regression": 0, "on_failure": "ROLLBACK"}
 ```
 
+A gate that sets only some of these keys gets the default for the others
+(`{"min_events": 30}` still allows a 5% error rate; `"max_error_rate": 0`
+allows none). A key the gate does not have, in `health_gate` or
+`rolling_config`, is refused with `400` naming it
+(`invalid JSON body: health_gate: unknown key "max_error" (known: ...)`).
+
 On each tick the gate looks only at telemetry for the new version **from the
 devices the current stage exposes**, recorded **since the stage started**.
 Errors from devices outside the cohort never count.

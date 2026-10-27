@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -20,9 +21,13 @@ func TestRepo_Integration(t *testing.T) {
 	repo := NewRepo(pool)
 	fx := dbtest.NewVersion(t, pool)
 
+	// A partial gate as a client sends it: the keys left out keep their defaults
+	// through the database too.
+	var gate HealthGate
+	require.NoError(t, json.Unmarshal([]byte(`{"min_events": 30}`), &gate))
 	d := &Deployment{ProjectID: fx.ProjectID, ModelVersionID: fx.VersionID, Name: "r", Strategy: "ROLLING", Status: "PENDING",
 		TargetSelector: map[string]string{"fleet": "a"}, RollingConfig: &RollingConfig{BatchSize: 5, BatchInterval: "30s"},
-		HealthGate: DefaultHealthGate(), CreatedBy: "test"}
+		HealthGate: &gate, CreatedBy: "test"}
 	require.NoError(t, repo.Create(ctx, d))
 
 	now := time.Now().Truncate(time.Microsecond)
@@ -38,6 +43,7 @@ func TestRepo_Integration(t *testing.T) {
 	assert.True(t, now.Equal(*got.StageStartedAt))
 	assert.Equal(t, 5, got.RollingConfig.BatchSize)
 	assert.Equal(t, 0.05, got.HealthGate.MaxErrorRate)
+	assert.Equal(t, 30, got.HealthGate.MinEvents)
 	assert.Equal(t, "a", got.TargetSelector["fleet"])
 
 	list, total, err := repo.List(ctx, nil, 10, 0)

@@ -18,6 +18,7 @@ require (
 	github.com/rodaine/table v1.4.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
+	golang.org/x/term v0.46.0
 	gonum.org/v1/gonum v0.17.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12

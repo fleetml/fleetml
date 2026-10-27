@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/fleetml/fleetml/internal/version"
@@ -85,11 +88,27 @@ func newConfigCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "set-key [api-key]",
 		Short: "Store the admin API key used for every request",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		Long: "Stores the API key in the config file. Without the argument the key is read from standard input:\n" +
+			"typed at a hidden prompt in a terminal, or piped in (for example from a password manager),\n" +
+			"which keeps it off the command line and out of the shell history.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key := ""
+			if len(args) == 1 {
+				key = args[0]
+			} else {
+				var err error
+				if key, err = readSecret(cmd.InOrStdin(), cmd.ErrOrStderr(), "API key (not shown): "); err != nil {
+					return err
+				}
+			}
+			key = strings.TrimSpace(key)
+			if key == "" {
+				return errors.New("no API key: type or paste it at the prompt, pipe it in, or pass it as the argument")
+			}
 			// Save from the file config, not the env-overlaid one.
 			fileCfg := LoadFileConfig()
-			fileCfg.APIKey = args[0]
+			fileCfg.APIKey = key
 			if err := SaveConfig(fileCfg); err != nil {
 				return err
 			}

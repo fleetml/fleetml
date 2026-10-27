@@ -29,10 +29,8 @@ and keep it open until the end.
    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build
-   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
-   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
 
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
@@ -110,7 +108,7 @@ and keep it open until the end.
 
    <!-- golden: quickstart-cleanup cleanup -->
    ```bash
-   kill $SIM 2>/dev/null; docker rm -f fleetml-agent
+   kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
    rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
@@ -255,9 +253,14 @@ first and can replace `$FLEETML_ADMIN_KEY` with nothing. The Windows run
 uses the same `wsl ... --exec bash -c` line, on the file its own script
 writes, `~/.fleetml-run.env`, rather than this one.)
 
-`$env:` lasts for that PowerShell window; `fleetml config set-key <the admin key>`
-saves it for every window instead, in `%USERPROFILE%\.fleetml\config.yaml`
-([CONFIG.md](CONFIG.md#cli)).
+`$env:` lasts for that PowerShell window. For every window instead,
+`fleetml config set-key` saves it in `%USERPROFILE%\.fleetml\config.yaml`
+([CONFIG.md](CONFIG.md#cli)): it asks for the key without showing it, or
+reads it from the same `wsl` line, so the key is in no command history:
+
+```powershell
+wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' | fleetml config set-key
+```
 
 What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
 on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in
@@ -340,13 +343,13 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.10.2`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.10.3`. In PowerShell,
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
-`fleetml config set-key <the admin key>`, which saves the key in
+`fleetml config set-key` (it asks for the key), which saves the key in
 `%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
-prints the same projects as in WSL (`No results.` before the tour). Pushing
+prints the same projects as in WSL (before the tour, the `first-<time>` project of Get started's step 4). Pushing
 from Windows works too, because Docker Desktop also publishes the object
 store's port on Windows. With a clone on the Windows side (which the
 Android SDK's Windows steps use anyway), from its folder:
@@ -401,7 +404,8 @@ export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_K
 fleetml project list
 ```
 
-`fleetml project list` prints `No results.` on the new server. On a server
+`fleetml project list` lists the `first-<time>` project of Get started's
+step 4 (`No results.` on a server where you skipped it). On a server
 someone else also tours, add `--seed <your name>` to both `fleetml simulate`
 lines: the same seed gives the same 20 device identities, which register
 into one project only.
@@ -645,7 +649,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.10.2"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.10.3"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 
@@ -657,7 +661,10 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
-Open http://localhost:13000 (`FLEETML_GRAFANA_PORT` moves it) in a browser (on its first start Grafana takes
+Open http://localhost:13000 (`FLEETML_GRAFANA_PORT` moves it; step 2 does
+not save it in `~/.fleetml.env`, so export it in each terminal that starts
+the profile, or add it to the file as [Other ports](ADVANCED.md#other-ports)
+shows for the others) in a browser (on its first start Grafana takes
 about half a minute to answer): it shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.

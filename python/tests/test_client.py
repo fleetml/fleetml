@@ -79,7 +79,7 @@ DEPLOYMENT = {
 
 
 def test_version_is_the_package_version() -> None:
-    assert fleetml.__version__ == "0.10.2"
+    assert fleetml.__version__ == "0.10.3"
 
 
 def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fake: Fake) -> None:
@@ -91,6 +91,14 @@ def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fa
         assert fm.projects.list() == []
     assert str(fake.requests[0].url) == "http://env.test:9000/api/v1/projects"
     assert fake.requests[0].headers["Authorization"] == "Bearer k-env"
+
+
+def test_server_without_a_scheme_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match=r"server must start with http:// or https://.*'localhost:18080'"):
+        FleetML("localhost:18080", api_key="k")
+    monkeypatch.setenv("FLEETML_SERVER", "localhost:18080")
+    with pytest.raises(ValueError, match="FLEETML_SERVER must start with http://"):
+        FleetML(api_key="k")
 
 
 def test_defaults_without_environment(monkeypatch: pytest.MonkeyPatch) -> None:

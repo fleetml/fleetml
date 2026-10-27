@@ -1,7 +1,11 @@
 package deploy
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -82,6 +86,16 @@ type RollingConfig struct {
 	MaxUnavailable int `json:"max_unavailable"`
 }
 
+// UnmarshalJSON rejects a key the config does not have, which would
+// otherwise be ignored without a word.
+func (c *RollingConfig) UnmarshalJSON(b []byte) error {
+	if err := knownKeys(b, "rolling_config", "batch_size", "batch_size_percent", "batch_interval", "max_unavailable"); err != nil {
+		return err
+	}
+	type plain RollingConfig
+	return json.Unmarshal(b, (*plain)(c))
+}
+
 // DefaultRollingConfig is used when a rolling deployment has no config.
 func DefaultRollingConfig() *RollingConfig {
 	return &RollingConfig{BatchSizePercent: 10, BatchInterval: "5m"}
@@ -107,6 +121,42 @@ type HealthGate struct {
 // without one: roll back if more than 5% of at least 20 cohort events are errors.
 func DefaultHealthGate() *HealthGate {
 	return &HealthGate{MaxErrorRate: 0.05, MinEvents: 20, OnFailure: "ROLLBACK"}
+}
+
+// UnmarshalJSON rejects a key the gate does not have and starts from the
+// default gate, so a key left out keeps its default: {"min_events": 30}
+// still allows a 5% error rate instead of none.
+func (g *HealthGate) UnmarshalJSON(b []byte) error {
+	if err := knownKeys(b, "health_gate", "max_error_rate", "max_latency_regression", "min_events", "on_failure"); err != nil {
+		return err
+	}
+	type plain HealthGate
+	p := plain(*DefaultHealthGate())
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*g = HealthGate(p)
+	return nil
+}
+
+// knownKeys returns an error naming the first key of the JSON object b that
+// is not one of keys.
+func knownKeys(b []byte, what string, keys ...string) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	var unknown []string
+	for k := range raw {
+		if !slices.Contains(keys, k) {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	slices.Sort(unknown)
+	return fmt.Errorf("%s: unknown key %q (known: %s)", what, unknown[0], strings.Join(keys, ", "))
 }
 
 // Exposes reports whether the deployment currently delivers to a device.

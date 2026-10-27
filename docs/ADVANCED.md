@@ -51,11 +51,14 @@ version as `dev`; in WSL, install Go from [go.dev](https://go.dev/doc/install): 
 
 ## Troubleshooting
 
-**Not ready after 3 minutes** (step 2 prints `Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md`).
-The first start takes a few minutes on a cold Docker cache, most of it
-pulling the base images and building the server and dashboard images; the
-3 minutes start after the build, when the stack starts. Look at what step 2
-printed above the message:
+**Start failed, or not ready after 3 minutes** (step 2 prints
+`Start failed: see Troubleshooting in docs/ADVANCED.md` or
+`Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md`).
+`Start failed` comes right after compose stopped with an error; `Not ready`
+after the stack started but did not answer. The first start takes a few
+minutes on a cold Docker cache, most of it pulling the base images and
+building the server and dashboard images; the 3 minutes start after the
+build, when the stack starts. Look at what step 2 printed above the message:
 
 - `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
   Windows, `bind: An attempt was made to access a socket in a way forbidden
@@ -68,13 +71,17 @@ printed above the message:
 
   ```bash
   echo 'export FLEETML_REST_PORT=28080' >> ~/.fleetml.env
-  source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
-  for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; sleep 2; done; echo
+  source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; sleep 2; done; echo
   ```
 
   You should see the `/readyz` line; then go on with step 3. On Windows,
   `netsh int ipv4 show excludedportrange protocol=tcp` in PowerShell lists
   the ranges Hyper-V and WSL keep; pick a port outside them.
+- `Not ready` with every container `running` (`ps -a`), and
+  `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz` prints something
+  other than FleetML's JSON (an error page, or nothing): another program
+  listens on that port on `localhost` only, which Docker on macOS and
+  Windows does not detect. Move the port as in the entry above.
 - Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
   shows which container stopped, and
   `docker compose -f deploy/docker-compose.prod.yml logs server` why.
@@ -83,7 +90,7 @@ printed above the message:
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.10.2-3-g1a2b3c4`: three commits past 0.10.2). To confirm the version
+like `0.10.3-3-g1a2b3c4`: three commits past 0.10.3). To confirm the version
 later: `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz`. More keys and
 their routes: [API keys](CONFIG.md#api-keys).
 
@@ -116,8 +123,8 @@ step 4 again, then `docker rm -f fleetml-agent` and step 5). The
   says which; `export ANDROID_SERIAL=<serial>` from `adb devices` and run
   step 5 again.
 
-**The iPhone never shows up** (iOS step 6c says `No new device after 3
-minutes`): step 6 lists what each error means. The simulator (iOS step 5
+**The iPhone never shows up** (iOS step 6c says `The iPhone has not
+checked in after 3 minutes`): step 6 lists what each error means. The simulator (iOS step 5
 says `Not active after 2 minutes`):
 `xcrun simctl spawn $SIM log show --last 5m --style compact --predicate 'subsystem == "com.fleetml.sdk"'`
 shows the SDK's lines, as above.
@@ -271,6 +278,18 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d
 ```
 
+**Back to `localhost`**, for the USB, emulator and simulator paths again on
+a stack you keep (Get started's clean-up removes the file anyway), in the
+same terminal and clone:
+
+```bash
+. ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=localhost:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
+```
+
+You should see `Container <stack>-server-1  Started`; downloads then go to
+`localhost` again, which the USB forwards and the emulator's forward reach.
+
 From then on downloads go to the LAN address for every device, the USB,
 emulator and simulator paths included, so those need that address allowed
 too (the guides say how). This shows the value in use:
@@ -319,8 +338,8 @@ install; nothing goes through it afterwards.
 
 3. **Build the sample app with that address, install it, and start it.**
    This removes the app from step 5 and the USB forwards first, so the app
-   starts afresh and really uses Wi-Fi (it registers again, as a second
-   device of the project, and downloads the model from the LAN address):
+   starts afresh and really uses Wi-Fi (it registers again, with the same
+   device ID, and downloads the model from the LAN address):
 
    ```bash
    adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
@@ -356,6 +375,14 @@ Troubleshooting:
   `docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
 - `In the background: next sync in 3600s`: the phone locked or the app
   left the screen. Unlock it and run step 3's last two lines again.
+- `Registration failed: UNAUTHENTICATED: ... this device is already registered`:
+  the phone was registered in another project before (Get started's step 4
+  run again makes a new project and key), and step 3's reinstall lost its
+  device token. Remove the old device record as the
+  [Emulator runbook](ANDROID_SDK.md#emulator-runbook) says (its
+  `this device is already registered` entry; `fleetml device list` without
+  `--project` lists the devices of every project), then run step 3's last
+  two lines again.
 
 ## Android on Windows: Android Studio
 
@@ -419,8 +446,11 @@ two ways out:
     -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
   read -rs FLEETML_ENROLLMENT_KEY
   printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
+  sudo systemctl restart fleetml-agent
   ```
 
+  The agent reads its config at start, so the last line restarts it (an
+  agent you run in a shell instead: stop it and start it again).
   `read -rs` waits for the enrollment key (paste it and press Enter; it is
   not shown), and `printf`, a shell builtin, hands it to `tee` on its input,
   so the key is on no command line and in no shell history. At start the
@@ -547,12 +577,11 @@ devices and the tools; each moves on its own:
   `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.10.2
+  git fetch --tags && git checkout v0.10.3
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
-  docker compose -f deploy/docker-compose.prod.yml up -d --build
-  for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
+  docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
   ```
 
   The `grep` line matters for a `~/.fleetml.env` written by 0.7.0 or
@@ -564,7 +593,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.10.2"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.3"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the

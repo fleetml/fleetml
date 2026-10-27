@@ -34,10 +34,8 @@ zsh, on macOS or Linux) and keep it open until the end.
    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build
-   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
-   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
 
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
@@ -150,7 +148,10 @@ fm = FleetML("<server URL>", api_key="...")             # or explicitly
 
 The server defaults to `FLEETML_SERVER`, then `http://localhost` on the
 quickstart's default REST port; the API key (an admin key, as for the CLI)
-to `FLEETML_API_KEY`. With the quickstart's server, both come from
+to `FLEETML_API_KEY`. The server is a URL with its scheme and without the
+API path (`http://localhost:<REST port>`, not `localhost:<REST port>` or
+`http://localhost:<REST port>/api/v1`: the client adds `/api/v1` itself); without
+`http://` or `https://`, `FleetML()` raises `ValueError` naming the value. With the quickstart's server, both come from
 `~/.fleetml.env` ([the settings file](ADVANCED.md#the-settings-file-fleetmlenv)),
 the saved REST port included:
 `source ~/.fleetml.env && export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY`.
@@ -243,7 +244,8 @@ refuses it or cannot be reached (a local file that `push` cannot read raises
 Python's own `FileNotFoundError` or `OSError`). It carries `status` (the HTTP
 status, 0 when the server was not reached), `code` (the server's error code:
 `NOT_FOUND` for an unknown ID, also a version's telemetry summary or drift
-(`telemetry.events` filters, so an unknown version gives an empty list);
+(`telemetry.events` filters, so an unknown version gives an empty list; so do
+the `list` methods for an unknown project or model: they filter by it);
 `CONFLICT`, for example a project name that exists;
 `VALIDATION_ERROR`, for example a `limit` that is not an integer or is
 outside 1 to the page cap, a negative `offset`, or an unknown version status;

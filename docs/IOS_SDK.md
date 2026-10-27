@@ -47,10 +47,8 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build
-   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
-   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
 
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
@@ -261,9 +259,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.2, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.2")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.2` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.3, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.3")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.3` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -286,7 +284,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.10.2        # or path: ../fleetml for a clone
+    from: 0.10.3        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -451,11 +449,21 @@ start and again whenever the error changes (registration is retried every
 10 seconds). `connectionFailed` is for registration only: a device that has
 registered before and cannot reach the server reports it with
 `fleetML(connectionChanged: false)` and the log line `Heartbeat failed: ...`
-(below).
+(below). A new host, port or enrollment key in the app's configuration
+counts as a new server: the SDK registers again (with the same device ID),
+so an unreachable new address reports through `connectionFailed` like a
+first registration, and the cached model stays active meanwhile.
 
 A wrong host or port, or a server that is not running, reads like
 `deadlineExceeded (Connection errors: ... Connection refused)`; a wrong
-enrollment key is refused by the server as `unauthenticated`. The SDK also
+enrollment key is refused by the server as `unauthenticated`, on a device
+that has not registered with that server before. A device that has keeps
+its project whatever the key, by design (a rotated or revoked key must not
+lock devices out): its registration, in the Keychain, survives an uninstall,
+and the server accepts its saved token. A valid key of another project
+moves it there; to start it from nothing, remove the device
+(`curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>"`)
+or call `FleetML.reset()` in the app. The SDK also
 logs to the unified log with subsystem `com.fleetml.sdk` and category
 `FleetML`: at info level the registration, each download (model, version,
 bytes), each validation result and each activation, at warning level every
@@ -616,7 +624,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.10.2        # or path: ../fleetml for a clone
+       from: 0.10.3        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
@@ -856,8 +864,13 @@ start and the next heartbeat 60 seconds after it), and step 7 rolls out
 `Secrets.xcconfig`, then build, install and launch again with the
 `xcodebuild` and `simctl` lines. The cached 2.0.0 is ready at once
 (`FleetML model ready: iris 2.0.0`), and `FleetML connected: false` follows
-about ten seconds later, with the `Heartbeat failed` line above in the log.
-Set the port back and rebuild to reconnect.
+about ten seconds later. A new port counts as a new server, so the log shows
+`Registration failed: deadlineExceeded (Connection errors: ... Connection refused)`
+(the app: `Cannot register: ...`), not `Heartbeat failed`, while the cached
+model keeps serving. Set the port back and rebuild to reconnect with the
+saved registration (same device ID). Stopping the server instead
+(`docker compose -f deploy/docker-compose.prod.yml stop server`, then `start server`)
+shows the `Heartbeat failed` line.
 
 ## Production
 

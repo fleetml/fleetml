@@ -79,9 +79,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Experiment, e
 	if input.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", ErrInvalidInput)
 	}
-	if input.ControlVersionID == uuid.Nil || input.TreatmentVersionID == uuid.Nil {
-		return nil, fmt.Errorf("%w: control and treatment version IDs are required", ErrInvalidInput)
-	}
+	// That the IDs were sent is the REST layer's check: the all-zeros UUID is an
+	// unknown version like any other, found below.
 	if input.ControlVersionID == input.TreatmentVersionID {
 		return nil, fmt.Errorf("%w: control and treatment must be different versions", ErrInvalidInput)
 	}

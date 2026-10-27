@@ -31,10 +31,8 @@ and keep it open until the end.
    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build
-   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
-   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
 
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
@@ -105,15 +103,17 @@ and keep it open until the end.
    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
-7. **Clean up**: the device, the server and all its data, and the saved
-   secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would keep
-   the data):
+7. **Clean up**, when you are done (after the
+   [tour](docs/QUICKSTART.md#tour), if you take it: this also stops its
+   simulator and Grafana): the device, the server and all its data, and the
+   saved secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would
+   keep the data):
 
-   <!-- golden: cleanup cleanup -->
+   <!-- golden: quickstart-cleanup cleanup -->
    ```bash
-   docker rm -f fleetml-agent
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -rf fleetml-agent ~/.fleetml.env
+   kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
+   rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
 
    You should see `Network <stack>_default  Removed`.
@@ -230,12 +230,12 @@ the app needs compileSdk 34 or later and minSdk 26,
 [details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.2")
+implementation("dev.fleetml:fleetml-sdk:0.10.3")
 implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.10.2;
+(Dependency Rule **Up to Next Major Version** from 0.10.3;
 [details](docs/IOS_SDK.md#install)):
 
 ```text
@@ -248,9 +248,14 @@ Python, for pipelines and notebooks: `pip install fleetml`
 ```python
 from fleetml import FleetML
 fm = FleetML()  # the server and key from FLEETML_SERVER and FLEETML_API_KEY
-v = fm.push("model.tflite", project="<project id>", model="iris", version="1.0.0")
-fm.deployments.start(fm.deployments.create("<project id>", v.id).id)
+p = fm.projects.create("pipeline")  # names are unique per server; fm.projects.list() lists them
+v = fm.push("model.tflite", project=p.id, model="my-model", version="1.0.0")
+fm.deployments.start(fm.deployments.create(p.id, v.id).id)
 ```
+
+A version number can be pushed once per model, so a new project (or a new
+version, `1.0.1`) avoids the `409` that iris 1.0.0 of Get started's project
+would give.
 
 ## How it works
 

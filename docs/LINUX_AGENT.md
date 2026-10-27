@@ -42,10 +42,8 @@ and keep it open until the end.
    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build
-   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
-   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
 
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
@@ -160,7 +158,7 @@ first, `shasum -a 256 -c` in place of `sha256sum -c`); in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
-`fleetml-agent 0.10.2`. To build the agent from source instead, `make
+`fleetml-agent 0.10.3`. To build the agent from source instead, `make
 build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
 and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
@@ -339,7 +337,7 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.10.2 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.10.3 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
@@ -393,7 +391,10 @@ level=WARN msg="model failed validation; keeping the current version" model=iris
 with the end of the command's output in `error` ([Where models go](#where-models-go), step 5).
 
 A `transport: authentication handshake failed` error means `tls: true` against
-a server without TLS; `registration failed` with `Unauthenticated` means the
+a server without TLS (in a container whose server name resolves first to an
+address it has no route to, such as `host.docker.internal`, it can read
+`connect: network is unreachable` instead, see
+[Identity and offline behaviour](#identity-and-offline-behaviour)); `registration failed` with `Unauthenticated` means the
 enrollment key is wrong or revoked; `download failed` with
 `connection refused` and `localhost` with the model files' port in the URL means the server's
 `S3_PUBLIC_ENDPOINT` ([Server on another machine](#server-on-another-machine)).
@@ -403,7 +404,10 @@ enrollment key is wrong or revoked; `download failed` with
 Settings come from the YAML file (`-config`), and flags override them
 (`-server`, `-enrollment-key`, `-label key=value`, `-state-dir`,
 `-models-dir`, `-validator`, `-post-activate`, `-telemetry-listen`).
-`FLEETML_ENROLLMENT_KEY` in the environment works too. `-retry-failed`
+`FLEETML_ENROLLMENT_KEY` in the environment works too. `-label` adds to the
+config's labels, and the agent registers again with them: a model whose
+deployment no longer targets the machine's labels is unloaded and its files
+removed. `-retry-failed`
 retries the versions that failed validation right away instead of after the
 hour's wait ([Where models go](#where-models-go), step 5).
 
@@ -414,7 +418,7 @@ hour's wait ([Where models go](#where-models-go), step 5).
 | `enrollment_key` | | Project enrollment key for the first registration |
 | `labels` | `{}` | Labels deployments and experiments target |
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
-| `models_dir` | `<state_dir>/models` | Where models are placed (below). The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) |
+| `models_dir` | `<state_dir>/models` | Where models are placed (below), on any file system. The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) and belong to the agent's user (`sudo install -d -o fleetml-agent -g fleetml-agent <folder>`). After a change the agent downloads its models again into the new folder |
 | `validator` | none | Shell command that checks a downloaded model; exit code 0 means valid. `{file}` in the command is replaced by the model's path, and the `FLEETML_MODEL_FILE`, `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` environment variables are set too; use either |
 | `post_activate` | none | Shell command run after a version becomes active, as `fleetml-agent`; under the shipped unit it can write only to `/var/lib/fleetml-agent` ([reloading the inference process](#reloading-the-inference-process-after-an-update)) |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
@@ -457,7 +461,8 @@ For each assignment the agent:
    `Range` request after an interruption, and checks the sha256; when the
    server offers a delta from the version the agent has, only the delta is
    downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates)); a
-   download that fails is retried on every heartbeat and reported once as
+   download that fails, or a model that cannot be put into `models_dir`, is
+   retried on every heartbeat and reported once as
    `MODEL_LOAD_FAILED` with the error, which `fleetml device get` shows as the
    device's `last_model_event`;
 3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,

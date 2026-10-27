@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 
 	"github.com/fleetml/fleetml/internal/experiment"
@@ -37,12 +38,13 @@ func (h *ExperimentHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/experiments/:experiment_id/cohorts", h.cohorts)
 }
 
+// The IDs are pointers so that "required" means "sent" (see createDeploymentRequest).
 type createExperimentRequest struct {
-	ProjectID          uuid.UUID         `json:"project_id" binding:"required"`
+	ProjectID          *uuid.UUID        `json:"project_id" binding:"required"`
 	Name               string            `json:"name" binding:"required"`
 	Description        string            `json:"description"`
-	ControlVersionID   uuid.UUID         `json:"control_version_id" binding:"required"`
-	TreatmentVersionID uuid.UUID         `json:"treatment_version_id" binding:"required"`
+	ControlVersionID   *uuid.UUID        `json:"control_version_id" binding:"required"`
+	TreatmentVersionID *uuid.UUID        `json:"treatment_version_id" binding:"required"`
 	TrafficPercent     int               `json:"traffic_percent"`
 	SplitRatio         int               `json:"split_ratio"`
 	TargetSelector     map[string]string `json:"target_selector"`
@@ -57,12 +59,17 @@ type createExperimentRequest struct {
 func (h *ExperimentHandler) create(c *gin.Context) {
 	var req createExperimentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id, name, control_version_id, and treatment_version_id are required")
+		var missing validator.ValidationErrors
+		if errors.As(err, &missing) {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id, name, control_version_id, and treatment_version_id are required")
+		} else {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid JSON body: "+err.Error())
+		}
 		return
 	}
 	exp, err := h.service.Create(c.Request.Context(), experiment.CreateInput{
-		ProjectID: req.ProjectID, Name: req.Name, Description: req.Description,
-		ControlVersionID: req.ControlVersionID, TreatmentVersionID: req.TreatmentVersionID,
+		ProjectID: *req.ProjectID, Name: req.Name, Description: req.Description,
+		ControlVersionID: *req.ControlVersionID, TreatmentVersionID: *req.TreatmentVersionID,
 		TrafficPercent: req.TrafficPercent, SplitRatio: req.SplitRatio,
 		TargetSelector: req.TargetSelector, PrimaryMetric: req.PrimaryMetric,
 		MinSampleSize: req.MinSampleSize, ConfidenceLevel: req.ConfidenceLevel,

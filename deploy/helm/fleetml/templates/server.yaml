@@ -24,6 +24,11 @@ spec:
             - secretRef:
                 name: {{ include "fleetml.secretName" . }}
           {{- /* The chart's settings, then server.env: a name in both is set once, to server.env's value. */}}
+          {{- range $k := list "REST_PORT" "GRPC_PORT" }}
+          {{- if hasKey $.Values.server.env $k }}
+          {{- fail (printf "server.env.%s cannot be set: the server listens on 18080 (REST) and 19090 (gRPC) inside the pod, where the probes and Services expect it; server.service.restPort and server.service.grpcPort change the ports the Service exposes" $k) }}
+          {{- end }}
+          {{- end }}
           {{- $env := dict
             "DATABASE_URL" (include "fleetml.databaseURL" .)
             "NATS_URL" (include "fleetml.natsURL" .)

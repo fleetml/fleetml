@@ -5,6 +5,78 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.3] - 2026-10-27
+
+### What changed for readers
+
+A first start whose port is taken now stops in seconds with a pointer to
+Troubleshooting instead of waiting three minutes. The Linux agent puts
+models on any file system, the Helm chart upgrades across chart versions
+without a manual step (once more for releases installed with chart 0.10.2
+or older: see the Helm upgrade note below), and a misspelled value is
+refused instead of ignored, in the chart's values and in a deployment's
+health gate. Upgrading the compose stack from 0.10.2 needs nothing.
+
+### Helm upgrade note
+
+Releases installed with chart 0.10.2 or older need one step before their
+first upgrade to 0.10.3: `kubectl -n fleetml delete statefulset
+fleetml-postgres fleetml-nats fleetml-s3 --cascade=orphan` (pods and data
+stay; the upgrade takes them over). Those charts put the chart version in
+the bundled StatefulSets' volume templates, which Kubernetes does not let
+an upgrade change. From 0.10.3 on the labels stay the same.
+
+### Fixed
+
+- Get started step 2 skips its wait when `docker compose up` fails and says
+  "Start failed: see Troubleshooting", and prints the project list and the
+  dashboard line only when the server answers.
+- Linux agent: a `models_dir` on another file system than the state folder
+  never activated a model (`invalid cross-device link` on every heartbeat);
+  the agent now copies the download into place, and reports a model it
+  cannot put into `models_dir` once as `MODEL_LOAD_FAILED`. After a change
+  of `models_dir` it downloads its models again instead of listing a path
+  that does not exist.
+- Helm: every upgrade to a new chart version failed on the bundled
+  StatefulSets (`spec.volumeClaimTemplates: Invalid value`); their volume
+  templates now carry only labels that do not change.
+- Server: a deployment's health gate that sets only some keys keeps the
+  defaults of the others (`{"min_events": 30}` allowed no error at all);
+  an unknown key in `health_gate` or `rolling_config` is refused with 400
+  naming it instead of being ignored.
+- Server: the all-zeros UUID as a project or version ID of a deployment or
+  experiment is an unknown ID (404 or 422) instead of "are required"; a
+  malformed experiment body says "invalid JSON body: ...".
+- iOS sample app: a refused enrollment key shows "Not registered · key
+  refused" instead of "Server unreachable".
+
+### Changed
+
+- `fleetml config set-key` without the key reads it at a hidden prompt or
+  from a pipe, so it stays out of the command line and the shell history.
+- Helm: `values.schema.json` checks the values (`helm lint`, `install`,
+  `upgrade`); `server.env.REST_PORT` and `GRPC_PORT` are refused, since the
+  pod listens on fixed ports.
+- Python client: a server URL without `http://` or `https://` raises a
+  `ValueError` naming it.
+
+### Docs
+
+- README step 7 is QUICKSTART's clean-up, which also stops the tour's
+  simulator and Grafana; the tour and Windows lines list Get started's
+  project.
+- Android: the Wi-Fi Troubleshooting covers `this device is already
+  registered`, a block puts the download address back to `localhost`, the
+  phone keeps its device ID over Wi-Fi, the Emulator block starts the app.
+- iOS: 6c's message in ADVANCED, a device keeps its project whatever the key
+  once registered (by design), the offline test's real log lines.
+- Linux agent: the models folder's owner, the override block restarts the
+  agent, `network is unreachable` as a TLS-mismatch form, what `-label` does.
+- Helm: the upgrade note, the dashboard port-forward after an upgrade, the
+  values schema.
+- Python: the server URL's form, the README snippet's project, empty lists
+  for an unknown project; ROLLOUTS: partial health gates; the Grafana port.
+
 ## [0.10.2] - 2026-10-26
 
 ### What changed for readers
@@ -1211,6 +1283,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.3]: https://github.com/fleetml/fleetml/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/fleetml/fleetml/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/fleetml/fleetml/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/fleetml/fleetml/compare/v0.9.1...v0.10.0

@@ -50,10 +50,8 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build
-   for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; echo
-   curl -s -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
    ```
 
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
@@ -150,14 +148,14 @@ with the same server and key. The emulator instead of a phone:
 
 ## Install
 
-The SDK is on Maven Central; 0.10.2 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.10.3 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.2")
+    implementation("dev.fleetml:fleetml-sdk:0.10.3")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -192,7 +190,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.2") {
+implementation("dev.fleetml:fleetml-sdk:0.10.3") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -225,7 +223,7 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.10.2-dev` (any version string) in the app's
+and `sdkVersion=0.10.3-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
@@ -292,7 +290,7 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.2")
+    implementation("dev.fleetml:fleetml-sdk:0.10.3")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -641,8 +639,8 @@ maintainers run it by hand.
    downloads go there instead, also over USB: the phone must be on that
    network and the debug network security config must allow the address, or
    every download fails with `CLEARTEXT communication to <LAN IP> not permitted`;
-   or set it back to `localhost` and the model files' port in
-   `~/.fleetml.env` and restart the server. This shows the value in use:
+   or put it [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address)
+   (the block there). This shows the value in use:
 
    ```bash
    docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
@@ -764,9 +762,9 @@ debug level: with `adb logcat FleetML:I *:S` the reconnect itself shows as
 the next line that is not a failure, such as a download).
 The SDK retries every 30 seconds until the server answers, and after airplane
 mode the network itself takes a moment to come back, so expect the reconnect
-within about a minute: it took 28 seconds after the forwards were set again,
+within a minute or two: it took 28 seconds after the forwards were set again,
 and 24 to 50 seconds after airplane mode was turned off, on an API 35
-emulator.
+emulator, and 70 seconds on a phone, whose Wi-Fi takes longer to come back.
 
 **On the emulator** the same test runs with airplane mode, which also cuts
 `10.0.2.2`, on API 30 and later (on API 26 to 29, the quick settings tile):
@@ -834,6 +832,7 @@ the emulator (the name `adb devices` lists) when a phone is attached too:
 export ANDROID_SERIAL=emulator-5554
 adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
 ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2
+adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
 ```
 
 Without the forward the app registers and then logs
@@ -938,9 +937,10 @@ the phone or emulator was registered in another project before and the app
 lost its device token since (an uninstall, `adb shell pm clear`), so it
 comes back with only a key of another project, which the server refuses: a
 key alone must not take a known device over. Remove the old device record
-with the admin key, then start the app again. Its ID is in the old
-project's list (`fleetml device list --project <old project ID>`, the row
-with your phone's Chipset; the dashboard's Devices page shows it too):
+with the admin key, then start the app again. Its ID is in
+`fleetml device list` (without `--project` it lists the devices of every
+project: the row with your phone's Chipset, a device has one record; the
+dashboard's Devices page shows it too):
 
 ```bash
 curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>" && echo removed
@@ -1050,7 +1050,7 @@ the key on its config screen. (Without `-PfleetmlDebugHost` the screen shows `10
 which is the emulator's address for the machine and does not work on a
 phone.) Logcat then shows the lines of [Over USB](#over-usb), among them
 `Registered as device <device ID>`, `Model iris 1.0.0 passed validation`
-and `Model iris 1.0.0 is active`, and the app's screen `Model ready: iris 1.0.0`.
+and `Model iris 1.0.0 is active`, and the app's screen **Active model: iris 1.0.0** (its log line reads `Model ready: iris 1.0.0`).
 `adb logcat` runs until Ctrl+C: stop it (or open a second window) before
 the next steps.
 A rebuild with another key connects with it, also on a phone where the
@@ -1106,7 +1106,7 @@ and a stale host as
    on the LAN address, downloads go there also over USB and on the emulator,
    so those need `-PfleetmlDebugHost=<LAN IP>` too (and the host typed on
    the screen: `localhost` over USB, `10.0.2.2` on the emulator), or the
-   endpoint back to `localhost` and the model files' port in `~/.fleetml.env`.
+   endpoint [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address).
 
 **On the emulator**: the same PowerShell lines with
 `$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:$s3 tcp:$s3`
@@ -1118,9 +1118,9 @@ instead of PowerShell: [ADVANCED.md](ADVANCED.md#android-on-windows-android-stud
 **When you are done**: `fleetml project delete $P` (it asks for no
 confirmation and cannot be undone), `adb uninstall com.fleetml.sample`,
 `adb reverse --remove-all`, `Remove-NetFirewallRule -DisplayName FleetML` in
-an administrator PowerShell, and in the Ubuntu shell `S3_PUBLIC_ENDPOINT` back
-to `localhost` and your model files' port in `~/.fleetml.env`, then the
-server restarted as in step 2.
+an administrator PowerShell, and in the Ubuntu shell the download address
+[back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address)
+(the block there restarts the server).
 
 ## Telemetry
 
