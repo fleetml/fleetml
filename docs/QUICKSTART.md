@@ -109,8 +109,7 @@ and keep it open until the end.
    <!-- golden: quickstart-cleanup cleanup -->
    ```bash
    kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
-   rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
 
    You should see `Network <stack>_default  Removed`.

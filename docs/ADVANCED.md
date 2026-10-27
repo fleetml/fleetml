@@ -339,7 +339,13 @@ install; nothing goes through it afterwards.
 3. **Build the sample app with that address, install it, and start it.**
    This removes the app from step 5 and the USB forwards first, so the app
    starts afresh and really uses Wi-Fi (it registers again, with the same
-   device ID, and downloads the model from the LAN address):
+   device ID, and downloads the model from the LAN address). The reinstall
+   drops the app's device token: after Get started's step 4 was run a second
+   time (a new project and key), the phone is still registered in the first
+   project, so this step ends with `Not active after 3 minutes` once and
+   logcat shows `this device is already registered`; the last bullet of
+   Troubleshooting below removes the old record, then step 3's last two
+   lines finish it:
 
    ```bash
    adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all

@@ -121,8 +121,7 @@ and keep it open until the end.
    <!-- golden: cleanup cleanup -->
    ```bash
    docker rm -f fleetml-agent
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -rf fleetml-agent ~/.fleetml.env
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -rf fleetml-agent ~/.fleetml.env
    ```
 
    You should see `Network <stack>_default  Removed`.

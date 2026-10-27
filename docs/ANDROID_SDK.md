@@ -135,8 +135,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    <!-- golden: android-cleanup device cleanup -->
    ```bash
    adb uninstall com.fleetml.sample; adb reverse --remove-all
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -f ~/.fleetml.env
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
    ```
 
    You should see `Success` and `Network <stack>_default  Removed`.
@@ -357,7 +356,7 @@ on Linux, `sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk` on Windows
 and its `MyApp` class in `app/src/main/java/com/example/myapp/MyApp.kt`
 with `package com.example.myapp` on top; for a server on your machine, the
 two debug files of [On your phone](#on-your-phone). With `JAVA_HOME` at a
-JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=localhost`
+JDK 17 ([above](#from-a-clone)), `./gradlew :app:assembleDebug` builds it and `ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}`
 installs it ([Publish and deploy](#publish-and-deploy-with-the-cli) has `$FLEETML_ENROLLMENT_KEY`).
 After a deployment to `app=myapp` the screen reads `Server reached: true`
 and `Model: 1.0.0`.
@@ -831,7 +830,7 @@ the emulator (the name `adb devices` lists) when a phone is attached too:
 ```bash
 export ANDROID_SERIAL=emulator-5554
 adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2
+ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2 -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
 adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
 ```
 
@@ -897,8 +896,7 @@ files' port.
 
    ```bash
    export ANDROID_HOME=$HOME/Library/Android/sdk JAVA_HOME=/opt/homebrew/opt/openjdk@17
-   cd android
-   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null)
    adb shell am start -n com.fleetml.sample/.MainActivity
    ```
 

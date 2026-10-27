@@ -237,8 +237,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    ```bash
    [ -z "${SIM:-}" ] || { xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM; }
    rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -f ~/.fleetml.env
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
    ```
 
    You should see `Network <stack>_default  Removed`.

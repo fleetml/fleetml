@@ -113,8 +113,7 @@ zsh, on macOS or Linux) and keep it open until the end.
    <!-- golden: python-cleanup cleanup -->
    ```bash
    deactivate; docker rm -f fleetml-agent
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -rf fleetml-agent .venv ~/.fleetml.env
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -rf fleetml-agent .venv ~/.fleetml.env
    ```
 
    You should see `Network <stack>_default  Removed`.
