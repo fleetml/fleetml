@@ -144,7 +144,7 @@ ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz"
 curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
 grep " fleetml-agent-linux-$ARCH.tar.gz\$" SHA256SUMS | sha256sum -c
-mkdir fleetml-agent && tar -xzf "fleetml-agent-linux-$ARCH.tar.gz" -C fleetml-agent
+mkdir -p fleetml-agent && tar -xzf "fleetml-agent-linux-$ARCH.tar.gz" -C fleetml-agent
 sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
 fleetml-agent -version
 ```
@@ -292,7 +292,7 @@ The block can run again: it reuses the project `edge` and its iris 1.0.0
 when they are there (or `P=<the project ID your team gave you>` in place of
 the first line). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
 to a provisioning script; without `-o json`, `enrollment-key create` prints a
-table with the key once. One key enrolls any number of machines. `vid` looks
+table with the key once. One key enrolls any number of machines; `fleetml enrollment-key revoke <key ID>` (the ID from `fleetml enrollment-key list --project $P`) stops new registrations with it, while machines already registered keep working. `vid` looks
 a version up by its number, so the block picks 1.0.0 even after more versions
 are pushed (`fleetml ver list` lists the newest first). The deployment starts
 as `COMPLETE` (`✓ Deployment start → COMPLETE`): it waits for the machine.
@@ -312,7 +312,7 @@ sudo sed -i -e 's|^server: .*|server: <server address>:<gRPC port>|' \
 read -rs FLEETML_ENROLLMENT_KEY
 printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
 sudo systemctl enable --now fleetml-agent
-journalctl -u fleetml-agent -f
+sudo journalctl -u fleetml-agent -f
 ```
 
 `read -rs` waits for the enrollment key the first block printed (paste it
@@ -417,7 +417,7 @@ hour's wait ([Where models go](#where-models-go), step 5).
 | `enrollment_key` | | Project enrollment key for the first registration |
 | `labels` | `{}` | Labels deployments and experiments target |
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
-| `models_dir` | `<state_dir>/models` | Where models are placed (below), on any file system. The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) and belong to the agent's user (`sudo install -d -o fleetml-agent -g fleetml-agent <folder>`). After a change the agent downloads its models again into the new folder |
+| `models_dir` | `<state_dir>/models` | Where models are placed (below), on any file system. The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be allowed with `ReadWritePaths=` in a drop-in, which upgrades keep ([below](#where-models-go)), and belong to the agent's user (`sudo install -d -o fleetml-agent -g fleetml-agent <folder>`). After a change the agent downloads its models again into the new folder; the old folder's copies stay until you remove them |
 | `validator` | none | Shell command that checks a downloaded model; exit code 0 means valid. `{file}` in the command is replaced by the model's path, and the `FLEETML_MODEL_FILE`, `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` environment variables are set too; use either |
 | `post_activate` | none | Shell command run after a version becomes active, as `fleetml-agent`; under the shipped unit it can write only to `/var/lib/fleetml-agent` ([reloading the inference process](#reloading-the-inference-process-after-an-update)) |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
@@ -442,6 +442,23 @@ uses the foreground heartbeat interval.
       2.0.0-1a2b3c4d/model.bin
       1.0.0-9f8e7d6c/model.bin         # last-known-good, kept for rollback
 ```
+
+A `models_dir` outside `/var/lib/fleetml-agent` (another disk, `/opt/models`
+here): the folder, owned by the agent's user, and a systemd drop-in that
+allows the unit to write there (`install.sh` replaces the unit on an
+upgrade but never touches its drop-ins), then the setting:
+
+```bash
+sudo install -d -o fleetml-agent -g fleetml-agent /opt/models
+sudo mkdir -p /etc/systemd/system/fleetml-agent.service.d
+printf '[Service]\nReadWritePaths=/opt/models\n' | sudo tee /etc/systemd/system/fleetml-agent.service.d/models.conf > /dev/null
+sudo sed -i 's|^#* *models_dir:.*|models_dir: /opt/models|' /etc/fleetml-agent/config.yaml
+sudo systemctl daemon-reload && sudo systemctl restart fleetml-agent
+```
+
+You should see `model active ... path=/opt/models/<model>/current` in the
+journal after the next heartbeat. `sudo systemctl edit fleetml-agent` writes
+the same drop-in from an editor.
 
 Point your inference process at `models/<model>/current/model.bin`. Only the
 active and last-known-good versions are kept. Each `model.bin` is mode `0644`
@@ -684,9 +701,12 @@ sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
 fleetml-agent -version
 ```
 
-It replaces the binary, keeps `/etc/fleetml-agent/config.yaml` and the state
-folder (the device's identity, its models and queued telemetry), and
-restarts a running service, so the new version runs at once. Without
+It replaces the binary, keeps `/etc/fleetml-agent/config.yaml`, the unit's
+drop-ins and the state folder (the device's identity, its models and queued
+telemetry), and restarts a running service, so the new version runs at once
+(`fleetml-agent <new version>`). A unit you edited by hand is kept too, with
+the release's unit next to it as `fleetml-agent.service.new` and a line
+saying so: move your settings into a drop-in and replace the unit with it. Without
 systemd, restart the agent under its supervisor. Upgrade the server first,
 as with every release: agents of the release before keep working against
 the new server until you upgrade them (a 0.8.0 agent registered, took a
@@ -702,7 +722,7 @@ the service, the binary, its config and models, and its user (without
 systemd, stop it under its supervisor instead of the `systemctl` line):
 
 ```bash
-journalctl -u fleetml-agent -o cat | grep -o 'device_id=[^ ]*' | tail -1
+sudo journalctl -u fleetml-agent -o cat | grep -o 'device_id=[^ ]*' | tail -1
 sudo systemctl disable --now fleetml-agent
 sudo rm -f /etc/systemd/system/fleetml-agent.service /usr/local/bin/fleetml-agent && sudo systemctl daemon-reload
 sudo rm -rf /etc/fleetml-agent /var/lib/fleetml-agent

@@ -70,7 +70,11 @@ once, in the response that creates it. The routes, all under `/api/v1`:
 
 What each role may do is in [ARCHITECTURE.md](ARCHITECTURE.md#users-roles-and-the-audit-log). Enrollment
 keys, which devices use, are per project: `fleetml enrollment-key create
---project <id>` (the CLI) or `POST /projects/{id}/enrollment-keys`.
+--project <id>` (the CLI) or `POST /projects/{id}/enrollment-keys`;
+`fleetml enrollment-key list --project <id>` shows their IDs, and
+`fleetml enrollment-key revoke <key ID>` (`POST /enrollment-keys/{id}/revoke`)
+stops new registrations with one; devices that registered with it keep
+working with their own tokens.
 
 ### Devices
 

@@ -57,7 +57,19 @@ if [ ! -d /run/systemd/system ]; then
   exit 0
 fi
 
-install -m 0644 "$HERE/fleetml-agent.service" /etc/systemd/system/fleetml-agent.service
+# The unit is replaced when it is absent or a unit a release shipped (sha256
+# below; add the new one whenever fleetml-agent.service changes). A unit
+# edited by hand is kept, and this release's goes next to it as .new:
+# settings of your own belong in a drop-in (systemctl edit fleetml-agent).
+UNIT=/etc/systemd/system/fleetml-agent.service
+SHIPPED_UNITS="b705355f07d3705034ad983710afe13a437fae3c667d92ffa6eaf3780a1892e9 56a6f9d6f9815845e50c3ac0bae4bb309b0e9ebf4f54965d9feae7b4518295c5"
+if [ -e "$UNIT" ] && ! cmp -s "$HERE/fleetml-agent.service" "$UNIT" &&
+  ! echo " $SHIPPED_UNITS " | grep -q " $(sha256sum "$UNIT" | cut -d' ' -f1) "; then
+  install -m 0644 "$HERE/fleetml-agent.service" "$UNIT.new"
+  echo "Kept $UNIT: it was edited. This release's unit is $UNIT.new; put your own settings in a drop-in (sudo systemctl edit fleetml-agent) and replace the unit with it."
+else
+  install -m 0644 "$HERE/fleetml-agent.service" "$UNIT"
+fi
 systemctl daemon-reload
 if grep -q '<project enrollment key>' "$CONFIG"; then
   echo "Service installed but not started: edit $CONFIG first, then run: systemctl enable --now fleetml-agent"

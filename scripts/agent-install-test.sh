@@ -93,6 +93,13 @@ grep -qx "restart fleetml-agent" /tmp/systemctl.log
 : > /tmp/systemctl.log
 /tmp/agent/install.sh /src/fleetml-agent
 [ "$(grep -c "restart fleetml-agent" /tmp/systemctl.log)" = 1 ]
+# A unit edited by hand survives an upgrade; the shipped one goes next to it.
+sed -i "s|^# ReadWritePaths=.*|ReadWritePaths=/srv/models|" /etc/systemd/system/fleetml-agent.service
+out=$(/tmp/agent/install.sh /src/fleetml-agent)
+echo "$out"
+grep -q "Kept /etc/systemd/system/fleetml-agent.service: it was edited" <<<"$out"
+grep -qx "ReadWritePaths=/srv/models" /etc/systemd/system/fleetml-agent.service
+cmp -s /src/agent/fleetml-agent.service /etc/systemd/system/fleetml-agent.service.new
 '
 
 # BusyBox: install.sh runs under ash and creates the user with addgroup and
