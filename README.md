@@ -245,16 +245,18 @@ Python, for pipelines and notebooks: `pip install fleetml`
 ([Python client](docs/PYTHON_CLIENT.md)):
 
 ```python
+import time
 from fleetml import FleetML
 fm = FleetML()  # the server and key from FLEETML_SERVER and FLEETML_API_KEY
-p = fm.projects.create("pipeline")  # names are unique per server; fm.projects.list() lists them
-v = fm.push("model.tflite", project=p.id, model="my-model", version="1.0.0")
+p = fm.projects.create(f"pipeline-{time.strftime('%Y%m%d-%H%M%S')}")  # names are unique per server
+v = fm.push("models/iris/iris_v1.tflite", project=p.id, model="iris", version="1.0.0")
 fm.deployments.start(fm.deployments.create(p.id, v.id).id)
 ```
 
-A version number can be pushed once per model, so a new project (or a new
-version, `1.0.1`) avoids the `409` that iris 1.0.0 of Get started's project
-would give.
+From the root of the clone (the sample model is there; your own file
+otherwise). Each run makes a new project, since a project name and a
+model's version number can each be used once: in a project of yours, push
+the next version instead (`1.0.1`).
 
 ## How it works
 
