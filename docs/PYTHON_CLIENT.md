@@ -148,7 +148,10 @@ fm = FleetML("<server URL>", api_key="...")             # or explicitly
 
 The server defaults to `FLEETML_SERVER`, then `http://localhost` on the
 quickstart's default REST port; the API key (an admin key, as for the CLI)
-to `FLEETML_API_KEY`. With the quickstart's server, both come from
+to `FLEETML_API_KEY`. The server is a URL with its scheme and without the
+API path (`http://localhost:<REST port>`, not `localhost:<REST port>` or
+`http://localhost:<REST port>/api/v1`: the client adds `/api/v1` itself); without
+`http://` or `https://`, `FleetML()` raises `ValueError` naming the value. With the quickstart's server, both come from
 `~/.fleetml.env` ([the settings file](ADVANCED.md#the-settings-file-fleetmlenv)),
 the saved REST port included:
 `source ~/.fleetml.env && export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY`.

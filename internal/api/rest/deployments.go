@@ -39,9 +39,11 @@ func (h *DeploymentHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PATCH("/deployments/:deployment_id/status", h.updateStatus)
 }
 
+// The IDs are pointers so that "required" means "sent": the all-zeros UUID
+// is an ID that matches nothing (404), like any unknown one.
 type createDeploymentRequest struct {
-	ProjectID      uuid.UUID                 `json:"project_id" binding:"required"`
-	ModelVersionID uuid.UUID                 `json:"model_version_id" binding:"required"`
+	ProjectID      *uuid.UUID                `json:"project_id" binding:"required"`
+	ModelVersionID *uuid.UUID                `json:"model_version_id" binding:"required"`
 	Name           string                    `json:"name"`
 	TargetSelector map[string]string         `json:"target_selector"`
 	Strategy       string                    `json:"strategy"`
@@ -64,8 +66,8 @@ func (h *DeploymentHandler) create(c *gin.Context) {
 		return
 	}
 	d, err := h.service.Create(c.Request.Context(), deploy.CreateInput{
-		ProjectID:      req.ProjectID,
-		ModelVersionID: req.ModelVersionID,
+		ProjectID:      *req.ProjectID,
+		ModelVersionID: *req.ModelVersionID,
 		Name:           req.Name,
 		TargetSelector: req.TargetSelector,
 		Strategy:       req.Strategy,

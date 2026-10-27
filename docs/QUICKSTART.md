@@ -253,9 +253,14 @@ first and can replace `$FLEETML_ADMIN_KEY` with nothing. The Windows run
 uses the same `wsl ... --exec bash -c` line, on the file its own script
 writes, `~/.fleetml-run.env`, rather than this one.)
 
-`$env:` lasts for that PowerShell window; `fleetml config set-key <the admin key>`
-saves it for every window instead, in `%USERPROFILE%\.fleetml\config.yaml`
-([CONFIG.md](CONFIG.md#cli)).
+`$env:` lasts for that PowerShell window. For every window instead,
+`fleetml config set-key` saves it in `%USERPROFILE%\.fleetml\config.yaml`
+([CONFIG.md](CONFIG.md#cli)): it asks for the key without showing it, or
+reads it from the same `wsl` line, so the key is in no command history:
+
+```powershell
+wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' | fleetml config set-key
+```
 
 What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
 on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in
@@ -342,7 +347,7 @@ program, also when it is started from a terminal. The CLI keeps its settings in 
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
-`fleetml config set-key <the admin key>`, which saves the key in
+`fleetml config set-key` (it asks for the key), which saves the key in
 `%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
 prints the same projects as in WSL (before the tour, the `first-<time>` project of Get started's step 4). Pushing
 from Windows works too, because Docker Desktop also publishes the object

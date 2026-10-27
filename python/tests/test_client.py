@@ -93,6 +93,14 @@ def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fa
     assert fake.requests[0].headers["Authorization"] == "Bearer k-env"
 
 
+def test_server_without_a_scheme_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match=r"server must start with http:// or https://.*'localhost:18080'"):
+        FleetML("localhost:18080", api_key="k")
+    monkeypatch.setenv("FLEETML_SERVER", "localhost:18080")
+    with pytest.raises(ValueError, match="FLEETML_SERVER must start with http://"):
+        FleetML(api_key="k")
+
+
 def test_defaults_without_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("FLEETML_SERVER", raising=False)
     monkeypatch.delenv("FLEETML_API_KEY", raising=False)

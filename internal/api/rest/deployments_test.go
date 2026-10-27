@@ -260,6 +260,13 @@ func TestDeployCreate_BadBodies(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "project_id and model_version_id are required")
 
+	// The all-zeros UUID is an ID like any other, not a missing one: it reaches
+	// the service (which answers 404 for an unknown project; this router has no
+	// project check).
+	w = doJSON(r, "POST", "/api/v1/deployments", map[string]interface{}{
+		"project_id": uuid.Nil.String(), "model_version_id": uuid.New().String()})
+	assert.NotContains(t, w.Body.String(), "are required")
+
 	// A misspelled health_gate or rolling_config key is named, not ignored.
 	for _, body := range []map[string]interface{}{
 		{"health_gate": map[string]interface{}{"max_error": 0.05}},

@@ -62,6 +62,12 @@ class FleetML:
         transport: Optional[httpx.BaseTransport] = None,
     ) -> None:
         self.server = (server or os.environ.get("FLEETML_SERVER") or DEFAULT_SERVER).rstrip("/")
+        if not self.server.startswith(("http://", "https://")):
+            source = "server" if server else "FLEETML_SERVER"
+            raise ValueError(
+                f"{source} must start with http:// or https:// (for example http://localhost:18080), "
+                f"got {self.server!r}"
+            )
         self._api_key = api_key if api_key is not None else os.environ.get("FLEETML_API_KEY", "")
         self._http = httpx.Client(timeout=timeout, transport=transport)
         self.projects = Projects(self)

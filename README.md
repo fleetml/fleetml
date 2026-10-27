@@ -248,9 +248,14 @@ Python, for pipelines and notebooks: `pip install fleetml`
 ```python
 from fleetml import FleetML
 fm = FleetML()  # the server and key from FLEETML_SERVER and FLEETML_API_KEY
-v = fm.push("model.tflite", project="<project id>", model="iris", version="1.0.0")
-fm.deployments.start(fm.deployments.create("<project id>", v.id).id)
+p = fm.projects.create("pipeline")  # names are unique per server; fm.projects.list() lists them
+v = fm.push("model.tflite", project=p.id, model="my-model", version="1.0.0")
+fm.deployments.start(fm.deployments.create(p.id, v.id).id)
 ```
+
+A version number can be pushed once per model, so a new project (or a new
+version, `1.0.1`) avoids the `409` that iris 1.0.0 of Get started's project
+would give.
 
 ## How it works
 
