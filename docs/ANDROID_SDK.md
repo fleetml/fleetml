@@ -762,9 +762,9 @@ debug level: with `adb logcat FleetML:I *:S` the reconnect itself shows as
 the next line that is not a failure, such as a download).
 The SDK retries every 30 seconds until the server answers, and after airplane
 mode the network itself takes a moment to come back, so expect the reconnect
-within about a minute: it took 28 seconds after the forwards were set again,
+within a minute or two: it took 28 seconds after the forwards were set again,
 and 24 to 50 seconds after airplane mode was turned off, on an API 35
-emulator.
+emulator, and 70 seconds on a phone, whose Wi-Fi takes longer to come back.
 
 **On the emulator** the same test runs with airplane mode, which also cuts
 `10.0.2.2`, on API 30 and later (on API 26 to 29, the quick settings tile):

@@ -244,7 +244,8 @@ refuses it or cannot be reached (a local file that `push` cannot read raises
 Python's own `FileNotFoundError` or `OSError`). It carries `status` (the HTTP
 status, 0 when the server was not reached), `code` (the server's error code:
 `NOT_FOUND` for an unknown ID, also a version's telemetry summary or drift
-(`telemetry.events` filters, so an unknown version gives an empty list);
+(`telemetry.events` filters, so an unknown version gives an empty list; so do
+the `list` methods for an unknown project or model: they filter by it);
 `CONFLICT`, for example a project name that exists;
 `VALIDATION_ERROR`, for example a `limit` that is not an integer or is
 outside 1 to the page cap, a negative `offset`, or an unknown version status;

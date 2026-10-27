@@ -661,7 +661,10 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml --profile observability up -d
 ```
 
-Open http://localhost:13000 (`FLEETML_GRAFANA_PORT` moves it) in a browser (on its first start Grafana takes
+Open http://localhost:13000 (`FLEETML_GRAFANA_PORT` moves it; step 2 does
+not save it in `~/.fleetml.env`, so export it in each terminal that starts
+the profile, or add it to the file as [Other ports](ADVANCED.md#other-ports)
+shows for the others) in a browser (on its first start Grafana takes
 about half a minute to answer): it shows the "FleetML"
 dashboard to anonymous visitors, who can only view. To edit, sign in as
 `admin` with the password `admin`; Grafana then asks for a new password.
