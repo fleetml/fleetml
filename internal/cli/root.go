@@ -106,8 +106,9 @@ func newConfigCmd() *cobra.Command {
 			if key == "" {
 				return errors.New("no API key: type or paste it at the prompt, pipe it in, or pass it as the argument")
 			}
-			// Save from the file config, not the env-overlaid one.
-			fileCfg := LoadFileConfig()
+			// Save what the file holds plus the key: not the environment's
+			// values, and not the default server as if it had been set.
+			fileCfg := loadSavedConfig()
 			fileCfg.APIKey = key
 			if err := SaveConfig(fileCfg); err != nil {
 				return err
@@ -121,17 +122,18 @@ func newConfigCmd() *cobra.Command {
 		Short: "Set a configuration value",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
+			fileCfg := loadSavedConfig()
 			switch args[0] {
 			case "server":
-				cfg.Server = args[1]
+				fileCfg.Server = args[1]
 			case "output":
-				cfg.Output = args[1]
+				fileCfg.Output = args[1]
 			case "project":
-				cfg.Project = args[1]
+				fileCfg.Project = args[1]
 			default:
 				return ErrUnknownConfigKey(args[0])
 			}
-			if err := SaveConfig(cfg); err != nil {
+			if err := SaveConfig(fileCfg); err != nil {
 				return err
 			}
 			PrintSuccess("config updated")

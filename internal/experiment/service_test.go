@@ -231,10 +231,20 @@ type fakeVersions map[uuid.UUID]int
 func (f fakeVersions) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, error) {
 	return f[id], nil
 }
+func (f fakeVersions) ProjectExists(context.Context, uuid.UUID) (bool, error) { return true, nil }
+
+// VersionProject puts every version in the project of the input's project
+// (tests set it with sameProject), so only the variant counts differ.
+func (f fakeVersions) VersionProject(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return sameProject, nil
+}
+
+var sameProject = uuid.New()
 
 func TestCreate_ArmsNeedReadyVariants(t *testing.T) {
 	svc := newTestService()
 	in := validInput()
+	in.ProjectID = sameProject
 	svc.SetVersionChecker(fakeVersions{in.ControlVersionID: 1})
 	_, err := svc.Create(context.Background(), in)
 	assert.ErrorIs(t, err, ErrNotDeployable, "treatment has no READY variant")
@@ -309,4 +319,61 @@ func TestTicker_AutoConcludesAtHorizon(t *testing.T) {
 	got, _ = svc.Get(context.Background(), exp.ID)
 	assert.Equal(t, "CONCLUDED", got.Status)
 	assert.Equal(t, exp.TreatmentVersionID, *got.WinnerVersionID)
+}
+
+// projects knows which projects exist and which project each version is in.
+type projects struct {
+	exist    map[uuid.UUID]bool
+	versions map[uuid.UUID]uuid.UUID
+}
+
+func (p projects) ReadyVariantCount(context.Context, uuid.UUID) (int, error) { return 1, nil }
+func (p projects) ProjectExists(_ context.Context, id uuid.UUID) (bool, error) {
+	return p.exist[id], nil
+}
+func (p projects) VersionProject(_ context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return p.versions[id], nil
+}
+
+// An experiment belongs to its project, as a deployment does: an arm of
+// another project is refused, an unknown project or version is not found.
+func TestCreate_ArmsMustBelongToTheProject(t *testing.T) {
+	mine, other := uuid.New(), uuid.New()
+	a, b, foreign := uuid.New(), uuid.New(), uuid.New()
+	svc := newTestService()
+	svc.SetVersionChecker(projects{exist: map[uuid.UUID]bool{mine: true, other: true},
+		versions: map[uuid.UUID]uuid.UUID{a: mine, b: mine, foreign: other}})
+	in := validInput()
+	in.ProjectID, in.ControlVersionID, in.TreatmentVersionID = mine, a, foreign
+	_, err := svc.Create(context.Background(), in)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "belongs to another project")
+
+	in.ProjectID, in.TreatmentVersionID = uuid.Nil, b
+	_, err = svc.Create(context.Background(), in)
+	assert.ErrorIs(t, err, ErrNotFound, "the all-zeros project is an unknown one")
+
+	in.ProjectID, in.TreatmentVersionID = mine, uuid.New()
+	_, err = svc.Create(context.Background(), in)
+	assert.ErrorIs(t, err, ErrNotFound, "an unknown version")
+
+	in.TreatmentVersionID = b
+	_, err = svc.Create(context.Background(), in)
+	assert.NoError(t, err)
+}
+
+// split_ratio left out is 50; outside 1-99 it is refused, not replaced.
+func TestCreate_SplitRatio(t *testing.T) {
+	svc := newTestService()
+	for _, bad := range []int{-5, 100, 101} {
+		in := validInput()
+		in.SplitRatio = bad
+		_, err := svc.Create(context.Background(), in)
+		require.ErrorIs(t, err, ErrInvalidInput, "split %d", bad)
+		assert.Contains(t, err.Error(), "split_ratio must be 1-99")
+	}
+	in := validInput()
+	exp, err := svc.Create(context.Background(), in)
+	require.NoError(t, err)
+	assert.Equal(t, 50, exp.SplitRatio)
 }

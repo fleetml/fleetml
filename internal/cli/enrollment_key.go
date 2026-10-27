@@ -15,7 +15,25 @@ func newEnrollmentKeyCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newEnrollmentKeyCreateCmd())
 	cmd.AddCommand(newEnrollmentKeyListCmd())
+	cmd.AddCommand(newEnrollmentKeyRevokeCmd())
 	return cmd
+}
+
+func newEnrollmentKeyRevokeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "revoke <key ID>",
+		Short: "Revoke an enrollment key (the ID from enrollment-key list)",
+		Long: "New devices can no longer register with a revoked key. Devices that registered\n" +
+			"with it keep working with their own device tokens.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := client.Post("/api/v1/enrollment-keys/"+args[0]+"/revoke", nil, nil); err != nil {
+				return err
+			}
+			PrintSuccess("Enrollment key revoked: " + args[0])
+			return nil
+		},
+	}
 }
 
 func newEnrollmentKeyCreateCmd() *cobra.Command {

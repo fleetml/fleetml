@@ -173,3 +173,27 @@ func TestExpCancel(t *testing.T) {
 	body := parseBody(t, w)
 	assert.Equal(t, "CANCELLED", body["data"].(map[string]interface{})["status"])
 }
+
+// A project_id that is not a UUID is refused, as for devices and
+// deployments; a split_ratio sent as 0 is refused, one left out is 50.
+func TestExperiments_ProjectFilterAndSplit(t *testing.T) {
+	r, _ := setupExpTestRouter()
+	w := doJSON(r, "GET", "/api/v1/experiments?project_id=abc", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "project_id must be a UUID")
+
+	body := func(split interface{}) map[string]interface{} {
+		b := map[string]interface{}{"project_id": uuid.New().String(), "name": "e-" + uuid.NewString()[:8],
+			"control_version_id": uuid.New().String(), "treatment_version_id": uuid.New().String()}
+		if split != nil {
+			b["split_ratio"] = split
+		}
+		return b
+	}
+	w = doJSON(r, "POST", "/api/v1/experiments", body(0))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "split_ratio must be 1-99")
+	w = doJSON(r, "POST", "/api/v1/experiments", body(nil))
+	assert.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), `"split_ratio":50`)
+}

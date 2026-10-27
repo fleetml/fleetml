@@ -70,7 +70,11 @@ once, in the response that creates it. The routes, all under `/api/v1`:
 
 What each role may do is in [ARCHITECTURE.md](ARCHITECTURE.md#users-roles-and-the-audit-log). Enrollment
 keys, which devices use, are per project: `fleetml enrollment-key create
---project <id>` (the CLI) or `POST /projects/{id}/enrollment-keys`.
+--project <id>` (the CLI) or `POST /projects/{id}/enrollment-keys`;
+`fleetml enrollment-key list --project <id>` shows their IDs, and
+`fleetml enrollment-key revoke <key ID>` (`POST /enrollment-keys/{id}/revoke`)
+stops new registrations with one; devices that registered with it keep
+working with their own tokens.
 
 ### Devices
 
@@ -186,5 +190,5 @@ it:
 | `FLEETML_E2E_PG` | `scripts/e2e.sh` | Postgres base URL for the throwaway database (default: the dev stack) |
 | `FLEETML_E2E_REST_PORT`, `FLEETML_E2E_GRPC_PORT` | `scripts/e2e.sh` | Ports of the server the suite starts (`18180`, `19190`) |
 | `FLEETML_E2E_API`, `FLEETML_E2E_GRPC`, `FLEETML_E2E_ADMIN_KEY` | `test/e2e` | Set by `scripts/e2e.sh`; the suite is skipped without them |
-| `FLEETML_API_KEY`, `FLEETML_API` | `scripts/android-e2e.sh`, `scripts/ios-e2e.sh`, `scripts/demo.sh` | Admin key and REST base URL (`http://localhost:18080`) |
+| `FLEETML_API_KEY`, `FLEETML_API` | `scripts/android-e2e.sh`, `scripts/ios-e2e.sh` | Admin key and REST base URL (`http://localhost:18080`); `scripts/demo.sh` starts its own server with a key of its own and prints both at the end |
 | `JAVA_HOME_17` | `scripts/android-e2e.sh` | JDK 17 home (default `/opt/homebrew/opt/openjdk@17`) |

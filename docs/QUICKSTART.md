@@ -109,8 +109,7 @@ and keep it open until the end.
    <!-- golden: quickstart-cleanup cleanup -->
    ```bash
    kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
-   rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
 
    You should see `Network <stack>_default  Removed`.
@@ -190,10 +189,11 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    box. If the page does not open, see
    [Troubleshooting](ADVANCED.md#troubleshooting).
 7. Clean up: step 7 of [Get started](#get-started), in the Ubuntu shell.
-   On the Windows side, in PowerShell, the CLI and its two downloads:
+   On the Windows side, in PowerShell, the CLI, its saved settings (with the
+   admin key, if you saved it with `set-key`) and its two downloads:
 
    ```powershell
-   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
+   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", "$env:USERPROFILE\.fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
    ```
 
    and its entry in the user `Path` (Settings, System, About, Advanced
@@ -260,17 +260,26 @@ reads it from the same `wsl` line, so the key is in no command history:
 
 ```powershell
 wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' | fleetml config set-key
+fleetml config set server "http://localhost:$(wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s ${FLEETML_REST_PORT:-18080}')"
 ```
 
+The second line saves the stack's REST port with it (the CLI's default is
+the quickstart's port), so a new window reaches the same server; a key that
+another server refuses names that server (`unauthorized by http://...`).
+
 What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
-on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in
+on GitHub's `windows-latest` runner (a Windows Server; the `windows-11-arm`
+runner has no WSL 2, so there its WSL job ends at once with a
+"WSL 2 unavailable" warning and checks only the CLI): the Run FleetML block and tour sections 1 to 3 in
 WSL 2 Ubuntu, with Docker Engine installed inside the distribution (Docker
 Desktop cannot be installed on the runner) and WSL's own `localhost`
 forwarding; `/readyz` and `fleetml project list` from PowerShell against that
 server; and the PowerShell block of [Get the CLI](#get-the-cli). In WSL it
 builds the CLI from source (the tour's first block) rather than installing
 the Linux release as Get started's step 3 does. Docker Desktop itself (steps 1 and 3, the
-ports it publishes) and the port-80 override are not exercised by CI.
+ports it publishes), the port-80 override, Get started's steps 3 and 5 to 7
+in WSL, the Android tools and the firewall rule are not exercised by CI;
+this page is how they are done by hand.
 
 ## Get the CLI
 
@@ -343,7 +352,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.10.3`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.10.4`. In PowerShell,
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -540,7 +549,7 @@ A canary of 2.0.0 for 25% of the fleet, with a health gate: more than 5% errors
 over at least 30 events from the canary cohort rolls it back. Each device is
 in the cohort or not by a hash of its ID and the deployment's ID, decided on
 its own and kept for the deployment's life, so the cohort is about 25%: of 20
-devices typically 2 to 8. The deploy loop runs every 30 seconds,
+devices usually 2 to 10. The deploy loop runs every 30 seconds,
 so the rollback comes within a minute, often within seconds, since the
 simulator's devices report quickly; the loop below gives up after 5 minutes:
 
@@ -649,7 +658,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.10.3"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.10.4"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 

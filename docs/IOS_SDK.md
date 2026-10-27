@@ -237,8 +237,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    ```bash
    [ -z "${SIM:-}" ] || { xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM; }
    rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -f ~/.fleetml.env
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
    ```
 
    You should see `Network <stack>_default  Removed`.
@@ -259,9 +258,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.3, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.3")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.3` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.4, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.4")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.4` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -284,7 +283,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.10.3        # or path: ../fleetml for a clone
+    from: 0.10.4        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -571,10 +570,11 @@ struct MyApp: App {
    ```bash
    . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$(ipconfig getifaddr en0):${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
    source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d
+   docker compose -f deploy/docker-compose.prod.yml up -d && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz > /dev/null && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done; curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz > /dev/null && echo ready
    ```
 
-   If someone else runs the server, ask them to start it this way. A phone
+   You should see `Container <stack>-server-1  Started` and `ready`. If
+   someone else runs the server, ask them to start it this way. A phone
    that registers but never downloads: it is almost always the endpoint.
 
    Check the network path from the phone before the app: in Safari on the
@@ -624,7 +624,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.10.3        # or path: ../fleetml for a clone
+       from: 0.10.4        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
@@ -1140,8 +1140,19 @@ key from `.env` instead.
    The cached model is active immediately and inference works; events are
    queued and sent once the server is back
    (`docker compose -f deploy/docker-compose.prod.yml start server`). On a
-   server that others use, launch the app with a closed port instead
-   (`-fleetmlPort 19999` as one more launch argument).
+   server that others use, launch the app with a closed port instead; the
+   launch line's `SIMCTL_CHILD_FLEETML_PORT` decides the port (a
+   `-fleetmlPort` argument next to it is overridden), so change it there:
+
+   ```bash
+   SIMCTL_CHILD_FLEETML_PORT=19999 xcrun simctl launch --terminate-running-process $SIM com.fleetml.sample
+   ```
+
+   The app starts with its cached model and logs
+   `Registration failed: deadlineExceeded` (a closed port, see
+   [When it does not connect](#when-it-does-not-connect)). The same line
+   with `SIMCTL_CHILD_FLEETML_PORT=${FLEETML_GRPC_PORT:-19090}` brings it
+   back; the app keeps the last port it was given.
 
 ### Physical device
 

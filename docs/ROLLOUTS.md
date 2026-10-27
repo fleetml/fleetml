@@ -215,7 +215,10 @@ and returns `409 INVALID_TRANSITION` for anything else.
 ## A/B experiments
 
 An experiment splits the targeted devices between a `control` and a
-`treatment` model version (`split_ratio`, `traffic_percent`). Assignment is
+`treatment` model version (`split_ratio`, the treatment's share, 1 to 99 and
+50 when left out; `traffic_percent`). Both versions belong to the
+experiment's project, as a deployment's does: a version of another project
+is refused with `400`, an unknown project or version with `404`. Assignment is
 sticky (stored on first contact, derived from sha256 of device and experiment).
 
 - Each device receives its arm's model like any other assignment (READY variant,

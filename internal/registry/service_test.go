@@ -515,6 +515,7 @@ func TestStatusTransitions(t *testing.T) {
 		{"staged to active", "STAGED", "ACTIVE"},
 		{"active to archived", "ACTIVE", "ARCHIVED"},
 		{"draft to archived", "DRAFT", "ARCHIVED"},
+		{"staged to archived", "STAGED", "ARCHIVED"},
 	}
 
 	invalidCases := []struct {
@@ -526,7 +527,6 @@ func TestStatusTransitions(t *testing.T) {
 		{"staged to draft", "STAGED", "DRAFT"},
 		{"active to staged", "ACTIVE", "STAGED"},
 		{"archived to anything", "ARCHIVED", "DRAFT"},
-		{"staged to archived", "STAGED", "ARCHIVED"},
 	}
 
 	for _, tt := range validCases {

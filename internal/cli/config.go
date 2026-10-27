@@ -10,9 +10,9 @@ import (
 
 // Config holds CLI configuration.
 type Config struct {
-	Server  string `yaml:"server"`
-	Output  string `yaml:"output"`
-	Project string `yaml:"project"`
+	Server  string `yaml:"server,omitempty"`
+	Output  string `yaml:"output,omitempty"`
+	Project string `yaml:"project,omitempty"`
 	// APIKey is the admin API key sent as "Authorization: Bearer".
 	APIKey string `yaml:"api_key,omitempty"`
 }
@@ -51,6 +51,17 @@ func LoadFileConfig() *Config {
 	cfg := DefaultConfig()
 	data, err := os.ReadFile(configPath())
 	if err == nil {
+		_ = yaml.Unmarshal(data, cfg)
+	}
+	return cfg
+}
+
+// loadSavedConfig is what the config file itself holds, without defaults or
+// environment: the config commands change one value and write back only
+// what was there, so a default server is never saved as if it had been set.
+func loadSavedConfig() *Config {
+	cfg := &Config{}
+	if data, err := os.ReadFile(configPath()); err == nil {
 		_ = yaml.Unmarshal(data, cfg)
 	}
 	return cfg

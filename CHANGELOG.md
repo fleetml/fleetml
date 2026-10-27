@@ -5,6 +5,62 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.4] - 2026-10-27
+
+### What changed for readers
+
+An experiment now belongs to its project the way a deployment does, so one
+project's devices can no longer be given another project's model. The Linux
+agent's upgrade keeps a unit you edited, the Helm upgrade note is the first
+step of Upgrading, and a clean-up whose compose command fails no longer
+deletes the settings of a running stack. Upgrading from 0.10.3 needs
+nothing; an experiment request with `split_ratio` outside 1-99 or with a
+version of another project, which 0.10.3 accepted, is now refused.
+
+### Fixed
+
+- Server: an experiment accepted model versions of another project (an
+  operator of one project could run another project's model on its
+  devices), answered 500 for an unknown project and stored a `split_ratio`
+  outside 1-99 as 50; arms of another project are refused with 400,
+  unknown projects and versions are 404, and `split_ratio` must be 1-99.
+- Server: a deployment of an unknown version answers 404 instead of "not
+  deployable"; `experiments?project_id=` that is not a UUID answers 400.
+- Linux agent: `install.sh` replaced an edited unit on every run, dropping a
+  `ReadWritePaths=` line, so models outside the state folder failed after an
+  upgrade; an edited unit is kept and the release's goes next to it.
+- Android SDK: an app sent to the background before its first screen
+  registered and then did nothing until opened again; the first sync now
+  finishes in the background.
+- Get started's clean-up in every guide removes `~/.fleetml.env` only after
+  `docker compose ... down` succeeded.
+
+### Changed
+
+- `fleetml enrollment-key revoke <key ID>`.
+- The CLI's 401 names the server that refused; `config set-key` and
+  `config set` save only what was set (not the default server).
+- A STAGED model version can be archived.
+- The Windows run's WSL job warns when the runner has no WSL 2 instead of
+  passing silently.
+
+### Docs
+
+- Android: the emulator runbook builds in a subshell; install lines pass
+  `-PfleetmlDebugPort`; Wi-Fi after a second step 4 times out once, and how
+  to finish it.
+- iOS: the offline test's closed port through `SIMCTL_CHILD_FLEETML_PORT`;
+  own-app step 2 waits for the server.
+- Linux agent: `mkdir -p` in the Install block, `models_dir` on another disk
+  through a systemd drop-in, `sudo journalctl`, revoking a key.
+- Windows: `fleetml config set server` with the stack's port; the clean-up
+  removes the saved key.
+- Python: the README snippet runs as written, twice.
+- Helm: the upgrade note first (it also finishes a failed upgrade), `git
+  fetch --tags`, `helm rollback`, changing an own Secret, the dashboard
+  port-forward in NOTES.txt and after an upgrade.
+- Smaller lines in ADVANCED, QUICKSTART and CONFIG.
+
 ## [0.10.3] - 2026-10-27
 
 ### What changed for readers
@@ -1283,6 +1339,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.4]: https://github.com/fleetml/fleetml/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/fleetml/fleetml/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/fleetml/fleetml/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/fleetml/fleetml/compare/v0.10.0...v0.10.1

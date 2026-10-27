@@ -232,7 +232,10 @@ internal class FleetMLInstance(
                 }
             }
             registered = true
-            if (foreground) startTimers()
+            when (afterRegistration(foreground)) {
+                AfterRegistration.TIMERS -> startTimers()
+                AfterRegistration.BACKGROUND_JOB -> scheduleBackgroundWork(interrupted = true)
+            }
         }
         Handler(Looper.getMainLooper()).post { ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver) }
     }
@@ -343,3 +346,16 @@ internal class FleetMLInstance(
         }
     }
 }
+
+/**
+ * What happens once the device is registered: the timers run while the app is
+ * in the foreground. Otherwise the app went to the background before its first
+ * screen (onStop never came, since the process never started), so nothing would
+ * sync until it is opened again: the background job finishes the first sync at
+ * once instead. If the app then comes to the foreground, onForeground cancels
+ * the job and starts the timers.
+ */
+internal enum class AfterRegistration { TIMERS, BACKGROUND_JOB }
+
+internal fun afterRegistration(foreground: Boolean) =
+    if (foreground) AfterRegistration.TIMERS else AfterRegistration.BACKGROUND_JOB

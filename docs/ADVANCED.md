@@ -81,7 +81,9 @@ build, when the stack starts. Look at what step 2 printed above the message:
   `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz` prints something
   other than FleetML's JSON (an error page, or nothing): another program
   listens on that port on `localhost` only, which Docker on macOS and
-  Windows does not detect. Move the port as in the entry above.
+  Windows does not detect. Move the port as in the entry above. (On a Mac
+  whose `localhost` resolves to `::1` first, Docker answers there and the
+  start succeeds; the other program then only answers `127.0.0.1`.)
 - Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
   shows which container stopped, and
   `docker compose -f deploy/docker-compose.prod.yml logs server` why.
@@ -90,7 +92,7 @@ build, when the stack starts. Look at what step 2 printed above the message:
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.10.3-3-g1a2b3c4`: three commits past 0.10.3). To confirm the version
+like `0.10.4-3-g1a2b3c4`: three commits past 0.10.4). To confirm the version
 later: `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz`. More keys and
 their routes: [API keys](CONFIG.md#api-keys).
 
@@ -138,8 +140,11 @@ dashboard on 8081, for example), then open the address step 6 prints.
 
 **`fleetml` is not found** in a new terminal: the `export PATH` line of step
 3 lasts for one terminal ([Installing the tools](#installing-the-tools)).
-**`Error: ... 401`** from the CLI in a new terminal: `source ~/.fleetml.env`
-and the `export FLEETML_SERVER` line of step 4 again.
+**`Error: unauthorized by http://localhost:<port>`** from the CLI in a new
+terminal: `source ~/.fleetml.env` and the `export FLEETML_SERVER` line of
+step 4 again; the URL in the message is the server the CLI asked, so a port
+there that is not your stack's means `FLEETML_SERVER` (or
+`fleetml config set server`) points elsewhere.
 
 ## The settings file, ~/.fleetml.env
 
@@ -200,7 +205,8 @@ source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
 (. ~/.fleetml.env; env | grep -E '^(FLEETML_[A-Z0-9_]*PORT|S3_PUBLIC_ENDPOINT)=' | sort)
 ```
 
-You should see the stack's containers `Started`, then the ports and the
+You should see the containers whose settings changed `Started` (the others
+`Running`), then the ports and the
 download address in effect, one per line (`FLEETML_DASHBOARD_PORT=8081`,
 `FLEETML_S3_PUBLIC_PORT=29100`, `S3_PUBLIC_ENDPOINT=localhost:29100`, and the
 two you did not move). Then go on with Get started's step 3 (or
@@ -339,7 +345,13 @@ install; nothing goes through it afterwards.
 3. **Build the sample app with that address, install it, and start it.**
    This removes the app from step 5 and the USB forwards first, so the app
    starts afresh and really uses Wi-Fi (it registers again, with the same
-   device ID, and downloads the model from the LAN address):
+   device ID, and downloads the model from the LAN address). The reinstall
+   drops the app's device token: after Get started's step 4 was run a second
+   time (a new project and key), the phone is still registered in the first
+   project, so this step ends with `Not active after 3 minutes` once and
+   logcat shows `this device is already registered`; the last bullet of
+   Troubleshooting below removes the old record, then step 3's last two
+   lines finish it:
 
    ```bash
    adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
@@ -534,8 +546,21 @@ read, never a command line. Then step 4 with
 key from that file:
 `export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^FLEETML_ADMIN_KEY=//p' fleetml-secrets.env)`.
 Keep `fleetml-secrets.env` as you would the secrets file, and delete it at
-clean-up with the rest. A change to your Secret rolls nothing: after one,
-run `kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server`.
+clean-up with the rest. To change a key that may change (`S3_SECRET_KEY`,
+or `JWT_SECRET` at the cost of the devices registering again; not
+`POSTGRES_PASSWORD` or `SIGNING_MASTER_KEY` of a release with data), edit
+it in `fleetml-secrets.env`, then replace the Secret and restart what reads
+it (a change to the Secret alone rolls nothing):
+
+```bash
+kubectl -n fleetml create secret generic fleetml-secrets --from-env-file=fleetml-secrets.env --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server
+kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
+```
+
+You should see `secret/fleetml-secrets configured`, the two `restarted`
+lines and `successfully rolled out`; then the chart README's port-forward
+block of [Upgrading](../deploy/helm/fleetml/README.md#upgrading).
 
 **Other local ports.** If something on this machine already listens on one
 of the four ports (`lsof -nP -iTCP:<port> -sTCP:LISTEN` prints it), change
@@ -577,7 +602,7 @@ devices and the tools; each moves on its own:
   `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.10.3
+  git fetch --tags && git checkout v0.10.4
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
@@ -593,7 +618,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.10.3"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.4"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the

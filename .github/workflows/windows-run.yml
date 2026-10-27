@@ -12,7 +12,7 @@ name: Windows run
 #
 # Actions, Windows run, Run workflow (default branch), or through the API:
 #   POST /repos/fleetml/fleetml/actions/workflows/windows-run.yml/dispatches
-#   {"ref":"main","inputs":{"tag":"v0.10.3","runner":"windows-latest"}}
+#   {"ref":"main","inputs":{"tag":"v0.10.4","runner":"windows-latest"}}
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ on:
       tag:
         description: Release whose assets are downloaded (vX.Y.Z)
         type: string
-        default: v0.10.3
+        default: v0.10.4
       runner:
         description: Runner image
         type: choice
@@ -289,6 +289,8 @@ jobs:
             $first = @($status -split "`n" | Where-Object { $_.Trim() }) | Select-Object -First 2
             Add-Note "wsl --status (exit $statusCode): $($first -join ' ')"
             Write-Host 'WSL 2 unavailable on this runner: the quickstart steps are skipped.'
+            # A visible warning on the run, so a green job that ran no quickstart is not read as a pass.
+            Write-Host '::warning title=WSL 2 unavailable::The quickstart under WSL 2 did not run on this runner; only the CLI job checks this release here.'
             return
           }
           Set-StepOutput wsl2 true

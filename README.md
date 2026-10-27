@@ -112,8 +112,7 @@ and keep it open until the end.
    <!-- golden: quickstart-cleanup cleanup -->
    ```bash
    kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
-   rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
 
    You should see `Network <stack>_default  Removed`.
@@ -230,12 +229,12 @@ the app needs compileSdk 34 or later and minSdk 26,
 [details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.3")
+implementation("dev.fleetml:fleetml-sdk:0.10.4")
 implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.10.3;
+(Dependency Rule **Up to Next Major Version** from 0.10.4;
 [details](docs/IOS_SDK.md#install)):
 
 ```text
@@ -246,16 +245,18 @@ Python, for pipelines and notebooks: `pip install fleetml`
 ([Python client](docs/PYTHON_CLIENT.md)):
 
 ```python
+import time
 from fleetml import FleetML
 fm = FleetML()  # the server and key from FLEETML_SERVER and FLEETML_API_KEY
-p = fm.projects.create("pipeline")  # names are unique per server; fm.projects.list() lists them
-v = fm.push("model.tflite", project=p.id, model="my-model", version="1.0.0")
+p = fm.projects.create(f"pipeline-{time.strftime('%Y%m%d-%H%M%S')}")  # names are unique per server
+v = fm.push("models/iris/iris_v1.tflite", project=p.id, model="iris", version="1.0.0")
 fm.deployments.start(fm.deployments.create(p.id, v.id).id)
 ```
 
-A version number can be pushed once per model, so a new project (or a new
-version, `1.0.1`) avoids the `409` that iris 1.0.0 of Get started's project
-would give.
+From the root of the clone (the sample model is there; your own file
+otherwise). Each run makes a new project, since a project name and a
+model's version number can each be used once: in a project of yours, push
+the next version instead (`1.0.1`).
 
 ## How it works
 

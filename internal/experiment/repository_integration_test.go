@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fleetml/fleetml/internal/dbtest"
+	"github.com/fleetml/fleetml/internal/deploy"
 )
 
 func TestRepository_Integration(t *testing.T) {
@@ -89,4 +90,21 @@ func TestRepository_Integration(t *testing.T) {
 
 	require.NoError(t, repo.Delete(ctx, exp.ID))
 	assert.ErrorIs(t, repo.Delete(ctx, exp.ID), ErrNotFound)
+}
+
+// With the server's checker (the deployment service's adapter), an arm of
+// another project is refused and an unknown project is not found.
+func TestCreate_ProjectChecks_Integration(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx := context.Background()
+	mine := dbtest.NewVersion(t, pool)
+	other := dbtest.NewVersion(t, pool)
+	svc := NewService(NewRepository(pool), nil)
+	svc.SetVersionChecker(deploy.NewVersionAdapter(pool))
+
+	_, err := svc.Create(ctx, CreateInput{ProjectID: mine.ProjectID, Name: "x", ControlVersionID: mine.VersionID, TreatmentVersionID: other.VersionID})
+	require.ErrorIs(t, err, ErrInvalidInput)
+	assert.Contains(t, err.Error(), "belongs to another project")
+	_, err = svc.Create(ctx, CreateInput{ProjectID: uuid.New(), Name: "x", ControlVersionID: mine.VersionID, TreatmentVersionID: other.VersionID})
+	assert.ErrorIs(t, err, ErrNotFound)
 }

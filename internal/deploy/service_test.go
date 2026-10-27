@@ -237,20 +237,6 @@ func TestDeleteDeployment(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
-type fakeVersions map[uuid.UUID]int
-
-func (f fakeVersions) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, error) {
-	return f[id], nil
-}
-
-func (f fakeVersions) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
-	return nil, nil
-}
-func (f fakeVersions) ProjectExists(context.Context, uuid.UUID) (bool, error) { return true, nil }
-func (f fakeVersions) VersionProject(context.Context, uuid.UUID) (uuid.UUID, error) {
-	return uuid.Nil, nil
-}
-
 // currentVersion reports a fixed current version for every model.
 type currentVersion struct{ id uuid.UUID }
 
@@ -308,15 +294,41 @@ func TestCreate_RecordsPreviousVersion(t *testing.T) {
 	assert.Equal(t, v1, *d.PreviousVersionID)
 }
 
-func TestCreate_RequiresReadyVariant(t *testing.T) {
-	ready, unverified := uuid.New(), uuid.New()
-	svc := NewService(newMockRepo(), nil)
-	svc.SetVersionChecker(fakeVersions{ready: 1, unverified: 0})
+// versionsIn has the given versions, all in one project, with their READY
+// variant counts.
+type versionsIn struct {
+	project uuid.UUID
+	ready   map[uuid.UUID]int
+}
 
-	_, err := svc.Create(context.Background(), CreateInput{ProjectID: uuid.New(), ModelVersionID: unverified})
+func (v versionsIn) ReadyVariantCount(_ context.Context, id uuid.UUID) (int, error) {
+	return v.ready[id], nil
+}
+func (v versionsIn) CurrentVersion(context.Context, uuid.UUID, uuid.UUID) (*uuid.UUID, error) {
+	return nil, nil
+}
+func (v versionsIn) ProjectExists(context.Context, uuid.UUID) (bool, error) { return true, nil }
+func (v versionsIn) VersionProject(_ context.Context, id uuid.UUID) (uuid.UUID, error) {
+	if _, ok := v.ready[id]; !ok {
+		return uuid.Nil, nil
+	}
+	return v.project, nil
+}
+
+// A version without a READY variant is not deployable; one that does not
+// exist is not found.
+func TestCreate_RequiresReadyVariant(t *testing.T) {
+	p, ready, unverified := uuid.New(), uuid.New(), uuid.New()
+	svc := NewService(newMockRepo(), nil)
+	svc.SetVersionChecker(versionsIn{project: p, ready: map[uuid.UUID]int{ready: 1, unverified: 0}})
+
+	_, err := svc.Create(context.Background(), CreateInput{ProjectID: p, ModelVersionID: unverified})
 	assert.ErrorIs(t, err, ErrNotDeployable)
 
-	d, err := svc.Create(context.Background(), CreateInput{ProjectID: uuid.New(), ModelVersionID: ready})
+	_, err = svc.Create(context.Background(), CreateInput{ProjectID: p, ModelVersionID: uuid.New()})
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	d, err := svc.Create(context.Background(), CreateInput{ProjectID: p, ModelVersionID: ready})
 	require.NoError(t, err)
 	assert.Equal(t, "PENDING", d.Status)
 }

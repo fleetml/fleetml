@@ -158,7 +158,7 @@ than 32 characters (the server would not start with one), and the first two
 must differ. The file name is in the repository's `.gitignore`, so a clone
 does not commit it; keep a copy outside the clone as well.
 
-About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.3"}`,
+About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.4"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
 images, which takes a minute or two (the server waits meanwhile, up to
 `server.dependencyTimeout`, 180 s in total for Postgres, the object store and
@@ -188,8 +188,28 @@ the cluster.
 
 ## Upgrading
 
-Change a value, or move the clone to a new release (`git checkout v<version>`)
-for a new chart and images, then upgrade with the same secrets file:
+Change a value, or move the clone to a new release for a new chart and
+images (`git fetch --tags && git checkout v<version>`, in the clone), then
+upgrade with the same secrets file.
+
+**First, once, for a release installed with chart 0.10.2 or older** (the
+`CHART` column of `helm list -n fleetml` says `fleetml-0.10.2` or lower):
+those charts put the chart version into the labels of the bundled Postgres,
+NATS and SeaweedFS volume templates, a StatefulSet field Kubernetes does
+not let an upgrade change, so the upgrade would stop with
+`UPGRADE FAILED: cannot patch "fleetml-nats" with kind StatefulSet: ... spec.volumeClaimTemplates: Invalid value`.
+Remove the three StatefulSets but not their pods and volumes (the upgrade
+below recreates them, they take over the pods, and the data stays):
+
+```bash
+kubectl -n fleetml delete statefulset fleetml-postgres fleetml-nats fleetml-s3 --cascade=orphan
+```
+
+You should see three `statefulset.apps "fleetml-<name>" deleted from fleetml namespace` lines
+(with a release name other than `fleetml`, the names start with it). The
+same line also finishes an upgrade that already stopped with that error:
+run it, then the upgrade again. Charts from 0.10.3 on keep those labels the
+same, so later upgrades need nothing else. The upgrade:
 
 ```bash
 helm upgrade fleetml deploy/helm/fleetml -n fleetml -f fleetml-secrets.yaml --reuse-values \
@@ -225,22 +245,12 @@ may change (`s3SecretKey`, or `jwtSecret` at the cost of the devices
 registering again), edit it in `fleetml-secrets.yaml` and run the same
 upgrade.
 
-**Upgrade note, for a release installed with chart 0.10.2 or older**: those
-charts put the chart version into the labels of the bundled Postgres, NATS
-and SeaweedFS volume templates, a StatefulSet field Kubernetes does not let
-an upgrade change, so the first upgrade to a newer chart stops with
-`UPGRADE FAILED: cannot patch "fleetml-nats" with kind StatefulSet: ... spec.volumeClaimTemplates: Invalid value`.
-Once, before that upgrade, remove the three StatefulSets but not their pods
-and volumes, then upgrade as above (the upgrade recreates them, they take
-over the pods, and the data stays):
-
-```bash
-kubectl -n fleetml delete statefulset fleetml-postgres fleetml-nats fleetml-s3 --cascade=orphan
-```
-
-You should see three `statefulset.apps "fleetml-<name>" deleted from fleetml namespace` lines. With
-a release name other than `fleetml`, the names start with it. Charts from
-0.10.3 on keep those labels the same, so later upgrades need nothing else.
+`helm rollback fleetml <revision> -n fleetml` returns to an earlier
+revision (`helm history fleetml -n fleetml` lists them). Back to a revision
+made with chart 0.10.2 or older it stops with the same
+`volumeClaimTemplates` error and leaves the release `failed`, half on each
+version: run the upgrade above again to return to the current chart (the
+data stays), and stay on charts from 0.10.3 on.
 
 ## Production
 
@@ -281,7 +291,7 @@ likely to set:
 | Value | Default | Description |
 |---|---|---|
 | `secrets.*`, `secrets.existingSecret` | | See [Install](#install) |
-| `s3.publicEndpoint` | (required) | `host:port` devices and clients reach the object store at |
+| `s3.publicEndpoint` | (required) | `host:port` devices and clients reach the object store at, without `http://` or `https://` (`s3.publicUseSSL` makes the URLs https); a value with a scheme stops with `at '/s3/publicEndpoint': ... does not match pattern` |
 | `s3.publicUseSSL` | `false` | Whether the download and upload URLs are `https` |
 | `s3.useSSL`, `s3.endpoint`, `s3.bucket` | `false`, , `fleetml-models` | The server's connection to the store (`s3.endpoint` with `seaweedfs.enabled=false`) |
 | `server.image.repository`, `.tag`, `.pullPolicy` | `ghcr.io/fleetml/fleetml-server`, the app version, `IfNotPresent` | Server image |

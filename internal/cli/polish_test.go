@@ -175,3 +175,20 @@ func TestPush_PromoteFromCurrentStatus(t *testing.T) {
 	assert.Equal(t, []string{"ACTIVE"}, patches, "STAGED takes the last step only")
 	assert.Contains(t, out, "v1.0.0 promoted to ACTIVE")
 }
+
+// enrollment-key revoke posts to the key's revoke route and says so.
+func TestEnrollmentKeyRevoke(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Method + " " + r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	var err error
+	out := stdout(t, func() {
+		err = runCLI(t, srv.URL, "k", "enrollment-key", "revoke", "1b2c3d4e-0000-4000-8000-000000000001")
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "POST /api/v1/enrollment-keys/1b2c3d4e-0000-4000-8000-000000000001/revoke", got)
+	assert.Contains(t, out, "Enrollment key revoked")
+}
