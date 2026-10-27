@@ -125,6 +125,16 @@ func TestSetKeyFromStdin(t *testing.T) {
 	assert.Equal(t, "http://localhost:28080", LoadFileConfig().Server)
 	require.NoError(t, run("", "key-from-arg"))
 
+	// What a pipe or a file can carry: CRLF line ends and a UTF-8 BOM
+	// (Windows PowerShell 5.1 pipes add one).
+	for _, in := range []string{"k-plain\n", "k-plain\r\n", "\ufeffk-plain\n", "\ufeffk-plain\r\n", "k-plain"} {
+		require.NoError(t, run(in))
+		assert.Equal(t, "k-plain", LoadFileConfig().APIKey, "input %q", in)
+	}
+	require.NoError(t, run("", "\ufeffk-arg"))
+	assert.Equal(t, "k-arg", LoadFileConfig().APIKey, "an argument pasted with a BOM")
+	require.NoError(t, run("", "key-from-arg"))
+
 	err = run("\n")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no API key")

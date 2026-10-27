@@ -113,3 +113,28 @@ func TestClient_UnauthorizedHint(t *testing.T) {
 	assert.Contains(t, err.Error(), "fleetml config set-key")
 	assert.Contains(t, err.Error(), "unauthorized by "+srv.URL, "names the server that refused")
 }
+
+// Without any key the 401 says where Get started keeps it; an unreachable
+// server says how the CLI picks the server. Both keep their first words.
+func TestClient_ErrorHints(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": map[string]string{"code": "UNAUTHORIZED", "message": "missing API key"}})
+	}))
+	defer srv.Close()
+	err := NewClient(srv.URL).Get("/x", nil)
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "unauthorized by "+srv.URL))
+	assert.Contains(t, err.Error(), "~/.fleetml.env", "no key at all: where Get started saved it")
+
+	withKey := NewClient(srv.URL)
+	withKey.SetAPIKey("wrong")
+	err = withKey.Get("/x", nil)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "no API key")
+
+	err = NewClient("http://127.0.0.1:1").Get("/x", nil)
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "server unavailable: "))
+	assert.Contains(t, err.Error(), "FLEETML_SERVER")
+}

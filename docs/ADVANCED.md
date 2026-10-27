@@ -61,8 +61,10 @@ building the server and dashboard images; the 3 minutes start after the
 build, when the stack starts. Look at what step 2 printed above the message:
 
 - `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
-  Windows, `bind: An attempt was made to access a socket in a way forbidden
-  by its access permissions`): another program holds that port, and the
+  Windows, `Ports are not available: exposing port TCP 0.0.0.0:<port> ...`
+  ending in `bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
+  for a port a Windows program holds, or in `bind: An attempt was made to access a socket in a way forbidden by its access permissions`
+  for a port Windows reserves): another program holds that port, and the
   container that needs it stays `Created`
   (`docker compose -f deploy/docker-compose.prod.yml ps -a` shows it). Move
   the port: step 2 already saved the settings file, so add the port to it as

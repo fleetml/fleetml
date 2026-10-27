@@ -102,7 +102,8 @@ func newConfigCmd() *cobra.Command {
 					return err
 				}
 			}
-			key = strings.TrimSpace(key)
+			// A pipe or a file may bring CRLF and a UTF-8 BOM (Windows PowerShell 5.1).
+			key = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(key), "\ufeff"))
 			if key == "" {
 				return errors.New("no API key: type or paste it at the prompt, pipe it in, or pass it as the argument")
 			}

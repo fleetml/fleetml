@@ -196,9 +196,10 @@ jobs:
         run: |
           Select-String -Path "$env:JAVA_HOME\release" -Pattern JAVA_VERSION
           if (-not (Select-String -Quiet -Path "$env:JAVA_HOME\release" -Pattern 'JAVA_VERSION="17\.')) { throw "JAVA_HOME is not a JDK 17" }
-      # The guide's gradlew.bat line as written, with a key and a dotted host
-      # in quotes (PowerShell cuts an unquoted -Pname=192.168.1.23 at the
-      # first dot), in PowerShell 7 and in Windows PowerShell 5.1; the
+      # The quoting of the guide's gradlew.bat line (not the line itself: this
+      # builds with assembleDebug and the key as a -P property, with no phone),
+      # a dotted host in quotes (PowerShell cuts an unquoted -Pname=192.168.1.23
+      # at the first dot), in PowerShell 7 and in Windows PowerShell 5.1; the
       # generated network config must carry the whole address.
       - name: gradlew.bat assembleDebug (PowerShell 7)
         shell: pwsh

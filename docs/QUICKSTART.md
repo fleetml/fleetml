@@ -196,8 +196,16 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", "$env:USERPROFILE\.fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
    ```
 
-   and its entry in the user `Path` (Settings, System, About, Advanced
-   system settings, Environment Variables). WSL and Docker Desktop stay.
+   then its entry in the user `Path`, and the Windows-side clone if you made
+   one for the Android steps (`Remove-Item -Recurse -Force <its folder>`):
+
+   ```powershell
+   [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne "$env:LOCALAPPDATA\fleetml" }) -join ';', 'User')
+   ```
+
+   The images step 2 built live in Docker Desktop and go with
+   `docker image prune` or Docker Desktop's Images page. WSL and Docker
+   Desktop stay.
 
 How it fits together, in more detail:
 
@@ -356,7 +364,9 @@ program, also when it is started from a terminal. The CLI keeps its settings in 
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
-`fleetml config set-key` (it asks for the key), which saves the key in
+`fleetml config set-key` (it asks for the key) and, if the stack's REST port
+is not the default, `fleetml config set server http://localhost:<REST port>`
+(the [On Windows](#on-windows) block reads it from WSL), which save them in
 `%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
 prints the same projects as in WSL (before the tour, the `first-<time>` project of Get started's step 4). Pushing
 from Windows works too, because Docker Desktop also publishes the object

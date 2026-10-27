@@ -48,7 +48,10 @@ func (c *Client) authorize(req *http.Request) {
 
 // errUnauthorized explains how to fix a 401 and names the server that
 // refused, since a key that is right for another server reads the same.
-func errUnauthorized(server, serverMsg string) error {
+func errUnauthorized(server, serverMsg string, haveKey bool) error {
+	if !haveKey {
+		serverMsg += "; no API key is set: Get started saved the admin key in ~/.fleetml.env (`source ~/.fleetml.env && export FLEETML_API_KEY=$FLEETML_ADMIN_KEY`)"
+	}
 	return fmt.Errorf("unauthorized by %s (%s): set an admin API key for that server with `fleetml config set-key` or FLEETML_API_KEY, "+
 		"or point the CLI at the right server (FLEETML_SERVER, `fleetml config set server <URL>` or --server)", server, serverMsg)
 }
@@ -112,7 +115,7 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("server unavailable: %w", err)
+		return fmt.Errorf("server unavailable: %w (is it running? FLEETML_SERVER, `fleetml config set server <URL>` or --server pick the server)", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -135,7 +138,7 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 
 	if apiResp.Error != nil {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return errUnauthorized(c.baseURL, apiResp.Error.Message)
+			return errUnauthorized(c.baseURL, apiResp.Error.Message, c.apiKey != "")
 		}
 		return fmt.Errorf("%s", apiResp.Error.Message)
 	}
@@ -158,7 +161,7 @@ func (c *Client) GetRaw(path string) (json.RawMessage, error) {
 	c.authorize(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("server unavailable: %w", err)
+		return nil, fmt.Errorf("server unavailable: %w (is it running? FLEETML_SERVER, `fleetml config set server <URL>` or --server pick the server)", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
