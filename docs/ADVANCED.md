@@ -123,8 +123,8 @@ step 4 again, then `docker rm -f fleetml-agent` and step 5). The
   says which; `export ANDROID_SERIAL=<serial>` from `adb devices` and run
   step 5 again.
 
-**The iPhone never shows up** (iOS step 6c says `No new device after 3
-minutes`): step 6 lists what each error means. The simulator (iOS step 5
+**The iPhone never shows up** (iOS step 6c says `The iPhone has not
+checked in after 3 minutes`): step 6 lists what each error means. The simulator (iOS step 5
 says `Not active after 2 minutes`):
 `xcrun simctl spawn $SIM log show --last 5m --style compact --predicate 'subsystem == "com.fleetml.sdk"'`
 shows the SDK's lines, as above.

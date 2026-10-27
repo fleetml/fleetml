@@ -47,6 +47,7 @@ struct ContentView: View {
 
     private var status: String {
         guard FleetML.isInitialized else { return "Not configured" }
+        if state.deviceID == nil, let error = state.registrationError { return "Not registered · \(error)" }
         let reachability = state.connected.map { $0 ? "online" : "offline" } ?? "connecting"
         return "Device \(state.deviceID.map { String($0.prefix(8)) } ?? "(registering)") · \(reachability)"
     }

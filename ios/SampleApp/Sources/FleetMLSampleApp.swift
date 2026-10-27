@@ -35,6 +35,8 @@ final class AppState: ObservableObject, FleetMLDelegate {
     @Published private(set) var log: [String] = []
     @Published private(set) var connected: Bool?
     @Published private(set) var deviceID: String?
+    /// Why the last registration attempt failed, until one succeeds.
+    @Published private(set) var registrationError: String?
     @Published private(set) var activeModels: [ActiveModel] = []
     @Published private(set) var result = ""
 
@@ -154,17 +156,24 @@ final class AppState: ObservableObject, FleetMLDelegate {
     }
 
     func fleetML(registered deviceID: String) {
+        DispatchQueue.main.async { self.registrationError = nil }
         note("Registered as \(deviceID)")
         refresh()
     }
 
     func fleetML(connectionChanged connected: Bool) {
-        note(connected ? "Server reachable" : "Server unreachable (offline)")
+        // Before the first registration connectionFailed says why (a refused key is
+        // not a network problem), so only a registered device is noted as unreachable.
+        if connected || deviceID != nil { note(connected ? "Server reachable" : "Server unreachable (offline)") }
         DispatchQueue.main.async { self.connected = connected }
         refresh()
     }
 
     func fleetML(connectionFailed error: Error) {
-        note("Cannot register: \(error)")
+        let reason = String(describing: error)
+        DispatchQueue.main.async {
+            self.registrationError = reason.contains("unauthenticated") ? "key refused" : "server unreachable"
+        }
+        note("Cannot register: \(reason)")
     }
 }

@@ -449,11 +449,21 @@ start and again whenever the error changes (registration is retried every
 10 seconds). `connectionFailed` is for registration only: a device that has
 registered before and cannot reach the server reports it with
 `fleetML(connectionChanged: false)` and the log line `Heartbeat failed: ...`
-(below).
+(below). A new host, port or enrollment key in the app's configuration
+counts as a new server: the SDK registers again (with the same device ID),
+so an unreachable new address reports through `connectionFailed` like a
+first registration, and the cached model stays active meanwhile.
 
 A wrong host or port, or a server that is not running, reads like
 `deadlineExceeded (Connection errors: ... Connection refused)`; a wrong
-enrollment key is refused by the server as `unauthenticated`. The SDK also
+enrollment key is refused by the server as `unauthenticated`, on a device
+that has not registered with that server before. A device that has keeps
+its project whatever the key, by design (a rotated or revoked key must not
+lock devices out): its registration, in the Keychain, survives an uninstall,
+and the server accepts its saved token. A valid key of another project
+moves it there; to start it from nothing, remove the device
+(`curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>"`)
+or call `FleetML.reset()` in the app. The SDK also
 logs to the unified log with subsystem `com.fleetml.sdk` and category
 `FleetML`: at info level the registration, each download (model, version,
 bytes), each validation result and each activation, at warning level every
@@ -854,8 +864,13 @@ start and the next heartbeat 60 seconds after it), and step 7 rolls out
 `Secrets.xcconfig`, then build, install and launch again with the
 `xcodebuild` and `simctl` lines. The cached 2.0.0 is ready at once
 (`FleetML model ready: iris 2.0.0`), and `FleetML connected: false` follows
-about ten seconds later, with the `Heartbeat failed` line above in the log.
-Set the port back and rebuild to reconnect.
+about ten seconds later. A new port counts as a new server, so the log shows
+`Registration failed: deadlineExceeded (Connection errors: ... Connection refused)`
+(the app: `Cannot register: ...`), not `Heartbeat failed`, while the cached
+model keeps serving. Set the port back and rebuild to reconnect with the
+saved registration (same device ID). Stopping the server instead
+(`docker compose -f deploy/docker-compose.prod.yml stop server`, then `start server`)
+shows the `Heartbeat failed` line.
 
 ## Production
 
