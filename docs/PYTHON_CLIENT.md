@@ -315,7 +315,7 @@ example), the way most list endpoints do.
 | `fm.devices.get(device_id)` | `fleetml device get` | One device |
 | `fm.telemetry.summary(version_id)` | `fleetml telemetry summary` | The last day's telemetry of a version: latency and confidence over its INFERENCE events, counts over all |
 | `fm.telemetry.events(version_id=None, device_id=None, event_type=None, *, limit=None, offset=None)` | `fleetml telemetry events` | The last day's events, newest first; `confidence_score` is `None` for an event that reported none (a MODEL_LOAD, for example) |
-| `fm.experiments.create(project, name, control, treatment, metric="latency", split=50, auto_conclude=False, target_selector=None, min_sample_size=None)` | `fleetml experiment create` | Creates an A/B experiment between two version IDs |
+| `fm.experiments.create(project, name, control, treatment, metric="latency", split=50, auto_conclude=False, target_selector=None, min_sample_size=None)` | `fleetml experiment create` | Creates an A/B experiment between two version IDs of `project` (another project's version: `VALIDATION_ERROR`; `split` 1 to 99) |
 | `fm.experiments.start(experiment_id)` | `fleetml experiment start` | Starts it |
 | `fm.experiments.get(experiment_id)`, `.list(*, project=None, limit=None, offset=None)` | `fleetml experiment get`, `list` | One experiment, or the list |
 | `fm.experiments.pause(experiment_id)`, `.resume(experiment_id)` | `fleetml experiment pause`, `resume` | Holds it and lets it go on |

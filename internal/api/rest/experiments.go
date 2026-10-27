@@ -46,7 +46,7 @@ type createExperimentRequest struct {
 	ControlVersionID   *uuid.UUID        `json:"control_version_id" binding:"required"`
 	TreatmentVersionID *uuid.UUID        `json:"treatment_version_id" binding:"required"`
 	TrafficPercent     int               `json:"traffic_percent"`
-	SplitRatio         int               `json:"split_ratio"`
+	SplitRatio         *int              `json:"split_ratio"` // left out: 50
 	TargetSelector     map[string]string `json:"target_selector"`
 	PrimaryMetric      string            `json:"primary_metric"`
 	MinSampleSize      int               `json:"min_sample_size"`
@@ -70,7 +70,7 @@ func (h *ExperimentHandler) create(c *gin.Context) {
 	exp, err := h.service.Create(c.Request.Context(), experiment.CreateInput{
 		ProjectID: *req.ProjectID, Name: req.Name, Description: req.Description,
 		ControlVersionID: *req.ControlVersionID, TreatmentVersionID: *req.TreatmentVersionID,
-		TrafficPercent: req.TrafficPercent, SplitRatio: req.SplitRatio,
+		TrafficPercent: req.TrafficPercent, SplitRatio: splitRatio(req.SplitRatio),
 		TargetSelector: req.TargetSelector, PrimaryMetric: req.PrimaryMetric,
 		MinSampleSize: req.MinSampleSize, ConfidenceLevel: req.ConfidenceLevel,
 		AutoConclude: req.AutoConclude, MaxDuration: req.MaxDuration, CreatedBy: req.CreatedBy,
@@ -82,6 +82,19 @@ func (h *ExperimentHandler) create(c *gin.Context) {
 	respondData(c, http.StatusCreated, exp)
 }
 
+// splitRatio passes a split_ratio that was left out as 0 (the service's 50)
+// and one sent as 0 as -1, which the service refuses like any value outside
+// 1-99.
+func splitRatio(v *int) int {
+	switch {
+	case v == nil:
+		return 0
+	case *v == 0:
+		return -1
+	}
+	return *v
+}
+
 func (h *ExperimentHandler) list(c *gin.Context) {
 	limit, offset, ok := parsePagination(c, maxPageSize)
 	if !ok {
@@ -89,9 +102,12 @@ func (h *ExperimentHandler) list(c *gin.Context) {
 	}
 	var projectID *uuid.UUID
 	if v := c.Query("project_id"); v != "" {
-		if id, err := uuid.Parse(v); err == nil {
-			projectID = &id
+		id, err := uuid.Parse(v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "project_id must be a UUID")
+			return
 		}
+		projectID = &id
 	}
 	exps, total, err := h.service.List(c.Request.Context(), projectID, limit, offset)
 	if err != nil {

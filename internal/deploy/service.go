@@ -77,6 +77,10 @@ func requireDeployable(ctx context.Context, v VersionChecker, versionID uuid.UUI
 		return fmt.Errorf("checking variants: %w", err)
 	}
 	if n == 0 {
+		// No variant at all may mean no such version: that is not found.
+		if owner, err := v.VersionProject(ctx, versionID); err == nil && owner == uuid.Nil {
+			return fmt.Errorf("%w: model version %s", ErrNotFound, versionID)
+		}
 		return fmt.Errorf("%w: model version %s has no READY variant (upload a blob and finalize it first)", ErrNotDeployable, versionID)
 	}
 	return nil

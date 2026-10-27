@@ -34,9 +34,15 @@ type Repo interface {
 	GetCohortStats(ctx context.Context, experimentID, versionID uuid.UUID, since time.Time, cohort string) (*CohortStats, error)
 }
 
-// VersionChecker reports how many READY variants a model version has.
+// VersionChecker answers what Create checks about the project and the arms'
+// versions (the deployment service's checker).
 type VersionChecker interface {
 	ReadyVariantCount(ctx context.Context, versionID uuid.UUID) (int, error)
+	// ProjectExists reports whether the project is there.
+	ProjectExists(ctx context.Context, projectID uuid.UUID) (bool, error)
+	// VersionProject is the project a model version belongs to, or uuid.Nil
+	// if there is no such version.
+	VersionProject(ctx context.Context, versionID uuid.UUID) (uuid.UUID, error)
 }
 
 // Service provides business logic for experiments.
@@ -85,6 +91,28 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Experiment, e
 		return nil, fmt.Errorf("%w: control and treatment must be different versions", ErrInvalidInput)
 	}
 	if s.versions != nil {
+		// An experiment is part of its project: an unknown project is not
+		// found, and an arm must be a version of this project (as for
+		// deployments), or its devices would run another project's model.
+		ok, err := s.versions.ProjectExists(ctx, input.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("checking project: %w", err)
+		}
+		if !ok {
+			return nil, fmt.Errorf("%w: project %s", ErrNotFound, input.ProjectID)
+		}
+		for _, v := range []uuid.UUID{input.ControlVersionID, input.TreatmentVersionID} {
+			owner, err := s.versions.VersionProject(ctx, v)
+			if err != nil {
+				return nil, fmt.Errorf("checking the version's project: %w", err)
+			}
+			if owner == uuid.Nil {
+				return nil, fmt.Errorf("%w: model version %s", ErrNotFound, v)
+			}
+			if owner != input.ProjectID {
+				return nil, fmt.Errorf("%w: model version %s belongs to another project; run the experiment in that project, or push the model to this one", ErrInvalidInput, v)
+			}
+		}
 		for _, v := range []uuid.UUID{input.ControlVersionID, input.TreatmentVersionID} {
 			n, err := s.versions.ReadyVariantCount(ctx, v)
 			if err != nil {
@@ -98,8 +126,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Experiment, e
 	if input.TrafficPercent <= 0 {
 		input.TrafficPercent = 100
 	}
-	if input.SplitRatio <= 0 || input.SplitRatio >= 100 {
+	switch {
+	case input.SplitRatio == 0:
 		input.SplitRatio = 50
+	case input.SplitRatio < 1 || input.SplitRatio > 99:
+		return nil, fmt.Errorf("%w: split_ratio must be 1-99 (the treatment's share in percent), got %d", ErrInvalidInput, input.SplitRatio)
 	}
 	metric := strings.ToLower(strings.TrimSpace(input.PrimaryMetric))
 	if metric == "" {

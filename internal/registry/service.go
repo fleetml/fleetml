@@ -27,7 +27,7 @@ var (
 	// validTransitions maps current status to allowed next statuses.
 	validTransitions = map[string]map[string]bool{
 		"DRAFT":    {"STAGED": true, "ARCHIVED": true},
-		"STAGED":   {"ACTIVE": true},
+		"STAGED":   {"ACTIVE": true, "ARCHIVED": true},
 		"ACTIVE":   {"ARCHIVED": true},
 		"ARCHIVED": {},
 	}
