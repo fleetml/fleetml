@@ -108,7 +108,7 @@ and keep it open until the end.
 
    <!-- golden: quickstart-cleanup cleanup -->
    ```bash
-   kill $SIM 2>/dev/null; docker rm -f fleetml-agent
+   kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
    rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
@@ -344,7 +344,7 @@ and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
 `fleetml config set-key <the admin key>`, which saves the key in
 `%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
-prints the same projects as in WSL (`No results.` before the tour). Pushing
+prints the same projects as in WSL (before the tour, the `first-<time>` project of Get started's step 4). Pushing
 from Windows works too, because Docker Desktop also publishes the object
 store's port on Windows. With a clone on the Windows side (which the
 Android SDK's Windows steps use anyway), from its folder:
@@ -399,7 +399,8 @@ export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_K
 fleetml project list
 ```
 
-`fleetml project list` prints `No results.` on the new server. On a server
+`fleetml project list` lists the `first-<time>` project of Get started's
+step 4 (`No results.` on a server where you skipped it). On a server
 someone else also tours, add `--seed <your name>` to both `fleetml simulate`
 lines: the same seed gives the same 20 device identities, which register
 into one project only.

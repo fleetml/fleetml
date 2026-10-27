@@ -103,15 +103,17 @@ and keep it open until the end.
    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
-7. **Clean up**: the device, the server and all its data, and the saved
-   secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would keep
-   the data):
+7. **Clean up**, when you are done (after the
+   [tour](docs/QUICKSTART.md#tour), if you take it: this also stops its
+   simulator and Grafana): the device, the server and all its data, and the
+   saved secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would
+   keep the data):
 
-   <!-- golden: cleanup cleanup -->
+   <!-- golden: quickstart-cleanup cleanup -->
    ```bash
-   docker rm -f fleetml-agent
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v
-   rm -rf fleetml-agent ~/.fleetml.env
+   kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
+   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v
+   rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
    ```
 
    You should see `Network <stack>_default  Removed`.

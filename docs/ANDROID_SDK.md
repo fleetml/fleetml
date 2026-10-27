@@ -1048,7 +1048,7 @@ the key on its config screen. (Without `-PfleetmlDebugHost` the screen shows `10
 which is the emulator's address for the machine and does not work on a
 phone.) Logcat then shows the lines of [Over USB](#over-usb), among them
 `Registered as device <device ID>`, `Model iris 1.0.0 passed validation`
-and `Model iris 1.0.0 is active`, and the app's screen `Model ready: iris 1.0.0`.
+and `Model iris 1.0.0 is active`, and the app's screen **Active model: iris 1.0.0** (its log line reads `Model ready: iris 1.0.0`).
 `adb logcat` runs until Ctrl+C: stop it (or open a second window) before
 the next steps.
 A rebuild with another key connects with it, also on a phone where the
