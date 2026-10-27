@@ -46,9 +46,11 @@ func (c *Client) authorize(req *http.Request) {
 	}
 }
 
-// errUnauthorized explains how to fix a 401.
-func errUnauthorized(serverMsg string) error {
-	return fmt.Errorf("unauthorized (%s): set an admin API key with `fleetml config set-key <key>` or FLEETML_API_KEY", serverMsg)
+// errUnauthorized explains how to fix a 401 and names the server that
+// refused, since a key that is right for another server reads the same.
+func errUnauthorized(server, serverMsg string) error {
+	return fmt.Errorf("unauthorized by %s (%s): set an admin API key for that server with `fleetml config set-key` or FLEETML_API_KEY, "+
+		"or point the CLI at the right server (FLEETML_SERVER, `fleetml config set server <URL>` or --server)", server, serverMsg)
 }
 
 // Get performs a GET request and unmarshals the data field.
@@ -133,7 +135,7 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 
 	if apiResp.Error != nil {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return errUnauthorized(apiResp.Error.Message)
+			return errUnauthorized(c.baseURL, apiResp.Error.Message)
 		}
 		return fmt.Errorf("%s", apiResp.Error.Message)
 	}

@@ -138,8 +138,11 @@ dashboard on 8081, for example), then open the address step 6 prints.
 
 **`fleetml` is not found** in a new terminal: the `export PATH` line of step
 3 lasts for one terminal ([Installing the tools](#installing-the-tools)).
-**`Error: ... 401`** from the CLI in a new terminal: `source ~/.fleetml.env`
-and the `export FLEETML_SERVER` line of step 4 again.
+**`Error: unauthorized by http://localhost:<port>`** from the CLI in a new
+terminal: `source ~/.fleetml.env` and the `export FLEETML_SERVER` line of
+step 4 again; the URL in the message is the server the CLI asked, so a port
+there that is not your stack's means `FLEETML_SERVER` (or
+`fleetml config set server`) points elsewhere.
 
 ## The settings file, ~/.fleetml.env
 

@@ -111,4 +111,5 @@ func TestClient_UnauthorizedHint(t *testing.T) {
 	err := NewClient(srv.URL).Get("/x", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fleetml config set-key")
+	assert.Contains(t, err.Error(), "unauthorized by "+srv.URL, "names the server that refused")
 }

@@ -189,10 +189,11 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    box. If the page does not open, see
    [Troubleshooting](ADVANCED.md#troubleshooting).
 7. Clean up: step 7 of [Get started](#get-started), in the Ubuntu shell.
-   On the Windows side, in PowerShell, the CLI and its two downloads:
+   On the Windows side, in PowerShell, the CLI, its saved settings (with the
+   admin key, if you saved it with `set-key`) and its two downloads:
 
    ```powershell
-   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
+   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", "$env:USERPROFILE\.fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
    ```
 
    and its entry in the user `Path` (Settings, System, About, Advanced
@@ -259,7 +260,12 @@ reads it from the same `wsl` line, so the key is in no command history:
 
 ```powershell
 wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' | fleetml config set-key
+fleetml config set server "http://localhost:$(wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s ${FLEETML_REST_PORT:-18080}')"
 ```
+
+The second line saves the stack's REST port with it (the CLI's default is
+the quickstart's port), so a new window reaches the same server; a key that
+another server refuses names that server (`unauthorized by http://...`).
 
 What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
 on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in

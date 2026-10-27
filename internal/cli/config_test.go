@@ -110,9 +110,22 @@ func TestSetKeyFromStdin(t *testing.T) {
 	}
 	require.NoError(t, run("key-from-stdin\n"))
 	assert.Equal(t, "key-from-stdin", LoadFileConfig().APIKey)
+	saved, err := os.ReadFile(configPath())
+	require.NoError(t, err)
+	assert.NotContains(t, string(saved), "server:", "a default server is not saved as if it had been set")
 	require.NoError(t, run("", "key-from-arg"))
 	assert.Equal(t, "key-from-arg", LoadFileConfig().APIKey)
-	err := run("\n")
+
+	// A server set with `config set server` stays when the key changes.
+	root := NewRootCmd()
+	root.SetOut(io.Discard)
+	root.SetArgs([]string{"config", "set", "server", "http://localhost:28080"})
+	require.NoError(t, root.Execute())
+	require.NoError(t, run("another-key\n"))
+	assert.Equal(t, "http://localhost:28080", LoadFileConfig().Server)
+	require.NoError(t, run("", "key-from-arg"))
+
+	err = run("\n")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no API key")
 	assert.Equal(t, "key-from-arg", LoadFileConfig().APIKey)
