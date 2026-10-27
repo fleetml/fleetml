@@ -278,6 +278,18 @@ source ~/.fleetml.env
 docker compose -f deploy/docker-compose.prod.yml up -d
 ```
 
+**Back to `localhost`**, for the USB, emulator and simulator paths again on
+a stack you keep (Get started's clean-up removes the file anyway), in the
+same terminal and clone:
+
+```bash
+. ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=localhost:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
+```
+
+You should see `Container <stack>-server-1  Started`; downloads then go to
+`localhost` again, which the USB forwards and the emulator's forward reach.
+
 From then on downloads go to the LAN address for every device, the USB,
 emulator and simulator paths included, so those need that address allowed
 too (the guides say how). This shows the value in use:
@@ -326,8 +338,8 @@ install; nothing goes through it afterwards.
 
 3. **Build the sample app with that address, install it, and start it.**
    This removes the app from step 5 and the USB forwards first, so the app
-   starts afresh and really uses Wi-Fi (it registers again, as a second
-   device of the project, and downloads the model from the LAN address):
+   starts afresh and really uses Wi-Fi (it registers again, with the same
+   device ID, and downloads the model from the LAN address):
 
    ```bash
    adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
@@ -363,6 +375,14 @@ Troubleshooting:
   `docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT`.
 - `In the background: next sync in 3600s`: the phone locked or the app
   left the screen. Unlock it and run step 3's last two lines again.
+- `Registration failed: UNAUTHENTICATED: ... this device is already registered`:
+  the phone was registered in another project before (Get started's step 4
+  run again makes a new project and key), and step 3's reinstall lost its
+  device token. Remove the old device record as the
+  [Emulator runbook](ANDROID_SDK.md#emulator-runbook) says (its
+  `this device is already registered` entry; `fleetml device list` without
+  `--project` lists the devices of every project), then run step 3's last
+  two lines again.
 
 ## Android on Windows: Android Studio
 

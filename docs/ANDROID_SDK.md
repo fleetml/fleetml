@@ -639,8 +639,8 @@ maintainers run it by hand.
    downloads go there instead, also over USB: the phone must be on that
    network and the debug network security config must allow the address, or
    every download fails with `CLEARTEXT communication to <LAN IP> not permitted`;
-   or set it back to `localhost` and the model files' port in
-   `~/.fleetml.env` and restart the server. This shows the value in use:
+   or put it [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address)
+   (the block there). This shows the value in use:
 
    ```bash
    docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
@@ -832,6 +832,7 @@ the emulator (the name `adb devices` lists) when a phone is attached too:
 export ANDROID_SERIAL=emulator-5554
 adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
 ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2
+adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
 ```
 
 Without the forward the app registers and then logs
@@ -936,9 +937,10 @@ the phone or emulator was registered in another project before and the app
 lost its device token since (an uninstall, `adb shell pm clear`), so it
 comes back with only a key of another project, which the server refuses: a
 key alone must not take a known device over. Remove the old device record
-with the admin key, then start the app again. Its ID is in the old
-project's list (`fleetml device list --project <old project ID>`, the row
-with your phone's Chipset; the dashboard's Devices page shows it too):
+with the admin key, then start the app again. Its ID is in
+`fleetml device list` (without `--project` it lists the devices of every
+project: the row with your phone's Chipset, a device has one record; the
+dashboard's Devices page shows it too):
 
 ```bash
 curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>" && echo removed
@@ -1104,7 +1106,7 @@ and a stale host as
    on the LAN address, downloads go there also over USB and on the emulator,
    so those need `-PfleetmlDebugHost=<LAN IP>` too (and the host typed on
    the screen: `localhost` over USB, `10.0.2.2` on the emulator), or the
-   endpoint back to `localhost` and the model files' port in `~/.fleetml.env`.
+   endpoint [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address).
 
 **On the emulator**: the same PowerShell lines with
 `$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:$s3 tcp:$s3`
@@ -1116,9 +1118,9 @@ instead of PowerShell: [ADVANCED.md](ADVANCED.md#android-on-windows-android-stud
 **When you are done**: `fleetml project delete $P` (it asks for no
 confirmation and cannot be undone), `adb uninstall com.fleetml.sample`,
 `adb reverse --remove-all`, `Remove-NetFirewallRule -DisplayName FleetML` in
-an administrator PowerShell, and in the Ubuntu shell `S3_PUBLIC_ENDPOINT` back
-to `localhost` and your model files' port in `~/.fleetml.env`, then the
-server restarted as in step 2.
+an administrator PowerShell, and in the Ubuntu shell the download address
+[back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address)
+(the block there restarts the server).
 
 ## Telemetry
 
