@@ -268,14 +268,18 @@ the quickstart's port), so a new window reaches the same server; a key that
 another server refuses names that server (`unauthorized by http://...`).
 
 What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
-on GitHub's Windows runner: the Run FleetML block and tour sections 1 to 3 in
+on GitHub's `windows-latest` runner (a Windows Server; the `windows-11-arm`
+runner has no WSL 2, so there its WSL job ends at once with a
+"WSL 2 unavailable" warning and checks only the CLI): the Run FleetML block and tour sections 1 to 3 in
 WSL 2 Ubuntu, with Docker Engine installed inside the distribution (Docker
 Desktop cannot be installed on the runner) and WSL's own `localhost`
 forwarding; `/readyz` and `fleetml project list` from PowerShell against that
 server; and the PowerShell block of [Get the CLI](#get-the-cli). In WSL it
 builds the CLI from source (the tour's first block) rather than installing
 the Linux release as Get started's step 3 does. Docker Desktop itself (steps 1 and 3, the
-ports it publishes) and the port-80 override are not exercised by CI.
+ports it publishes), the port-80 override, Get started's steps 3 and 5 to 7
+in WSL, the Android tools and the firewall rule are not exercised by CI;
+this page is how they are done by hand.
 
 ## Get the CLI
 
@@ -545,7 +549,7 @@ A canary of 2.0.0 for 25% of the fleet, with a health gate: more than 5% errors
 over at least 30 events from the canary cohort rolls it back. Each device is
 in the cohort or not by a hash of its ID and the deployment's ID, decided on
 its own and kept for the deployment's life, so the cohort is about 25%: of 20
-devices typically 2 to 8. The deploy loop runs every 30 seconds,
+devices usually 2 to 10. The deploy loop runs every 30 seconds,
 so the rollback comes within a minute, often within seconds, since the
 simulator's devices report quickly; the loop below gives up after 5 minutes:
 

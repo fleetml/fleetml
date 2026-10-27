@@ -81,7 +81,9 @@ build, when the stack starts. Look at what step 2 printed above the message:
   `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz` prints something
   other than FleetML's JSON (an error page, or nothing): another program
   listens on that port on `localhost` only, which Docker on macOS and
-  Windows does not detect. Move the port as in the entry above.
+  Windows does not detect. Move the port as in the entry above. (On a Mac
+  whose `localhost` resolves to `::1` first, Docker answers there and the
+  start succeeds; the other program then only answers `127.0.0.1`.)
 - Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
   shows which container stopped, and
   `docker compose -f deploy/docker-compose.prod.yml logs server` why.
@@ -203,7 +205,8 @@ source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
 (. ~/.fleetml.env; env | grep -E '^(FLEETML_[A-Z0-9_]*PORT|S3_PUBLIC_ENDPOINT)=' | sort)
 ```
 
-You should see the stack's containers `Started`, then the ports and the
+You should see the containers whose settings changed `Started` (the others
+`Running`), then the ports and the
 download address in effect, one per line (`FLEETML_DASHBOARD_PORT=8081`,
 `FLEETML_S3_PUBLIC_PORT=29100`, `S3_PUBLIC_ENDPOINT=localhost:29100`, and the
 two you did not move). Then go on with Get started's step 3 (or
