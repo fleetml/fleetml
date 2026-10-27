@@ -446,8 +446,11 @@ two ways out:
     -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
   read -rs FLEETML_ENROLLMENT_KEY
   printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
+  sudo systemctl restart fleetml-agent
   ```
 
+  The agent reads its config at start, so the last line restarts it (an
+  agent you run in a shell instead: stop it and start it again).
   `read -rs` waits for the enrollment key (paste it and press Enter; it is
   not shown), and `printf`, a shell builtin, hands it to `tee` on its input,
   so the key is on no command line and in no shell history. At start the

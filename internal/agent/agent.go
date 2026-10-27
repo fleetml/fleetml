@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -95,8 +97,8 @@ type Agent struct {
 	reconfigured chan struct{}
 	// featureBins are the bin edges of each model's features (model ID -> feature -> edges).
 	featureBins map[string]map[string][]float64
-	// downloadFailed holds the variants whose failed download was reported,
-	// so a download failing on every heartbeat is reported once.
+	// downloadFailed holds the variants whose failed download (or move into
+	// models_dir) was reported, so a failure on every heartbeat is reported once.
 	downloadFailed map[string]bool
 
 	// callTimeout and flushTimeout are callTimeout and shutdownFlushTimeout
@@ -158,6 +160,7 @@ func (a *Agent) Close() error { return a.conn.Close() }
 // earlier run stay in place (their `current` symlinks) while the server is
 // unreachable.
 func (a *Agent) Run(ctx context.Context) error {
+	a.forgetMissingModels()
 	for _, m := range a.ActiveModels() {
 		_ = os.Chmod(filepath.Join(m.Active.Dir, modelFile), modelFileMode) // written 0600 before 0.6.0
 		a.log.Info("active model (from the last run)", "model", m.Name, "version", m.Active.Version, "path", a.currentLink(m.Name))
@@ -484,23 +487,19 @@ func (a *Agent) install(ctx context.Context, as *fleetmlv1.ModelAssignment) {
 		if !a.fromDelta(ctx, as, part) {
 			if err := download(ctx, a.http, as.DownloadUrl, part, as.BlobSha256, a.cfg.DownloadHostOverride); err != nil {
 				a.log.Warn("download failed", "model", as.ModelName, "version", as.Version, "error", err)
-				a.mu.Lock()
-				first := !a.downloadFailed[as.VariantId]
-				a.downloadFailed[as.VariantId] = true
-				a.mu.Unlock()
-				if first { // the server shows it as the device's last model event
-					a.report(as.VersionId, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, 0, 0, "", "download failed: "+err.Error())
-				}
+				a.reportFailedOnce(as, "download failed: "+err.Error())
 				return // retried on the next heartbeat
 			}
 			a.log.Info("model downloaded", "model", as.ModelName, "version", as.Version, "bytes", as.BlobSizeBytes)
 		}
 		if err := mkdirAllReadable(dir); err != nil {
 			a.log.Error("creating model directory failed", "error", err)
+			a.reportFailedOnce(as, "creating the model's folder in models_dir failed: "+err.Error())
 			return
 		}
-		if err := os.Rename(part, file); err != nil {
+		if err := moveFile(part, file); err != nil {
 			a.log.Error("moving model into place failed", "error", err)
+			a.reportFailedOnce(as, "moving the model into models_dir failed: "+err.Error())
 			return
 		}
 	}
@@ -581,16 +580,83 @@ func (a *Agent) keepRejected(as *fleetmlv1.ModelAssignment, file string) (string
 		return "", err
 	}
 	kept := filepath.Join(dir, modelFile)
-	if err := os.Rename(file, kept); err != nil { // models_dir may be on another file system
-		data, rerr := os.ReadFile(file)
-		if rerr != nil {
-			return "", errors.Join(err, rerr)
-		}
-		if werr := os.WriteFile(kept, data, 0o600); werr != nil {
-			return "", werr
-		}
+	if err := moveFile(file, kept); err != nil { // models_dir may be on another file system
+		return "", err
 	}
 	return kept, os.Chmod(kept, 0o600)
+}
+
+// reportFailedOnce reports MODEL_LOAD_FAILED for a variant the first time it
+// fails; the server shows it as the device's last model event.
+func (a *Agent) reportFailedOnce(as *fleetmlv1.ModelAssignment, reason string) {
+	a.mu.Lock()
+	first := !a.downloadFailed[as.VariantId]
+	a.downloadFailed[as.VariantId] = true
+	a.mu.Unlock()
+	if first {
+		a.report(as.VersionId, fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED, 0, 0, "", reason)
+	}
+}
+
+// rename is os.Rename; tests replace it to act as another file system.
+var rename = os.Rename
+
+// moveFile moves src to dst. Partial downloads live in state_dir and models
+// go to models_dir, which may be another file system: there the rename fails
+// with EXDEV, and the file is copied next to dst, renamed into place and src
+// removed.
+func moveFile(src, dst string) error {
+	err := rename(src, dst)
+	if err == nil || !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	tmp := dst + ".tmp"
+	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := errors.Join(out.Sync(), out.Close()); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Remove(src)
+}
+
+// forgetMissingModels drops active models whose file is not in models_dir
+// (models_dir changed, or the files were removed), so the next heartbeat
+// downloads them again instead of the agent listing a path that does not exist.
+func (a *Agent) forgetMissingModels() {
+	var gone []string
+	_ = a.store.Update(func(s *State) {
+		for id, m := range s.Models {
+			if m.Active == nil {
+				continue
+			}
+			rel, err := filepath.Rel(a.cfg.ModelsDir, m.Active.Dir)
+			if _, serr := os.Stat(filepath.Join(m.Active.Dir, modelFile)); err == nil && serr == nil && !strings.HasPrefix(rel, "..") {
+				continue
+			}
+			gone = append(gone, m.Name)
+			delete(s.Models, id)
+		}
+	})
+	for _, name := range gone {
+		a.log.Warn("active model not found in models_dir; it is downloaded again", "model", name, "models_dir", a.cfg.ModelsDir)
+	}
 }
 
 // RetryFailed forgets the versions that failed validation or their signature

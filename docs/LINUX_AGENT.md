@@ -391,7 +391,10 @@ level=WARN msg="model failed validation; keeping the current version" model=iris
 with the end of the command's output in `error` ([Where models go](#where-models-go), step 5).
 
 A `transport: authentication handshake failed` error means `tls: true` against
-a server without TLS; `registration failed` with `Unauthenticated` means the
+a server without TLS (in a container whose server name resolves first to an
+address it has no route to, such as `host.docker.internal`, it can read
+`connect: network is unreachable` instead, see
+[Identity and offline behaviour](#identity-and-offline-behaviour)); `registration failed` with `Unauthenticated` means the
 enrollment key is wrong or revoked; `download failed` with
 `connection refused` and `localhost` with the model files' port in the URL means the server's
 `S3_PUBLIC_ENDPOINT` ([Server on another machine](#server-on-another-machine)).
@@ -401,7 +404,10 @@ enrollment key is wrong or revoked; `download failed` with
 Settings come from the YAML file (`-config`), and flags override them
 (`-server`, `-enrollment-key`, `-label key=value`, `-state-dir`,
 `-models-dir`, `-validator`, `-post-activate`, `-telemetry-listen`).
-`FLEETML_ENROLLMENT_KEY` in the environment works too. `-retry-failed`
+`FLEETML_ENROLLMENT_KEY` in the environment works too. `-label` adds to the
+config's labels, and the agent registers again with them: a model whose
+deployment no longer targets the machine's labels is unloaded and its files
+removed. `-retry-failed`
 retries the versions that failed validation right away instead of after the
 hour's wait ([Where models go](#where-models-go), step 5).
 
@@ -412,7 +418,7 @@ hour's wait ([Where models go](#where-models-go), step 5).
 | `enrollment_key` | | Project enrollment key for the first registration |
 | `labels` | `{}` | Labels deployments and experiments target |
 | `state_dir` | `/var/lib/fleetml-agent` | Registration, telemetry queue, partial downloads |
-| `models_dir` | `<state_dir>/models` | Where models are placed (below). The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) |
+| `models_dir` | `<state_dir>/models` | Where models are placed (below), on any file system. The unit runs with `ProtectSystem=strict`, so a folder outside `/var/lib/fleetml-agent` must be added to the unit's `ReadWritePaths=` (a commented line in the unit) and belong to the agent's user (`sudo install -d -o fleetml-agent -g fleetml-agent <folder>`). After a change the agent downloads its models again into the new folder |
 | `validator` | none | Shell command that checks a downloaded model; exit code 0 means valid. `{file}` in the command is replaced by the model's path, and the `FLEETML_MODEL_FILE`, `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` environment variables are set too; use either |
 | `post_activate` | none | Shell command run after a version becomes active, as `fleetml-agent`; under the shipped unit it can write only to `/var/lib/fleetml-agent` ([reloading the inference process](#reloading-the-inference-process-after-an-update)) |
 | `telemetry_listen` | off | Local endpoint for inference events, e.g. `127.0.0.1:9601` |
@@ -455,7 +461,8 @@ For each assignment the agent:
    `Range` request after an interruption, and checks the sha256; when the
    server offers a delta from the version the agent has, only the delta is
    downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates)); a
-   download that fails is retried on every heartbeat and reported once as
+   download that fails, or a model that cannot be put into `models_dir`, is
+   retried on every heartbeat and reported once as
    `MODEL_LOAD_FAILED` with the error, which `fleetml device get` shows as the
    device's `last_model_event`;
 3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,

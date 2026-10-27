@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -446,4 +447,79 @@ func TestRetryFailed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "only the last rejected version is kept")
 	assert.Equal(t, "2.1.0-var-2.1.", entries[0].Name())
+}
+
+// models_dir on another file system than state_dir: the rename of the
+// download fails with EXDEV and the file is copied into place instead. A move
+// that fails anyway is reported once, not on every heartbeat.
+func TestInstallAcrossFileSystems(t *testing.T) {
+	body := []byte("model")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	a, err := New(&Config{Server: "127.0.0.1:1", StateDir: filepath.Join(dir, "state"), ModelsDir: filepath.Join(dir, "other-mount")}, quiet())
+	require.NoError(t, err)
+	defer func() { _ = a.Close() }()
+	fail := false
+	rename = func(oldpath, newpath string) error {
+		if fail {
+			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EACCES}
+		}
+		return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
+	}
+	defer func() { rename = os.Rename }()
+	as := func(v string) *fleetmlv1.ModelAssignment {
+		return &fleetmlv1.ModelAssignment{ModelId: "m1", ModelName: "iris", Version: v, VersionId: "ver-" + v, VariantId: "var-" + v,
+			DownloadUrl: srv.URL, BlobSha256: shaHex(body), Action: fleetmlv1.ModelAssignment_UPDATE}
+	}
+
+	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as("1.0.0")})
+	require.Len(t, a.ActiveModels(), 1)
+	got, err := os.ReadFile(filepath.Join(dir, "other-mount", "iris", "current", "model.bin"))
+	require.NoError(t, err)
+	assert.Equal(t, body, got)
+	leftovers, _ := filepath.Glob(filepath.Join(dir, "state", "downloads", "*"))
+	assert.Empty(t, leftovers, "the partial download is removed after the copy")
+
+	fail = true
+	for i := 0; i < 3; i++ {
+		a.apply(context.Background(), []*fleetmlv1.ModelAssignment{as("2.0.0")})
+	}
+	n := 0
+	for _, e := range a.queue.Peek(100) {
+		if e.Type == fleetmlv1.TelemetryEvent_MODEL_LOAD_FAILED {
+			n++
+			assert.Contains(t, e.ErrorMessage, "moving the model into models_dir failed")
+		}
+	}
+	assert.Equal(t, 1, n, "three heartbeats, one event")
+	assert.Equal(t, "1.0.0", a.ActiveModels()[0].Active.Version)
+}
+
+// After models_dir changes, a model activated in the old folder is not listed
+// as active (its path would not exist): it is forgotten and downloaded again.
+func TestChangedModelsDirForgetsModels(t *testing.T) {
+	body := []byte("model")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	cfg := &Config{Server: "127.0.0.1:1", StateDir: filepath.Join(dir, "state")}
+	a, err := New(cfg, quiet())
+	require.NoError(t, err)
+	a.apply(context.Background(), []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1",
+		VariantId: "var-1", DownloadUrl: srv.URL, BlobSha256: shaHex(body), Action: fleetmlv1.ModelAssignment_LOAD}})
+	require.Len(t, a.ActiveModels(), 1)
+	require.NoError(t, a.Close())
+
+	cfg2 := &Config{Server: "127.0.0.1:1", StateDir: filepath.Join(dir, "state"), ModelsDir: filepath.Join(dir, "new-models")}
+	b, err := New(cfg2, quiet())
+	require.NoError(t, err)
+	defer func() { _ = b.Close() }()
+	b.forgetMissingModels()
+	assert.Empty(t, b.ActiveModels(), "the old folder's model is not listed")
+
+	b.apply(context.Background(), []*fleetmlv1.ModelAssignment{{ModelId: "m1", ModelName: "iris", Version: "1.0.0", VersionId: "ver-1",
+		VariantId: "var-1", DownloadUrl: srv.URL, BlobSha256: shaHex(body), Action: fleetmlv1.ModelAssignment_LOAD}})
+	require.Len(t, b.ActiveModels(), 1)
+	assert.Equal(t, filepath.Join(dir, "new-models", "iris", "1.0.0-var-1"), b.ActiveModels()[0].Active.Dir)
 }
