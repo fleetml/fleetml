@@ -259,9 +259,9 @@ this repository, the latter to work against changes that are not released yet:
 
 | | From GitHub | From a clone |
 |---|---|---|
-| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.2, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
-| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.2")` | `.package(path: "path/to/fleetml")` |
-| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.2` | `path: ../fleetml`, relative to `project.yml` |
+| Xcode | **File → Add Package Dependencies**, paste `https://github.com/fleetml/fleetml`, Dependency Rule **Up to Next Major Version** from 0.10.3, add the **FleetMLSDK** library to the app target | **File → Add Package Dependencies → Add Local…**, pick the clone's root folder, add **FleetMLSDK** to the app target |
+| `Package.swift` | `.package(url: "https://github.com/fleetml/fleetml", from: "0.10.3")` | `.package(path: "path/to/fleetml")` |
+| XcodeGen `project.yml` | `url: https://github.com/fleetml/fleetml` with `from: 0.10.3` | `path: ../fleetml`, relative to `project.yml` |
 
 In a `Package.swift`, the target depends on the **FleetMLSDK** product, and
 `package:` names the dependency by its identity, which Swift Package Manager
@@ -284,7 +284,7 @@ has a whole file:
 packages:
   FleetMLSDK:
     url: https://github.com/fleetml/fleetml
-    from: 0.10.2        # or path: ../fleetml for a clone
+    from: 0.10.3        # or path: ../fleetml for a clone
 targets:
   MyApp:
     dependencies:
@@ -624,7 +624,7 @@ struct MyApp: App {
    packages:
      FleetMLSDK:
        url: https://github.com/fleetml/fleetml
-       from: 0.10.2        # or path: ../fleetml for a clone
+       from: 0.10.3        # or path: ../fleetml for a clone
    targets:
      MyApp:
        type: application
