@@ -107,8 +107,9 @@ step 4 again, then `docker rm -f fleetml-agent` and step 5). The
 
 **The phone never shows `is active`** (Android step 5 says `Not active after
 3 minutes`). `adb logcat -d -s FleetML` shows how far the app got:
-- `In the background: ...`: the phone locked or the screen went off. Unlock
-  it, keep it on, and run step 5's last two lines again.
+- `In the background: ...`: the phone locked, the screen went off or the
+  app left the screen. Unlock it, keep the app in front, and run step 5's
+  last two lines again.
 - `Heartbeat failed: UNAVAILABLE` or nothing after `Starting FleetML`: the
   phone does not reach the server. `adb reverse --list` must show both
   ports; run step 5's two `adb reverse` lines again (a reconnected cable or a

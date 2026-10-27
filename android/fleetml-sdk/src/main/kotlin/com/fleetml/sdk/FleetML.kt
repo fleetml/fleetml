@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Constraints
@@ -221,7 +222,7 @@ internal class FleetMLInstance(
         started = true
         scope.launch {
             // Offline start: what was active last time is usable immediately.
-            models.activeModels().forEach { callback?.onModelReady(it) }
+            models.activeModelsAtStart().forEach { callback?.onModelReady(it) }
             while (registrar.needsRegistration()) {
                 try {
                     registration.registerIfNeeded(::register)
@@ -232,9 +233,18 @@ internal class FleetMLInstance(
                 }
             }
             registered = true
-            when (afterRegistration(foreground)) {
-                AfterRegistration.TIMERS -> startTimers()
-                AfterRegistration.BACKGROUND_JOB -> scheduleBackgroundWork(interrupted = true)
+            if (foreground) {
+                startTimers()
+            } else {
+                // Decided on the main thread, after start()'s post below attached the
+                // observer, from the process's real state: a started process (the
+                // usual cold start) gets its timers from onForeground.
+                Handler(Looper.getMainLooper()).post {
+                    val processStarted = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    if (afterRegistration(foreground, processStarted) == AfterRegistration.BACKGROUND_JOB) {
+                        scheduleBackgroundWork(interrupted = true)
+                    }
+                }
             }
         }
         Handler(Looper.getMainLooper()).post { ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver) }
@@ -349,13 +359,17 @@ internal class FleetMLInstance(
 
 /**
  * What happens once the device is registered: the timers run while the app is
- * in the foreground. Otherwise the app went to the background before its first
- * screen (onStop never came, since the process never started), so nothing would
- * sync until it is opened again: the background job finishes the first sync at
- * once instead. If the app then comes to the foreground, onForeground cancels
- * the job and starts the timers.
+ * in the foreground. A started process that the observer has not reported yet
+ * (a cold start with a stored registration) needs nothing: onForeground starts
+ * the timers. A process that never started (Home pressed before the first
+ * screen: no onStop will come) would not sync until opened again, so the
+ * background job finishes the first sync at once; if the app then comes to the
+ * foreground, onForeground cancels the job and starts the timers.
  */
-internal enum class AfterRegistration { TIMERS, BACKGROUND_JOB }
+internal enum class AfterRegistration { TIMERS, BACKGROUND_JOB, NOTHING }
 
-internal fun afterRegistration(foreground: Boolean) =
-    if (foreground) AfterRegistration.TIMERS else AfterRegistration.BACKGROUND_JOB
+internal fun afterRegistration(foreground: Boolean, processStarted: Boolean) = when {
+    foreground -> AfterRegistration.TIMERS
+    processStarted -> AfterRegistration.NOTHING // onForeground starts the timers
+    else -> AfterRegistration.BACKGROUND_JOB
+}

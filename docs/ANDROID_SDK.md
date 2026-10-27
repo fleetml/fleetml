@@ -138,7 +138,11 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
    ```
 
-   You should see `Success` and `Network <stack>_default  Removed`.
+   You should see `Success` and `Network <stack>_default  Removed`. With two
+   devices attached, `adb` works on the one in `ANDROID_SERIAL` (step 5);
+   the other one keeps the app and its forwards until
+   `adb -s <its serial> uninstall com.fleetml.sample; adb -s <its serial> reverse --remove-all`
+   (`adb devices` lists the serials).
 
 Then your own app: [Install](#install) and [Configure and start](#configure-and-start),
 with the same server and key. The emulator instead of a phone:

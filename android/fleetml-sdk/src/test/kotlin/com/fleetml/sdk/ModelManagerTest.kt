@@ -82,6 +82,23 @@ class ModelManagerTest {
 
     private fun unload(variant: String) = ModelAssignment.newBuilder().setModelId("m").setVariantId(variant).setAction(ModelAssignment.Action.UNLOAD).build()
 
+    // A model active from an earlier run is announced at start with the same
+    // line as an activation, which Get started's wait loop looks for.
+    @Test
+    fun `a model from the cache logs is active at start`() = runTest {
+        manager().apply(listOf(assign("good-v1", "1.0.0")))
+        val lines = mutableListOf<String>()
+        val previous = Logger.sink
+        Logger.sink = { _, msg, _ -> lines += msg }
+        try {
+            val restarted = manager()
+            assertEquals("1.0.0", restarted.activeModelsAtStart().single().version)
+        } finally {
+            Logger.sink = previous
+        }
+        assertEquals(listOf("Model iris 1.0.0 is active"), lines)
+    }
+
     @Test
     fun `a valid model becomes active and is reported as loaded`() = runTest {
         val mm = manager()
