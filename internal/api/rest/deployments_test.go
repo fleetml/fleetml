@@ -259,4 +259,16 @@ func TestDeployCreate_BadBodies(t *testing.T) {
 	w = doJSON(r, "POST", "/api/v1/deployments", map[string]interface{}{"strategy": "CANARY"})
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "project_id and model_version_id are required")
+
+	// A misspelled health_gate or rolling_config key is named, not ignored.
+	for _, body := range []map[string]interface{}{
+		{"health_gate": map[string]interface{}{"max_error": 0.05}},
+		{"rolling_config": map[string]interface{}{"interval": "1m", "batch_size": 2}},
+	} {
+		body["project_id"], body["model_version_id"] = uuid.New().String(), uuid.New().String()
+		w = doJSON(r, "POST", "/api/v1/deployments", body)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid JSON body: ")
+		assert.Contains(t, w.Body.String(), "unknown key")
+	}
 }
