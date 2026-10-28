@@ -315,6 +315,36 @@ func (v versionsIn) VersionProject(_ context.Context, id uuid.UUID) (uuid.UUID, 
 	return v.project, nil
 }
 
+// statusOf adds each version's registry status to versionsIn.
+type statusOf struct {
+	versionsIn
+	status map[uuid.UUID]string
+}
+
+func (v statusOf) VersionStatus(_ context.Context, id uuid.UUID) (string, error) {
+	return v.status[id], nil
+}
+
+// An ARCHIVED version is refused, naming the status; a DRAFT one (what every
+// push makes) deploys, as does any version when the status is not known.
+func TestCreate_RefusesArchivedVersion(t *testing.T) {
+	p, archived, draft := uuid.New(), uuid.New(), uuid.New()
+	in := versionsIn{project: p, ready: map[uuid.UUID]int{archived: 1, draft: 1}}
+	svc := NewService(newMockRepo(), nil)
+	svc.SetVersionChecker(statusOf{in, map[uuid.UUID]string{archived: "ARCHIVED", draft: "DRAFT"}})
+
+	_, err := svc.Create(context.Background(), CreateInput{ProjectID: p, ModelVersionID: archived})
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.ErrorContains(t, err, "is ARCHIVED")
+
+	_, err = svc.Create(context.Background(), CreateInput{ProjectID: p, ModelVersionID: draft})
+	assert.NoError(t, err)
+
+	svc.SetVersionChecker(in)
+	_, err = svc.Create(context.Background(), CreateInput{ProjectID: p, ModelVersionID: archived})
+	assert.NoError(t, err)
+}
+
 // A version without a READY variant is not deployable; one that does not
 // exist is not found.
 func TestCreate_RequiresReadyVariant(t *testing.T) {

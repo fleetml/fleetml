@@ -80,6 +80,19 @@ func (a *VersionAdapter) ReadyVariantCount(ctx context.Context, versionID uuid.U
 	return n, nil
 }
 
+// VersionStatus is the version's registry status, "" if there is no such version.
+func (a *VersionAdapter) VersionStatus(ctx context.Context, versionID uuid.UUID) (string, error) {
+	var status string
+	err := a.pool.QueryRow(ctx, `SELECT status FROM model_versions WHERE id = $1`, versionID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("versionAdapter.VersionStatus: %w", err)
+	}
+	return status, nil
+}
+
 func (a *VersionAdapter) ProjectExists(ctx context.Context, projectID uuid.UUID) (bool, error) {
 	var ok bool
 	if err := a.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1)`, projectID).Scan(&ok); err != nil {

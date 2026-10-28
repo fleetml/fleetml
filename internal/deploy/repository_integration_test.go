@@ -105,6 +105,15 @@ func TestAdapters_Integration(t *testing.T) {
 	_, err = svc.Create(ctx, CreateInput{ProjectID: dbtest.NewVersion(t, pool).ProjectID, ModelVersionID: v2})
 	assert.ErrorIs(t, err, ErrInvalidInput)
 
+	// ... and an ARCHIVED version, naming the status.
+	v4, _ := dbtest.NewVersionOf(t, pool, fx.ModelID, "4.0.0")
+	if _, err := pool.Exec(ctx, `UPDATE model_versions SET status = 'ARCHIVED' WHERE id = $1`, v4); err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.Create(ctx, CreateInput{ProjectID: fx.ProjectID, ModelVersionID: v4})
+	assert.ErrorIs(t, err, ErrInvalidInput)
+	assert.ErrorContains(t, err, "ARCHIVED")
+
 	cur, err := versions.CurrentVersion(ctx, fx.ProjectID, v2)
 	require.NoError(t, err)
 	assert.Nil(t, cur, "nothing deployed yet")
