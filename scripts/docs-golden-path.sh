@@ -92,14 +92,15 @@ substitute() {
   ' "$ROOT" "$repl_dist" "$LOCAL_PY" "$1"
 }
 
-# matches OUT EXPECT: every expectation (a line of EXPECT) appears in OUT.
+# matches OUT EXPECT: every expectation (a line of EXPECT) appears in OUT; a run
+# of spaces or tabs matches any run (Compose prints one or two before `Removed`).
 matches() {
   perl -e '
     local $/; open my $o, "<", $ARGV[0] or exit 1; my $out = <$o>;
     open my $e, "<", $ARGV[1] or exit 0;
     for my $want (split /\n/, <$e>) {
       next if $want eq "";
-      my $re = join(".+?", map { quotemeta } split /<[^<>]+>/, $want, -1);
+      my $re = join(".+?", map { my $p = quotemeta; $p =~ s/(?:\\[ \t])+/\\s+/g; $p } split /<[^<>]+>/, $want, -1);
       if ($out !~ /$re/s) { print "  missing: $want\n"; $bad = 1 }
     }
     exit($bad ? 1 : 0);
