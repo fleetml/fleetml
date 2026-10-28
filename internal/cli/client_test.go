@@ -125,7 +125,8 @@ func TestClient_ErrorHints(t *testing.T) {
 	err := NewClient(srv.URL).Get("/x", nil)
 	require.Error(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "unauthorized by "+srv.URL))
-	assert.Contains(t, err.Error(), "~/.fleetml.env", "no key at all: where Get started saved it")
+	assert.Contains(t, err.Error(), "no API key is set: run `fleetml config set-key` with your key, or set FLEETML_API_KEY in your environment", "no key at all")
+	assert.NotContains(t, err.Error(), "source ", "no shell syntax: the hint is read in PowerShell too")
 
 	withKey := NewClient(srv.URL)
 	withKey.SetAPIKey("wrong")
