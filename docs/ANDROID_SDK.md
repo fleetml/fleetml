@@ -138,7 +138,11 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
    ```
 
-   You should see `Success` and `Network <stack>_default  Removed`.
+   You should see `Success` and `Network <stack>_default  Removed`. With two
+   devices attached, `adb` works on the one in `ANDROID_SERIAL` (step 5);
+   the other one keeps the app and its forwards until
+   `adb -s <its serial> uninstall com.fleetml.sample; adb -s <its serial> reverse --remove-all`
+   (`adb devices` lists the serials).
 
 Then your own app: [Install](#install) and [Configure and start](#configure-and-start),
 with the same server and key. The emulator instead of a phone:
@@ -147,14 +151,14 @@ with the same server and key. The emulator instead of a phone:
 
 ## Install
 
-The SDK is on Maven Central; 0.10.4 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.10.5 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.4")
+    implementation("dev.fleetml:fleetml-sdk:0.10.5")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -189,7 +193,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.4") {
+implementation("dev.fleetml:fleetml-sdk:0.10.5") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -222,7 +226,7 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.10.4-dev` (any version string) in the app's
+and `sdkVersion=0.10.5-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
@@ -289,7 +293,7 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.4")
+    implementation("dev.fleetml:fleetml-sdk:0.10.5")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

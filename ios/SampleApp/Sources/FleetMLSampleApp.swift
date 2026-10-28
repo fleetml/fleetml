@@ -39,6 +39,10 @@ final class AppState: ObservableObject, FleetMLDelegate {
     @Published private(set) var registrationError: String?
     @Published private(set) var activeModels: [ActiveModel] = []
     @Published private(set) var result = ""
+    /// The settings the SDK was last started with: what the screen shows. A
+    /// launch argument such as `-fleetmlPort` is what `savedSettings` reads
+    /// back, but `FLEETML_PORT` in the environment wins over it.
+    private(set) var current: Settings?
 
     private let defaults = UserDefaults.standard
     private let worker = DispatchQueue(label: "com.fleetml.sample.inference")
@@ -81,6 +85,7 @@ final class AppState: ObservableObject, FleetMLDelegate {
     }
 
     private func start(_ s: Settings) {
+        current = s
         note("Starting FleetML against \(s.host):\(s.port)")
         do {
             try FleetML.initialize(config: FleetMLConfig(serverHost: s.host, serverPort: s.port, enrollmentKey: s.enrollmentKey,

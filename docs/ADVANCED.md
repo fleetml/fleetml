@@ -61,8 +61,10 @@ building the server and dashboard images; the 3 minutes start after the
 build, when the stack starts. Look at what step 2 printed above the message:
 
 - `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
-  Windows, `bind: An attempt was made to access a socket in a way forbidden
-  by its access permissions`): another program holds that port, and the
+  Windows, `Ports are not available: exposing port TCP 0.0.0.0:<port> ...`
+  ending in `bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
+  for a port a Windows program holds, or in `bind: An attempt was made to access a socket in a way forbidden by its access permissions`
+  for a port Windows reserves): another program holds that port, and the
   container that needs it stays `Created`
   (`docker compose -f deploy/docker-compose.prod.yml ps -a` shows it). Move
   the port: step 2 already saved the settings file, so add the port to it as
@@ -81,7 +83,8 @@ build, when the stack starts. Look at what step 2 printed above the message:
   `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz` prints something
   other than FleetML's JSON (an error page, or nothing): another program
   listens on that port on `localhost` only, which Docker on macOS and
-  Windows does not detect. Move the port as in the entry above. (On a Mac
+  Windows does not detect (on macOS, a program on all interfaces,
+  `0.0.0.0`, goes unnoticed too). Move the port as in the entry above. (On a Mac
   whose `localhost` resolves to `::1` first, Docker answers there and the
   start succeeds; the other program then only answers `127.0.0.1`.)
 - Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
@@ -92,7 +95,7 @@ build, when the stack starts. Look at what step 2 printed above the message:
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.10.4-3-g1a2b3c4`: three commits past 0.10.4). To confirm the version
+like `0.10.5-3-g1a2b3c4`: three commits past 0.10.5). To confirm the version
 later: `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz`. More keys and
 their routes: [API keys](CONFIG.md#api-keys).
 
@@ -107,8 +110,9 @@ step 4 again, then `docker rm -f fleetml-agent` and step 5). The
 
 **The phone never shows `is active`** (Android step 5 says `Not active after
 3 minutes`). `adb logcat -d -s FleetML` shows how far the app got:
-- `In the background: ...`: the phone locked or the screen went off. Unlock
-  it, keep it on, and run step 5's last two lines again.
+- `In the background: ...`: the phone locked, the screen went off or the
+  app left the screen. Unlock it, keep the app in front, and run step 5's
+  last two lines again.
 - `Heartbeat failed: UNAVAILABLE` or nothing after `Starting FleetML`: the
   phone does not reach the server. `adb reverse --list` must show both
   ports; run step 5's two `adb reverse` lines again (a reconnected cable or a
@@ -156,7 +160,9 @@ and `S3_PUBLIC_ENDPOINT`, the address devices download models from,
 LAN address there instead; the device guides change it in this file, see
 [the download address](#a-phone-or-another-machine-the-download-address)).
 It leaves an existing file alone, so running the block again reuses the
-saved values. **Keep the file.** The admin key in it is how you log in to
+saved values and keeps the data; it rebuilds the images, so compose
+recreates the server and dashboard containers (`Recreate`, a few seconds
+without them; devices reconnect by themselves). **Keep the file.** The admin key in it is how you log in to
 the dashboard and how the CLI and the REST API reach the server, and the
 server stores it on the first start only: later starts ignore
 `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a new one
@@ -231,14 +237,14 @@ home folder for FleetML's files, its own stack name and its own ports, then
 run Get started's steps 2 to 7 there:
 
 ```bash
-export DOCKER_CONFIG=$HOME/.docker HOME=$HOME/fleetml-2 COMPOSE_PROJECT_NAME=fleetml-2
+export MY_HOME=$HOME DOCKER_CONFIG=$HOME/.docker HOME=$HOME/fleetml-2 COMPOSE_PROJECT_NAME=fleetml-2
 export FLEETML_DASHBOARD_PORT=8082 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=29090 FLEETML_S3_PUBLIC_PORT=29100
-mkdir -p "$HOME" && cd "$HOME" && ln -sfn ../Library ../.android ../.gradle .
+mkdir -p "$HOME" && cd "$HOME" && ln -sfn "$MY_HOME/Library" "$MY_HOME/.android" "$MY_HOME/.gradle" .
 ```
 
 (`DOCKER_CONFIG` keeps Docker's own settings where they were, and the
-links give the new home folder the Android SDK, `adb`'s key and Gradle's
-cache of the first, so the Android guide's step 1 and the phone work there
+links, to `MY_HOME` (your own home folder), give the new home folder the
+Android SDK, `adb`'s key and Gradle's cache of the first wherever you put it, so the Android guide's step 1 and the phone work there
 as they do in your own home; on a Mac, `Library` also holds the keychain the
 iOS guide signs with.) In that
 terminal the containers are `fleetml-2-server-1` and so on, the CLI
@@ -454,15 +460,18 @@ two ways out:
 
   ```bash
   sudo sed -i -e 's|^server: .*|server: <server address>:<gRPC port>|' \
-    -e 's|^# download_host_override: .*|download_host_override: "<server address>:<model files port>"|' \
+    -e 's|^#* *download_host_override: .*|download_host_override: "<server address>:<model files port>"|' \
     -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
   read -rs FLEETML_ENROLLMENT_KEY
   printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
-  sudo systemctl restart fleetml-agent
+  sudo systemctl enable fleetml-agent && sudo systemctl restart fleetml-agent
   ```
 
-  The agent reads its config at start, so the last line restarts it (an
-  agent you run in a shell instead: stop it and start it again).
+  The agent reads its config at start, so the last line restarts it, and
+  `enable` makes it start at boot too (an agent you run in a shell instead:
+  stop it and start it again). The `sed` line replaces the setting whether it
+  is still the commented example or a value you set before, so running the
+  block again with another address or port changes it.
   `read -rs` waits for the enrollment key (paste it and press Enter; it is
   not shown), and `printf`, a shell builtin, hands it to `tee` on its input,
   so the key is on no command line and in no shell history. At start the
@@ -546,7 +555,9 @@ read, never a command line. Then step 4 with
 key from that file:
 `export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^FLEETML_ADMIN_KEY=//p' fleetml-secrets.env)`.
 Keep `fleetml-secrets.env` as you would the secrets file, and delete it at
-clean-up with the rest. To change a key that may change (`S3_SECRET_KEY`,
+clean-up with the rest. Such a release has no `fleetml-secrets.yaml`: on
+an upgrade, leave `-f fleetml-secrets.yaml` out of the chart README's
+[Upgrading](../deploy/helm/fleetml/README.md#upgrading) block. To change a key that may change (`S3_SECRET_KEY`,
 or `JWT_SECRET` at the cost of the devices registering again; not
 `POSTGRES_PASSWORD` or `SIGNING_MASTER_KEY` of a release with data), edit
 it in `fleetml-secrets.env`, then replace the Secret and restart what reads
@@ -558,8 +569,11 @@ kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server
 kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
 ```
 
-You should see `secret/fleetml-secrets configured`, the two `restarted`
-lines and `successfully rolled out`; then the chart README's port-forward
+You should see `secret/fleetml-secrets configured` (after a
+`Warning: resource secrets/fleetml-secrets is missing the kubectl.kubernetes.io/last-applied-configuration annotation`
+the first time: `kubectl create` made the Secret, `kubectl apply` adds the
+annotation, nothing is wrong), the two `restarted` lines and
+`successfully rolled out`; then the chart README's port-forward
 block of [Upgrading](../deploy/helm/fleetml/README.md#upgrading).
 
 **Other local ports.** If something on this machine already listens on one
@@ -602,7 +616,7 @@ devices and the tools; each moves on its own:
   `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.10.4
+  git fetch --tags && git checkout v0.10.5
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
@@ -618,7 +632,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.10.4"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.5"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the

@@ -37,7 +37,7 @@ struct ContentView: View {
         }
         .navigationViewStyle(.stack)
         .onAppear {
-            if let s = state.savedSettings {
+            if let s = state.current ?? state.savedSettings {
                 host = s.host
                 port = String(s.port)
                 key = s.enrollmentKey

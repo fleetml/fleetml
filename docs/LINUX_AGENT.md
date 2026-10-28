@@ -157,7 +157,7 @@ first, `shasum -a 256 -c` in place of `sha256sum -c`); in a root shell without
 `sudo`, leave `sudo` out. `sha256sum -c` prints
 `fleetml-agent-linux-amd64.tar.gz: OK` (or `arm64`), and
 `fleetml-agent -version` prints the release without a `v`, for example
-`fleetml-agent 0.10.4`. To build the agent from source instead, `make
+`fleetml-agent 0.10.5`. To build the agent from source instead, `make
 build-agent` in a clone writes `bin/fleetml-agent-linux-amd64`, `-linux-arm64`
 and `-darwin-arm64` (version `dev`), and
 `sudo ./deploy/agent/install.sh ./bin/fleetml-agent-linux-arm64` installs one
@@ -290,7 +290,9 @@ D=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":
 
 The block can run again: it reuses the project `edge` and its iris 1.0.0
 when they are there (or `P=<the project ID your team gave you>` in place of
-the first line). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
+the first line), and each run adds one more enrollment key and one more
+deployment of 1.0.0 (`fleetml enrollment-key list --project $P` and
+`fleetml deploy list --project $P` show them; they do no harm). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
 to a provisioning script; without `-o json`, `enrollment-key create` prints a
 table with the key once. One key enrolls any number of machines; `fleetml enrollment-key revoke <key ID>` (the ID from `fleetml enrollment-key list --project $P`) stops new registrations with it, while machines already registered keep working. `vid` looks
 a version up by its number, so the block picks 1.0.0 even after more versions
@@ -336,7 +338,7 @@ The journal then shows the agent start and register (the time stamps left out
 here):
 
 ```text
-level=INFO msg="fleetml-agent starting" version=0.10.4 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
+level=INFO msg="fleetml-agent starting" version=0.10.5 server=<server address>:<gRPC port> models_dir=/var/lib/fleetml-agent/models
 level=INFO msg=registered device_id=<device ID>
 ```
 
@@ -458,7 +460,9 @@ sudo systemctl daemon-reload && sudo systemctl restart fleetml-agent
 
 You should see `model active ... path=/opt/models/<model>/current` in the
 journal after the next heartbeat. `sudo systemctl edit fleetml-agent` writes
-the same drop-in from an editor.
+the same drop-in from an editor. Without the drop-in, the journal says
+`level=ERROR msg="creating model directory failed" error="mkdir /opt/models/<model>: read-only file system"`
+and the active model stays where it was.
 
 Point your inference process at `models/<model>/current/model.bin`. Only the
 active and last-known-good versions are kept. Each `model.bin` is mode `0644`
@@ -660,9 +664,9 @@ server is back. A connection that dies without a reset (a Wi-Fi roam, a NAT
 or router restart, a pulled cable) is found within 40 seconds: the agent
 pings an idle connection after 30 seconds and gives up on it after 10
 without an answer, and every call to the server has a 30-second deadline.
-The warning below comes with the first heartbeat after that, so within one
-heartbeat interval of the drop (60 seconds by default; measured: 32 to 57
-seconds); with telemetry queued, a `sending telemetry failed; the events
+The warning below comes with the first heartbeat after that, so within
+those 40 seconds plus one heartbeat interval (60 seconds by default;
+measured: 32 to 67 seconds); with telemetry queued, a `sending telemetry failed; the events
 stay queued` warning can come first. With the network removed rather than
 silent, or when the server's name resolves first to an address this
 machine has no route to (an IPv6 one, as `host.docker.internal` can in a
@@ -680,7 +684,9 @@ level=INFO msg="server reachable again" unreachable_for=3m10s
 
 Measured with the quickstart's compose stack and the agent in a container
 (`docker pause` on the server for 3 minutes, which drops nothing and answers
-nothing): the warning came 32 seconds after the pause, and the first
+nothing): the warning came 32 to 67 seconds after the pause (different
+runs; on Docker Desktop it can read `error reading server preface: ...
+use of closed network connection` instead of the keepalive line), and the first
 successful heartbeat 42 seconds after the server was back. Recovery comes
 with the next heartbeat, so it takes at most one heartbeat interval (60
 seconds by default); before 0.8.0 the same test left the agent silent for
@@ -717,19 +723,25 @@ activated a model and heartbeated against one without an error).
 ## Remove the agent
 
 On the agent's machine, first this machine's device ID, which the agent
-logged when it registered (without systemd, in the agent's own log), then
-the service, the binary, its config and models, and its user (without
+logged when it registered (without systemd, in the agent's own log), and a
+`models_dir` you moved out of the state folder, then the service with its
+drop-ins (`fleetml-agent.service.d`) and the `.new` unit an upgrade may
+have left, the binary, its config and models, and its user (without
 systemd, stop it under its supervisor instead of the `systemctl` line):
 
 ```bash
 sudo journalctl -u fleetml-agent -o cat | grep -o 'device_id=[^ ]*' | tail -1
+sudo grep '^models_dir:' /etc/fleetml-agent/config.yaml
 sudo systemctl disable --now fleetml-agent
-sudo rm -f /etc/systemd/system/fleetml-agent.service /usr/local/bin/fleetml-agent && sudo systemctl daemon-reload
+sudo rm -rf /etc/systemd/system/fleetml-agent.service /etc/systemd/system/fleetml-agent.service.new /etc/systemd/system/fleetml-agent.service.d /usr/local/bin/fleetml-agent && sudo systemctl daemon-reload
 sudo rm -rf /etc/fleetml-agent /var/lib/fleetml-agent
 sudo userdel fleetml-agent
 ```
 
-You should see `device_id=` and the ID. Then on the machine with the CLI,
+You should see `device_id=` and the ID. A `models_dir:` line means the
+models are in that folder, outside `/var/lib/fleetml-agent`: remove it too,
+with `sudo rm -rf <that folder>` (no line: they were in the state folder,
+which the block removed). Then on the machine with the CLI,
 remove the device from its project, with that ID:
 
 ```bash

@@ -26,26 +26,26 @@ func (s Semver) LessThan(other Semver) bool {
 	return s.Patch < other.Patch
 }
 
-func ParseSemver(version string) (Semver, error) {
-	version = strings.TrimPrefix(version, "v")
+func ParseSemver(given string) (Semver, error) {
+	version := strings.TrimPrefix(given, "v")
 	parts := strings.Split(version, ".")
 	if len(parts) != 3 {
-		return Semver{}, fmt.Errorf("invalid semver %q: expected 3 parts, got %d", version, len(parts))
+		return Semver{}, fmt.Errorf("invalid semver %q: expected 3 parts, got %d", given, len(parts))
 	}
 
 	major, err := strconv.Atoi(parts[0])
 	if err != nil || major < 0 {
-		return Semver{}, fmt.Errorf("invalid semver %q: bad major version", version)
+		return Semver{}, fmt.Errorf("invalid semver %q: bad major version", given)
 	}
 
 	minor, err := strconv.Atoi(parts[1])
 	if err != nil || minor < 0 {
-		return Semver{}, fmt.Errorf("invalid semver %q: bad minor version", version)
+		return Semver{}, fmt.Errorf("invalid semver %q: bad minor version", given)
 	}
 
 	patch, err := strconv.Atoi(parts[2])
 	if err != nil || patch < 0 {
-		return Semver{}, fmt.Errorf("invalid semver %q: bad patch version", version)
+		return Semver{}, fmt.Errorf("invalid semver %q: bad patch version", given)
 	}
 
 	return Semver{Major: major, Minor: minor, Patch: patch}, nil

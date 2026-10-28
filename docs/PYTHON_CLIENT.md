@@ -157,7 +157,9 @@ the saved REST port included:
 The simulator line the tour prints reads the stack's gRPC port from
 `~/.fleetml.env` (`--grpc localhost:${FLEETML_GRPC_PORT:-19090}`), so a moved
 port needs no change. `FleetML` is a
-context manager (`with FleetML() as fm:`), or call `fm.close()`.
+context manager (`with FleetML() as fm:`), or call `fm.close()`; a call
+after that raises httpx's `RuntimeError` (the client is closed), not
+`FleetMLError`: make a new `FleetML()`.
 
 ## The tour in Python
 
@@ -299,7 +301,7 @@ example), the way most list endpoints do.
 | `fm.versions.list(model, *, limit=None, offset=None)` | `fleetml ver list --model` | Lists a model's versions |
 | `fm.versions.get(version_id)` | (REST) | One version |
 | `fm.versions.promote(version_id, status="ACTIVE")` | `fleetml ver promote` | Moves a version to STAGED, ACTIVE (through STAGED from DRAFT) or ARCHIVED, the status in any case; an ACTIVE version asked for ACTIVE raises `INVALID_TRANSITION` (`push(promote=True)` leaves it ACTIVE) |
-| `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. It finds an existing model and version on any page. With `promote=True` it takes the version to ACTIVE from wherever it is, as `fleetml push --promote` does, and raises when the server refuses (from ARCHIVED). `target_runtime` is the CLI's `--framework` |
+| `fm.push(path, project, model, version, quantization="INT8", target_runtime="TFLITE", task="CLASSIFICATION", promote=False)` | `fleetml push` | Creates the model and version if needed, uploads the file with its sha256, has the server verify it; returns the version. It finds an existing model and version on any page. With `promote=True` it takes the version to ACTIVE from wherever it is, as `fleetml push --promote` does, and raises when the server refuses (from ARCHIVED); the same file pushed again to an existing version raises `CONFLICT` (409) before any promotion, while a new variant of it (another `quantization` or `target_runtime`) is uploaded and promoted. `target_runtime` is the CLI's `--framework` |
 | `fm.enrollment_keys.create(project, name)` | (REST) | A key devices register with; `.key` is shown only now |
 | `fm.deployments.create(project, version, strategy="ALL_AT_ONCE", target_selector=None, health_gate=None, canary_stages=None, rolling_config=None, urgent=False)` | `fleetml deploy create` | Creates a deployment; `target_selector` is the CLI's `--target`, the rest as in [Rollouts](ROLLOUTS.md) |
 | `fm.deployments.start(deployment_id)` | `fleetml deploy start` | Starts it |
@@ -319,7 +321,7 @@ example), the way most list endpoints do.
 | `fm.experiments.start(experiment_id)` | `fleetml experiment start` | Starts it |
 | `fm.experiments.get(experiment_id)`, `.list(*, project=None, limit=None, offset=None)` | `fleetml experiment get`, `list` | One experiment, or the list |
 | `fm.experiments.pause(experiment_id)`, `.resume(experiment_id)` | `fleetml experiment pause`, `resume` | Holds it and lets it go on |
-| `fm.experiments.conclude(experiment_id, winner, note="")` | `fleetml experiment conclude` | Ends it with the winning version ID |
+| `fm.experiments.conclude(experiment_id, winner, note="")` | `fleetml experiment conclude` | Ends it with the winning version ID, the control's or the treatment's (another version: `VALIDATION_ERROR`) |
 | `fm.experiments.cancel(experiment_id)` | `fleetml experiment cancel` | Ends it without a winner |
 | `fm.experiments.results(experiment_id)` | `fleetml experiment results` | Both arms, the p-value and the recommendation |
 | `fm.drift.status(version_id)` | `fleetml drift status` | The latest result per metric |

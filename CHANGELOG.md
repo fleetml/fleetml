@@ -5,6 +5,70 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.5] - 2026-10-28
+
+### What changed for readers
+
+Fixes a regression of 0.10.4 in the Android SDK and every finding of the
+developer review of 0.10.4. An experiment can only be concluded with one of
+its two versions, and a deployment request with a key the server does not
+know is refused instead of ignored. Upgrading from 0.10.4 needs nothing; a
+request that 0.10.4 accepted with a misspelled key (`stratgy`, a canary
+stage's `duration`) now answers 400 naming the key.
+
+### Fixed
+
+- Android SDK (regression of 0.10.4): a cold start in the foreground with a
+  stored registration took the background path, logging `In the background:
+  finishing the sync through WorkManager` and scheduling a job; it now
+  starts the timers as before 0.10.4, and a start that really happens in the
+  background still finishes its first sync.
+- Android SDK: a model loaded from the cache at start logs `Model <name>
+  <version> is active`, so Get started's step 5 passes when run again.
+- CLI: `config set-key` from a pipe or a file drops a UTF-8 BOM and CR/LF
+  (a PowerShell pipe saved an unusable key).
+- Server: `conclude` accepted a winner that was neither arm; it must be the
+  control or the treatment version, and a malformed `winner_version_id`
+  says so instead of "required".
+- Server: unknown keys in a deployment body or a canary stage were ignored;
+  they are refused with 400 naming the key.
+- iOS sample app: with `-fleetmlPort` and `FLEETML_PORT` both given, the
+  config screen showed the argument's port while the SDK used the
+  environment's; it shows the port in use.
+
+### Changed
+
+- The CLI's missing-key error names `~/.fleetml.env`; `server unavailable`
+  names `FLEETML_SERVER`.
+- An experiment's `split_ratio: 0` is refused with the value given; an
+  invalid semver names the input as given.
+- The Linux agent's unit points at a drop-in for `ReadWritePaths=` instead
+  of a line to uncomment; `install.sh` replaces the 0.10.4 unit as shipped.
+
+### Docs
+
+- Android: the two-device clean-up names `ANDROID_SERIAL`'s device and the
+  line for the other.
+- iOS: own-app step 3 pastes as written; 6c says when the screen shows iris
+  and what "bundled iris (no assignment yet)" means; step 8 runs from the
+  clone.
+- Linux agent: the `download_host_override` block can run again and enables
+  the service; Remove also takes the drop-ins, the `.new` unit and a moved
+  `models_dir`; the `read-only file system` error quoted; `docker pause`
+  timing and wording.
+- Windows: `config set server` in the second "for every window" place,
+  Docker Desktop's port message, the clean-up of the `Path` entry and the
+  clone.
+- Python: `push(promote=True)` of the same file again is 409; a call after
+  `close()`; unknown list filters are ignored (CONFIG too).
+- Helm: an own-Secret release upgrades without `-f fleetml-secrets.yaml`;
+  a rollback to a 0.10.2 revision writes that revision's secrets first;
+  `helm lint` does not check `server.env` ports; the CLI on `PATH` in a new
+  terminal; the `kubectl apply` warning and the port-forward error lines.
+- Backend: the tour's second shell goes into the clone; step 2 again
+  recreates the server and dashboard; a program on all interfaces on macOS
+  goes unnoticed too; a second stack's home folder can be anywhere.
+
 ## [0.10.4] - 2026-10-27
 
 ### What changed for readers
@@ -1339,6 +1403,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.5]: https://github.com/fleetml/fleetml/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/fleetml/fleetml/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/fleetml/fleetml/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/fleetml/fleetml/compare/v0.10.1...v0.10.2

@@ -2,7 +2,7 @@
 # image's (docker buildx --platform linux/amd64,linux/arm64, as the Release
 # workflow's images job does). VERSION is the release without the v; a build
 # without it (docker compose in a clone) takes the version from the clone's
-# tag, `git describe --tags`: 0.10.4 on the tag, 0.10.4-3-g<commit> after it.
+# tag, `git describe --tags`: 0.10.5 on the tag, 0.10.5-3-g<commit> after it.
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS TARGETARCH
 ARG VERSION=dev

@@ -39,6 +39,12 @@ internal class ModelManager(
         cache.getModelFile(rec.variantId)?.let { rec.toActive(it) }
     }
 
+    /**
+     * The models active from an earlier run, at start, each logged with the line
+     * an activation logs (Get started's wait loop looks for it).
+     */
+    fun activeModelsAtStart(): List<ActiveModel> = activeModels().onEach { Logger.i("Model ${it.modelName} ${it.version} is active") }
+
     /** Stores the project's signing keys from a Register or heartbeat response. */
     fun setSigningKeys(keys: List<fleetml.device.v1.Device.SigningKey>) =
         store.setSigningKeys(keys.map { SigningKey(it.keyId, it.publicKey.toByteArray(), it.notAfter) })

@@ -1,9 +1,13 @@
 package rest
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -52,6 +56,28 @@ type createDeploymentRequest struct {
 	HealthGate     *deploy.HealthGate        `json:"health_gate"`
 	Urgent         bool                      `json:"urgent"`
 	CreatedBy      string                    `json:"created_by"`
+}
+
+// UnmarshalJSON rejects a top-level key the request does not have, which
+// would otherwise be dropped (a misspelled "strategy" made ALL_AT_ONCE).
+func (r *createDeploymentRequest) UnmarshalJSON(b []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	known := []string{"project_id", "model_version_id", "name", "target_selector", "strategy", "canary_stages", "rolling_config", "health_gate", "urgent", "created_by"}
+	var unknown []string
+	for k := range raw {
+		if !slices.Contains(known, k) {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		slices.Sort(unknown)
+		return fmt.Errorf("unknown key %q (known: %s)", unknown[0], strings.Join(known, ", "))
+	}
+	type plain createDeploymentRequest
+	return json.Unmarshal(b, (*plain)(r))
 }
 
 func (h *DeploymentHandler) create(c *gin.Context) {

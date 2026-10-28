@@ -62,7 +62,7 @@ fi
 # edited by hand is kept, and this release's goes next to it as .new:
 # settings of your own belong in a drop-in (systemctl edit fleetml-agent).
 UNIT=/etc/systemd/system/fleetml-agent.service
-SHIPPED_UNITS="b705355f07d3705034ad983710afe13a437fae3c667d92ffa6eaf3780a1892e9 56a6f9d6f9815845e50c3ac0bae4bb309b0e9ebf4f54965d9feae7b4518295c5"
+SHIPPED_UNITS="b705355f07d3705034ad983710afe13a437fae3c667d92ffa6eaf3780a1892e9 56a6f9d6f9815845e50c3ac0bae4bb309b0e9ebf4f54965d9feae7b4518295c5 c358061678c64d7ee9452fbc8164e4eb5b67ed7e195488421835f0ed5c82c29d"
 if [ -e "$UNIT" ] && ! cmp -s "$HERE/fleetml-agent.service" "$UNIT" &&
   ! echo " $SHIPPED_UNITS " | grep -q " $(sha256sum "$UNIT" | cut -d' ' -f1) "; then
   install -m 0644 "$HERE/fleetml-agent.service" "$UNIT.new"

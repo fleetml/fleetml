@@ -196,8 +196,16 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", "$env:USERPROFILE\.fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
    ```
 
-   and its entry in the user `Path` (Settings, System, About, Advanced
-   system settings, Environment Variables). WSL and Docker Desktop stay.
+   then its entry in the user `Path`, and the Windows-side clone if you made
+   one for the Android steps (`Remove-Item -Recurse -Force <its folder>`):
+
+   ```powershell
+   [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne "$env:LOCALAPPDATA\fleetml" }) -join ';', 'User')
+   ```
+
+   The images step 2 built live in Docker Desktop and go with
+   `docker image prune` or Docker Desktop's Images page. WSL and Docker
+   Desktop stay.
 
 How it fits together, in more detail:
 
@@ -352,11 +360,13 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.10.4`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.10.5`. In PowerShell,
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
-`fleetml config set-key` (it asks for the key), which saves the key in
+`fleetml config set-key` (it asks for the key) and, if the stack's REST port
+is not the default, `fleetml config set server http://localhost:<REST port>`
+(the [On Windows](#on-windows) block reads it from WSL), which save them in
 `%USERPROFILE%\.fleetml\config.yaml`; then `fleetml project list`
 prints the same projects as in WSL (before the tour, the `first-<time>` project of Get started's step 4). Pushing
 from Windows works too, because Docker Desktop also publishes the object
@@ -426,9 +436,11 @@ end. The blocks of sections 1 to 5 end with a line that adds their
 variables to `~/.fleetml.env` (readable only by you: the enrollment key is
 among them; section 5 replaces the simulator's `SIM` line rather than adding
 a second one), so a second shell (another terminal tab, say)
-picks the tour up from the repository root with
+picks the tour up with this, whose first line goes into the clone (from
+the folder you ran Get started's step 2 in; already there, it does nothing):
 
 ```bash
+[ -f deploy/docker-compose.prod.yml ] || cd fleetml
 source ~/.fleetml.env
 export PATH="$HOME/.local/bin:$PATH"
 export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
@@ -658,7 +670,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.10.4"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.10.5"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 

@@ -46,7 +46,7 @@ type createExperimentRequest struct {
 	ControlVersionID   *uuid.UUID        `json:"control_version_id" binding:"required"`
 	TreatmentVersionID *uuid.UUID        `json:"treatment_version_id" binding:"required"`
 	TrafficPercent     int               `json:"traffic_percent"`
-	SplitRatio         *int              `json:"split_ratio"` // left out: 50
+	SplitRatio         *int              `json:"split_ratio"` // left out: 50; 0 is refused here
 	TargetSelector     map[string]string `json:"target_selector"`
 	PrimaryMetric      string            `json:"primary_metric"`
 	MinSampleSize      int               `json:"min_sample_size"`
@@ -67,6 +67,10 @@ func (h *ExperimentHandler) create(c *gin.Context) {
 		}
 		return
 	}
+	if req.SplitRatio != nil && *req.SplitRatio == 0 {
+		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid input: split_ratio must be 1-99 (the treatment's share in percent), got 0")
+		return
+	}
 	exp, err := h.service.Create(c.Request.Context(), experiment.CreateInput{
 		ProjectID: *req.ProjectID, Name: req.Name, Description: req.Description,
 		ControlVersionID: *req.ControlVersionID, TreatmentVersionID: *req.TreatmentVersionID,
@@ -82,15 +86,11 @@ func (h *ExperimentHandler) create(c *gin.Context) {
 	respondData(c, http.StatusCreated, exp)
 }
 
-// splitRatio passes a split_ratio that was left out as 0 (the service's 50)
-// and one sent as 0 as -1, which the service refuses like any value outside
-// 1-99.
+// splitRatio passes a split_ratio that was left out as 0 (the service's 50);
+// create refuses one sent as 0 before it gets here.
 func splitRatio(v *int) int {
-	switch {
-	case v == nil:
+	if v == nil {
 		return 0
-	case *v == 0:
-		return -1
 	}
 	return *v
 }
@@ -185,8 +185,8 @@ func (h *ExperimentHandler) resume(c *gin.Context) {
 }
 
 type concludeRequest struct {
-	WinnerVersionID uuid.UUID `json:"winner_version_id" binding:"required"`
-	Note            string    `json:"note"`
+	WinnerVersionID *uuid.UUID `json:"winner_version_id" binding:"required"`
+	Note            string     `json:"note"`
 }
 
 func (h *ExperimentHandler) conclude(c *gin.Context) {
@@ -196,10 +196,15 @@ func (h *ExperimentHandler) conclude(c *gin.Context) {
 	}
 	var req concludeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "winner_version_id is required")
+		var missing validator.ValidationErrors
+		if errors.As(err, &missing) {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "winner_version_id is required")
+		} else {
+			respondError(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid winner_version_id: "+err.Error())
+		}
 		return
 	}
-	exp, err := h.service.Conclude(c.Request.Context(), id, req.WinnerVersionID, req.Note)
+	exp, err := h.service.Conclude(c.Request.Context(), id, *req.WinnerVersionID, req.Note)
 	if err != nil {
 		handleExpError(c, err)
 		return
