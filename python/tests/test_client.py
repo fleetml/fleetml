@@ -79,7 +79,7 @@ DEPLOYMENT = {
 
 
 def test_version_is_the_package_version() -> None:
-    assert fleetml.__version__ == "0.10.5"
+    assert fleetml.__version__ == "0.10.6"
 
 
 def test_server_and_key_from_the_environment(monkeypatch: pytest.MonkeyPatch, fake: Fake) -> None:

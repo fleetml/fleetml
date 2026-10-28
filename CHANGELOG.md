@@ -5,6 +5,67 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.6] - 2026-10-28
+
+### What changed for readers
+
+A short, careful release: the four regressions 0.10.5 brought into the docs
+and the CLI's messages are fixed, five small product bugs from the review of
+0.10.5 are fixed, and the README was checked line by line, every block run
+and every link and claim checked. Upgrading from 0.10.5 needs nothing. A
+request 0.10.5 accepted that 0.10.6 refuses: a deployment of an ARCHIVED
+version (400 naming the status), a version string that is not semver 2.0.0
+(`01.0.0`, `+1.0.0`), and `?status=` on the version list with an unknown
+status (400 with the allowed values).
+
+### Fixed
+
+- Regression of 0.10.5 (docs): CONFIG.md said the version list filters by
+  `status`, which it ignored; the version list now filters by status (any
+  case) and refuses an unknown one with the allowed values.
+- Regression of 0.10.5 (docs): the iOS guide's own-app step 3 kept a
+  `FLEETML_API_KEY` exported for a stack Get started had removed, and found
+  no CLI in a new terminal; the block now works in any terminal, and Get
+  started's clean-up unsets the key.
+- Regression of 0.10.5 (docs): the Helm chart's rollback sentence said the
+  server stays Not Ready; it now says the old revision's pod restarts while
+  the current one keeps serving.
+- Regression of 0.10.5 (CLI message): the no-key hint gave a bash line, also
+  in PowerShell; it now names `fleetml config set-key` and FLEETML_API_KEY.
+- Server: an ARCHIVED version could be deployed; it is refused with 400
+  naming the status (DRAFT versions deploy as before: a new version is DRAFT).
+- CLI: `config set-key` saved a UTF-16 key file or pipe (what PowerShell 5.1
+  writes with `>`) as garbage; it decodes UTF-16 with a byte order mark.
+- CLI and Python client: a push with a quantization, runtime, version or
+  `--metadata` the server would refuse created the model and an empty DRAFT
+  version first; it is refused before anything is created.
+- Server: versions follow semver 2.0.0: `1.0.0-rc.1` and `1.0.0+build` are
+  accepted, leading zeros (`01.0.0`) and a sign (`+1.0.0`) refused, and the
+  message names the input.
+- Server: a health gate's `on_failure` is accepted in any case, like
+  `strategy`.
+
+### Docs
+
+- Android: the launch lines use `adb shell am start -n <id>/.MainActivity`
+  (the `monkey` form launches nothing on API 35 emulators); the
+  `In the background: finishing the sync through WorkManager` line explained;
+  step 5 run again, a restart's log, one record per FleetML app.
+- iOS: `The specified device was not found`, `this device is already
+  registered`, the own app's `FleetML cannot register:`, the masked key field.
+- Linux agent: a deleted project's `registration failed` lines, the window
+  while a new `models_dir` cannot be written, the Upgrade block, a
+  `models_dir` that is a mount point.
+- Windows: the stack's images go with `docker image rm`; run `fleetml config
+  set server` again after moving the REST port.
+- Python: what a version string may be; the status transitions listed.
+- Helm: a second shell for the tour sources `~/.fleetml.env`;
+  `fleetml-secrets.env` is in `.gitignore` and removed at clean-up; the
+  `broken pipe` form of a port-forward ending; StatefulSet names for another
+  release name.
+- README and every Get started: step 1 expects Docker Compose v2 or later
+  (current Compose prints v5); the step-4 PATH line in Troubleshooting.
+
 ## [0.10.5] - 2026-10-28
 
 ### What changed for readers
@@ -1403,6 +1464,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.6]: https://github.com/fleetml/fleetml/compare/v0.10.5...v0.10.6
 [0.10.5]: https://github.com/fleetml/fleetml/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/fleetml/fleetml/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/fleetml/fleetml/compare/v0.10.2...v0.10.3
