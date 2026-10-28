@@ -245,6 +245,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    [ -z "${SIM:-}" ] || { xcrun simctl uninstall $SIM com.fleetml.sample; xcrun simctl shutdown $SIM; }
    rm -rf ios/SampleApp/build ios/SampleApp/FleetMLSample.xcodeproj
    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
+   unset FLEETML_API_KEY FLEETML_ENROLLMENT_KEY
    ```
 
    You should see `Network <stack>_default  Removed`.
@@ -599,14 +600,16 @@ struct MyApp: App {
    clone (for the Core ML sample models; push your own `.mlmodel` instead),
    with the key your team gave you or the quickstart's `$FLEETML_ADMIN_KEY`
    (which key does what: [Android's list](ANDROID_SDK.md#publish-and-deploy-with-the-cli)
-   applies here too). The first line keeps a `FLEETML_API_KEY` you have
-   already exported (your team's key: `export FLEETML_API_KEY=<key>` first)
-   and otherwise takes the quickstart's admin key. Project names are unique on a server:
+   applies here too). The first two lines make the block work in any
+   terminal: they read the server's settings from `~/.fleetml.env`, find the
+   CLI, and take the admin key (with your team's key, put it in place of
+   `$FLEETML_ADMIN_KEY`). Project names are unique on a server:
    `project already exists: slug "myapp-ios"` means the project is there from an
    earlier run, so pick another name.
 
    ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=${FLEETML_API_KEY:-$FLEETML_ADMIN_KEY}
+   source ~/.fleetml.env && export PATH="$HOME/.local/bin:$PATH"
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY   # or your team's key
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
    P=$(fleetml project create --name myapp-ios -o json | jq -r .id)   # or P=<the project ID your team gave you>
    fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"

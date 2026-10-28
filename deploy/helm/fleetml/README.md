@@ -260,9 +260,11 @@ made with chart 0.10.2 or older it stops with the same
 version: run the upgrade above again to return to the current chart (the
 data stays), and stay on charts from 0.10.3 on. Before it stops, that
 rollback has already written the old revision's secrets to the Secret: if
-you rotated one since (`s3SecretKey`, for example), the server stays Not
-Ready (`The request signature we calculated does not match` in its log)
-until that upgrade writes the current ones back.
+you rotated one since (`s3SecretKey`, for example), the old revision's new
+server pod never gets Ready (`The request signature we calculated does not
+match` in its log) and restarts every `server.dependencyTimeout` (180 s),
+while the pod of the current chart keeps serving, until that upgrade writes
+the current secrets back.
 
 ## Production
 

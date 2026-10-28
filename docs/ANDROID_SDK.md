@@ -655,7 +655,7 @@ maintainers run it by hand.
 
    ```bash
    ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
-   adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+   adb shell am start -n <application ID>/.MainActivity
    ```
 
 The SDK logs every step to logcat with the tag `FleetML`
@@ -738,7 +738,7 @@ instead:
 ```bash
 adb reverse --remove-all
 adb shell am force-stop <application ID>
-adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+adb shell am start -n <application ID>/.MainActivity
 ```
 
 `onModelReady` fires for the cached model at once and
@@ -775,7 +775,7 @@ emulator, and 70 seconds on a phone, whose Wi-Fi takes longer to come back.
 ```bash
 adb shell cmd connectivity airplane-mode enable
 adb shell am force-stop <application ID>
-adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+adb shell am start -n <application ID>/.MainActivity
 ```
 
 and `adb shell cmd connectivity airplane-mode disable` brings the network
@@ -835,7 +835,7 @@ the emulator (the name `adb devices` lists) when a phone is attached too:
 export ANDROID_SERIAL=emulator-5554
 adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
 ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2 -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
-adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+adb shell am start -n <application ID>/.MainActivity
 ```
 
 Without the forward the app registers and then logs
@@ -1027,7 +1027,7 @@ adb reverse tcp:$s3 tcp:$s3
 cd android
 $env:ORG_GRADLE_PROJECT_fleetmlEnrollmentKey = $EK
 .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=localhost" "-PfleetmlDebugPort=$grpc"
-adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
+adb shell am start -n com.fleetml.sample/.MainActivity
 adb logcat -s FleetML
 ```
 
@@ -1101,7 +1101,7 @@ and a stale host as
    adb reverse --remove-all
    adb shell pm clear com.fleetml.sample
    .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=<LAN IP>" "-PfleetmlDebugPort=$grpc"
-   adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
+   adb shell am start -n com.fleetml.sample/.MainActivity
    ```
 
    The app connects by itself; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`
