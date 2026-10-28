@@ -457,15 +457,18 @@ two ways out:
 
   ```bash
   sudo sed -i -e 's|^server: .*|server: <server address>:<gRPC port>|' \
-    -e 's|^# download_host_override: .*|download_host_override: "<server address>:<model files port>"|' \
+    -e 's|^#* *download_host_override: .*|download_host_override: "<server address>:<model files port>"|' \
     -e '/^enrollment_key:/d' /etc/fleetml-agent/config.yaml
   read -rs FLEETML_ENROLLMENT_KEY
   printf 'enrollment_key: "%s"\n' "$FLEETML_ENROLLMENT_KEY" | sudo tee -a /etc/fleetml-agent/config.yaml > /dev/null
-  sudo systemctl restart fleetml-agent
+  sudo systemctl enable fleetml-agent && sudo systemctl restart fleetml-agent
   ```
 
-  The agent reads its config at start, so the last line restarts it (an
-  agent you run in a shell instead: stop it and start it again).
+  The agent reads its config at start, so the last line restarts it, and
+  `enable` makes it start at boot too (an agent you run in a shell instead:
+  stop it and start it again). The `sed` line replaces the setting whether it
+  is still the commented example or a value you set before, so running the
+  block again with another address or port changes it.
   `read -rs` waits for the enrollment key (paste it and press Enter; it is
   not shown), and `printf`, a shell builtin, hands it to `tee` on its input,
   so the key is on no command line and in no shell history. At start the
