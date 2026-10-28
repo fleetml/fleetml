@@ -209,6 +209,8 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
      then run this block again.
    - `The app's 7-day signing profile has expired`: run 6b, then this block.
    - `Locked`: unlock the phone, then run this block again.
+   - `The specified device was not found`: `PHONE` is not this phone's
+     identifier (or it is not connected); run 6a again.
    - `This provisioning profile cannot be installed on this device`: 6b built
      for another phone; check `PHONE`, then run 6b again.
    - `The iPhone has not checked in after 3 minutes`: tap **Allow** if the phone shows the
@@ -878,7 +880,8 @@ start and the next heartbeat 60 seconds after it), and step 7 rolls out
 (`FleetML model ready: iris 2.0.0`), and `FleetML connected: false` follows
 about ten seconds later. A new port counts as a new server, so the log shows
 `Registration failed: deadlineExceeded (Connection errors: ... Connection refused)`
-(the app: `Cannot register: ...`), not `Heartbeat failed`, while the cached
+(the sample app: `Cannot register: ...`; your own app with the log lines
+of step 6: `FleetML cannot register: ...`), not `Heartbeat failed`, while the cached
 model keeps serving. Set the port back and rebuild to reconnect with the
 saved registration (same device ID). Stopping the server instead
 (`docker compose -f deploy/docker-compose.prod.yml stop server`, then `start server`)
@@ -910,7 +913,10 @@ shows the `Heartbeat failed` line.
   the uncommitted `.xcconfig` or the CI's secret store, give each app or
   release channel its own, and revoke one that leaks. The key is needed only
   to register: revoking it stops new installs from registering, and devices
-  that already registered keep their token.
+  that already registered keep their token. A registered device (the
+  Keychain keeps its identity across reinstalls) that starts with another
+  project's key is refused with `this device is already registered`: give it
+  its own project's key.
 
 ## Enrollment and identity
 
@@ -1069,7 +1075,7 @@ only the counts are sent.
 
 `ios/SampleApp` is the reference integration, generated with XcodeGen from
 `project.yml`: a SwiftUI config screen (host, port, enrollment key; the key
-shows in clear there, so crop it out of screenshots you share), the SDK
+field is masked, but crop the screen out of screenshots you share anyway), the SDK
 owned by an app-wide object, the Iris Core ML model from `models/iris`
 (Apache-2.0) bundled and used until the server assigns one, and inference
 telemetry. Its `Info.plist` sets `NSAllowsLocalNetworking` and

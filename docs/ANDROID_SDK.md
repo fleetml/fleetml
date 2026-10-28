@@ -109,7 +109,8 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    ```
 
    You should see `Device: ` with the phone's serial and model, `Installed on 1 device.`,
-   the two forwarded ports, then `I FleetML : Model iris 1.0.0 is active`, and the
+   the two forwarded ports (only the first time: run again, the forwards are
+   already there and `adb reverse` prints nothing), then `I FleetML : Model iris 1.0.0 is active`, and the
    app's screen **Active model: iris 1.0.0**. Tap **Classify sample flower**
    to run it. If it says `Not active after 3 minutes`, see
    [Troubleshooting](ADVANCED.md#troubleshooting): the phone locked, a
@@ -694,7 +695,8 @@ on every heartbeat.
 After fixing something (a port forward, a key, a deployment), the app does
 not have to wait for its next heartbeat: `FleetML.syncNow()` runs one now, and
 force-stopping and reopening the app (`adb shell am force-stop <application ID>`,
-then start it again) registers and heartbeats straight away. The SDK's timers
+then start it again) heartbeats straight away (with its saved
+registration: no new `Registered` line). The SDK's timers
 run only while the app is in the foreground: an app behind another one waits
 for its hourly background check ([Battery and data](#battery-and-data)), so
 bring it to the front after a fix.
@@ -941,8 +943,8 @@ comes back with only a key of another project, which the server refuses: a
 key alone must not take a known device over. Remove the old device record
 with the admin key, then start the app again. Its ID is in
 `fleetml device list` (without `--project` it lists the devices of every
-project: the row with your phone's Chipset, a device has one record; the
-dashboard's Devices page shows it too):
+project: the row with your phone's Chipset, one record per FleetML app on
+the phone; the dashboard's Devices page shows it too):
 
 ```bash
 curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>" && echo removed

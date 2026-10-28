@@ -396,7 +396,8 @@ a server without TLS (in a container whose server name resolves first to an
 address it has no route to, such as `host.docker.internal`, it can read
 `connect: network is unreachable` instead, see
 [Identity and offline behaviour](#identity-and-offline-behaviour)); `registration failed` with `Unauthenticated` means the
-enrollment key is wrong or revoked; `download failed` with
+enrollment key is wrong or revoked (or its project was deleted: the agent
+then logs it at every heartbeat until it has a key of another project); `download failed` with
 `connection refused` and `localhost` with the model files' port in the URL means the server's
 `S3_PUBLIC_ENDPOINT` ([Server on another machine](#server-on-another-machine)).
 
@@ -462,7 +463,9 @@ You should see `model active ... path=/opt/models/<model>/current` in the
 journal after the next heartbeat. `sudo systemctl edit fleetml-agent` writes
 the same drop-in from an editor. Without the drop-in, the journal says
 `level=ERROR msg="creating model directory failed" error="mkdir /opt/models/<model>: read-only file system"`
-and the active model stays where it was.
+and the active model stays where it was (until the agent can write the
+new folder, its local endpoint lists no model, so it refuses inference
+telemetry as `unknown model`).
 
 Point your inference process at `models/<model>/current/model.bin`. Only the
 active and last-known-good versions are kept. Each `model.bin` is mode `0644`
@@ -700,7 +703,8 @@ seconds).
 ## Upgrade
 
 On each machine, the new release's archive (the Install block, which takes
-the latest release), then `install.sh` again:
+the latest release, and already runs `install.sh`; the block below does
+the same again, which does no harm):
 
 ```bash
 sudo ./fleetml-agent/install.sh ./fleetml-agent/fleetml-agent
@@ -741,7 +745,10 @@ sudo userdel fleetml-agent
 You should see `device_id=` and the ID. A `models_dir:` line means the
 models are in that folder, outside `/var/lib/fleetml-agent`: remove it too,
 with `sudo rm -rf <that folder>` (no line: they were in the state folder,
-which the block removed). Then on the machine with the CLI,
+which the block removed); a folder that is a mount point (another disk)
+says `Device or resource busy`: remove what is in it with
+`sudo find <that folder> -mindepth 1 -delete`, then unmount it as you
+mounted it. Then on the machine with the CLI,
 remove the device from its project, with that ID:
 
 ```bash

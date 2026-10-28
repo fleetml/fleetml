@@ -204,7 +204,8 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    ```
 
    The images step 2 built live in Docker Desktop and go with
-   `docker image prune` or Docker Desktop's Images page. WSL and Docker
+   `docker image rm fleetml-prod-server fleetml-prod-dashboard` or Docker
+   Desktop's Images page. WSL and Docker
    Desktop stay.
 
 How it fits together, in more detail:
@@ -270,6 +271,9 @@ reads it from the same `wsl` line, so the key is in no command history:
 wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' | fleetml config set-key
 fleetml config set server "http://localhost:$(wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s ${FLEETML_REST_PORT:-18080}')"
 ```
+
+The second line saves the REST port in effect: after you move it
+([Other ports](ADVANCED.md#other-ports)), run it again.
 
 The second line saves the stack's REST port with it (the CLI's default is
 the quickstart's port), so a new window reaches the same server; a key that

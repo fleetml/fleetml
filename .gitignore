@@ -24,6 +24,7 @@ vendor/
 .env
 # The Helm chart's secrets file (deploy/helm/fleetml/README.md)
 fleetml-secrets*.yaml
+fleetml-secrets.env
 
 # Documentation site (make docs-site)
 site/

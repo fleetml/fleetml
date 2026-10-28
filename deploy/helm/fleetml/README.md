@@ -208,7 +208,8 @@ kubectl -n fleetml delete statefulset fleetml-postgres fleetml-nats fleetml-s3 -
 ```
 
 You should see three `statefulset.apps "fleetml-<name>" deleted from fleetml namespace` lines
-(with a release name other than `fleetml`, the names start with it). The
+(with a release name other than `fleetml`, the names start with it:
+release `old` has `old-fleetml-postgres` and so on, so delete those). The
 same line also finishes an upgrade that already stopped with that error:
 run it, then the upgrade again. Charts from 0.10.3 on keep those labels the
 same, so later upgrades need nothing else. The upgrade:
@@ -231,8 +232,8 @@ server applies any new database migrations when it starts, and devices
 reconnect by themselves. A port-forward stops working when the pod behind
 it is replaced (when something uses it, kubectl prints an
 `E... "Unhandled Error" err="an error occurred forwarding ..."` line and
-`error: lost connection to pod` in this terminal: that is the old
-port-forward ending, not the upgrade failing), but keeps its local port, so starting the same line again
+`error: lost connection to pod` in this terminal, or a `broken pipe` line:
+that is the old port-forward ending, not the upgrade failing), but keeps its local port, so starting the same line again
 stops with `address already in use`. After an upgrade (or an uninstall and
 a new install), stop this terminal's port-forwards and start step 4's two
 and step 6's dashboard one again:

@@ -104,8 +104,9 @@ shows why, one line per heartbeat: `msg="download failed"` with the address
 it tried means the object store's address or port
 ([the download address](#a-phone-or-another-machine-the-download-address));
 `registration failed` with `invalid or revoked enrollment key` means
-`FLEETML_ENROLLMENT_KEY` is not set in this terminal (step 4 sets it: run
-step 4 again, then `docker rm -f fleetml-agent` and step 5). The
+`FLEETML_ENROLLMENT_KEY` is not set in this terminal (step 4 sets it: in
+a new terminal, run step 3's `export PATH` line and step 4 again, then
+`docker rm -f fleetml-agent` and step 5). The
 [Linux agent guide](LINUX_AGENT.md) has every line the agent logs.
 
 **The phone never shows `is active`** (Android step 5 says `Not active after
@@ -220,7 +221,10 @@ download address in effect, one per line (`FLEETML_DASHBOARD_PORT=8081`,
 `FLEETML_S3_PUBLIC_PORT=29100`, `S3_PUBLIC_ENDPOINT=localhost:29100`, and the
 two you did not move). Then go on with Get started's step 3 (or
 the step that failed). `source ~/.fleetml.env` also brings back the secrets
-and the saved `S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset.
+and the saved `S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset. A
+CLI you pointed at the old REST port with `fleetml config set server` (as
+QUICKSTART's Windows block does) still uses it: run that line again with
+the new port.
 
 With a port moved, every block in the docs follows it: the blocks read the
 saved ports as `${FLEETML_REST_PORT:-18080}`, `${FLEETML_GRPC_PORT:-19090}`
@@ -524,8 +528,9 @@ server instead, and the tour runs against it: keep `FLEETML_SERVER` and
 `FLEETML_API_KEY` from the chart README's Get started instead of the tour's
 first `export` line, and add `--grpc localhost:$GRPC` to the tour's
 `fleetml simulate` lines in place of theirs. In a second shell, set the
-chart's `REST GRPC S3` line and its `export` line again instead of the
-tour's [second-shell block](QUICKSTART.md#tour). The tour's
+chart's `REST GRPC S3` line and its `export` line again, and
+`source ~/.fleetml.env` (the tour's project, versions and enrollment key),
+instead of the tour's [second-shell block](QUICKSTART.md#tour). The tour's
 `>> ~/.fleetml.env` lines then add its own variables (the project and
 version IDs, the enrollment key) to that file, next to a compose stack's
 secrets if one runs on the same machine: they change nothing on that stack,
@@ -557,8 +562,9 @@ read, never a command line. Then step 4 with
 `-f fleetml-secrets.yaml`, and step 5 with its first line reading the admin
 key from that file:
 `export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^FLEETML_ADMIN_KEY=//p' fleetml-secrets.env)`.
-Keep `fleetml-secrets.env` as you would the secrets file, and delete it at
-clean-up with the rest. Such a release has no `fleetml-secrets.yaml`: on
+Keep `fleetml-secrets.env` as you would the secrets file (the clone's
+`.gitignore` keeps it out of git), and delete it at clean-up with the rest:
+`rm -f fleetml-secrets.env` next to step 7's line. Such a release has no `fleetml-secrets.yaml`: on
 an upgrade, leave `-f fleetml-secrets.yaml` out of the chart README's
 [Upgrading](../deploy/helm/fleetml/README.md#upgrading) block. To change a key that may change (`S3_SECRET_KEY`,
 or `JWT_SECRET` at the cost of the devices registering again; not
