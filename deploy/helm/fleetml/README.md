@@ -160,7 +160,7 @@ than 32 characters (the server would not start with one), and the first two
 must differ. The file name is in the repository's `.gitignore`, so a clone
 does not commit it; keep a copy outside the clone as well.
 
-About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.5"}`,
+About step 4: `/readyz` answers `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"0.10.6"}`,
 and `helm test` ends with `Phase: Succeeded`. The first install pulls the
 images, which takes a minute or two (the server waits meanwhile, up to
 `server.dependencyTimeout`, 180 s in total for Postgres, the object store and
@@ -208,7 +208,8 @@ kubectl -n fleetml delete statefulset fleetml-postgres fleetml-nats fleetml-s3 -
 ```
 
 You should see three `statefulset.apps "fleetml-<name>" deleted from fleetml namespace` lines
-(with a release name other than `fleetml`, the names start with it). The
+(with a release name other than `fleetml`, the names start with it:
+release `old` has `old-fleetml-postgres` and so on, so delete those). The
 same line also finishes an upgrade that already stopped with that error:
 run it, then the upgrade again. Charts from 0.10.3 on keep those labels the
 same, so later upgrades need nothing else. The upgrade:
@@ -231,8 +232,8 @@ server applies any new database migrations when it starts, and devices
 reconnect by themselves. A port-forward stops working when the pod behind
 it is replaced (when something uses it, kubectl prints an
 `E... "Unhandled Error" err="an error occurred forwarding ..."` line and
-`error: lost connection to pod` in this terminal: that is the old
-port-forward ending, not the upgrade failing), but keeps its local port, so starting the same line again
+`error: lost connection to pod` in this terminal, or a `broken pipe` line:
+that is the old port-forward ending, not the upgrade failing), but keeps its local port, so starting the same line again
 stops with `address already in use`. After an upgrade (or an uninstall and
 a new install), stop this terminal's port-forwards and start step 4's two
 and step 6's dashboard one again:
@@ -260,9 +261,11 @@ made with chart 0.10.2 or older it stops with the same
 version: run the upgrade above again to return to the current chart (the
 data stays), and stay on charts from 0.10.3 on. Before it stops, that
 rollback has already written the old revision's secrets to the Secret: if
-you rotated one since (`s3SecretKey`, for example), the server stays Not
-Ready (`The request signature we calculated does not match` in its log)
-until that upgrade writes the current ones back.
+you rotated one since (`s3SecretKey`, for example), the old revision's new
+server pod never gets Ready (`The request signature we calculated does not
+match` in its log) and restarts every `server.dependencyTimeout` (180 s),
+while the pod of the current chart keeps serving, until that upgrade writes
+the current secrets back.
 
 ## Production
 

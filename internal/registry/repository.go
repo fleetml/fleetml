@@ -38,7 +38,7 @@ type VersionRepository interface {
 	Create(ctx context.Context, v *RegistryVersion) error
 	GetByID(ctx context.Context, id uuid.UUID) (*RegistryVersion, error)
 	GetByModelAndVersion(ctx context.Context, modelID uuid.UUID, version string) (*RegistryVersion, error)
-	ListByModel(ctx context.Context, modelID uuid.UUID, limit, offset int) ([]RegistryVersion, int, error)
+	ListByModel(ctx context.Context, modelID uuid.UUID, status string, limit, offset int) ([]RegistryVersion, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string, promotedBy *string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -374,12 +374,13 @@ func (r *VersionRepo) GetByModelAndVersion(ctx context.Context, modelID uuid.UUI
 	return v, nil
 }
 
-func (r *VersionRepo) ListByModel(ctx context.Context, modelID uuid.UUID, limit, offset int) ([]RegistryVersion, int, error) {
+func (r *VersionRepo) ListByModel(ctx context.Context, modelID uuid.UUID, status string, limit, offset int) ([]RegistryVersion, int, error) {
 	query := `SELECT id, model_id, version, status, metadata_json, release_notes,
 		created_at, updated_at, promoted_at, promoted_by, COUNT(*) OVER() AS total
-		FROM model_versions WHERE model_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+		FROM model_versions WHERE model_id = $1 AND ($4::text = '' OR status = $4::text)
+		ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 
-	rows, err := r.pool.Query(ctx, query, modelID, limit, offset)
+	rows, err := r.pool.Query(ctx, query, modelID, limit, offset, status)
 	if err != nil {
 		return nil, 0, fmt.Errorf("version.ListByModel: %w", err)
 	}

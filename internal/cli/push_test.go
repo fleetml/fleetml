@@ -74,6 +74,27 @@ func TestPush_Metadata(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid --metadata JSON")
 }
 
+// A push the server would refuse (quantization, framework, version, metadata)
+// is refused before anything is created; any case of a valid value is fine.
+func TestPush_RefusedInputsCreateNothing(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	file := filepath.Join(t.TempDir(), "iris.tflite")
+	require.NoError(t, os.WriteFile(file, []byte("tflite bytes"), 0o644))
+	require.NoError(t, runCLI(t, fake.URL, "k", "project", "create", "--name", "bad"))
+	projectID := fake.Projects()[0]["id"].(string)
+	push := func(extra ...string) error {
+		return runCLI(t, fake.URL, "k", append([]string{"push", file, "--project", projectID, "--model", "iris"}, extra...)...)
+	}
+	assert.ErrorContains(t, push("--version", "1.0.0", "--quantization", "INT3"), "quantization must be one of FP32, FP16, INT8, INT4, DYNAMIC")
+	assert.ErrorContains(t, push("--version", "1.0.0", "--framework", "PYTORCH"), "framework must be one of TFLITE, ONNX, COREML, GGUF, CUSTOM")
+	assert.ErrorContains(t, push("--version", "v1"), `invalid version "v1"`)
+	assert.ErrorContains(t, push("--version", "1.0.0", "--metadata", "{"), "invalid --metadata JSON")
+	assert.Empty(t, fake.Versions(), "nothing created")
+
+	require.NoError(t, push("--version", "1.0.0-rc.1", "--quantization", "fp16", "--framework", "tflite"))
+	assert.Len(t, fake.Versions(), 1)
+}
+
 // A small model was shown as "0KB" before.
 func TestSizeString(t *testing.T) {
 	assert.Equal(t, "642 bytes", sizeString(642))

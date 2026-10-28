@@ -60,7 +60,7 @@ func (h *VersionHandler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	versions, total, err := h.service.ListVersions(c.Request.Context(), modelID, limit, offset)
+	versions, total, err := h.service.ListVersions(c.Request.Context(), modelID, c.Query("status"), limit, offset)
 	if err != nil {
 		handleServiceError(c, err)
 		return

@@ -68,10 +68,27 @@ func (s *Service) SetVersionChecker(v VersionChecker) {
 	s.versions = v
 }
 
-// requireDeployable returns ErrNotDeployable if the version has no READY variant.
+// versionStatus is implemented by a VersionChecker that knows a version's
+// registry status (DRAFT, STAGED, ACTIVE, ARCHIVED).
+type versionStatus interface {
+	VersionStatus(ctx context.Context, versionID uuid.UUID) (string, error)
+}
+
+// requireDeployable returns ErrNotDeployable if the version has no READY variant,
+// and ErrInvalidInput for an ARCHIVED one. Any other status deploys: a new
+// version is DRAFT, and the status is a label (QUICKSTART, Publish).
 func requireDeployable(ctx context.Context, v VersionChecker, versionID uuid.UUID) error {
 	if v == nil {
 		return nil
+	}
+	if vs, ok := v.(versionStatus); ok {
+		status, err := vs.VersionStatus(ctx, versionID)
+		if err != nil {
+			return fmt.Errorf("checking version status: %w", err)
+		}
+		if status == "ARCHIVED" {
+			return fmt.Errorf("%w: model version %s is ARCHIVED, which is final: deploy another version", ErrInvalidInput, versionID)
+		}
 	}
 	n, err := v.ReadyVariantCount(ctx, versionID)
 	if err != nil {
@@ -235,6 +252,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 		if input.HealthGate.MinEvents <= 0 {
 			input.HealthGate.MinEvents = DefaultHealthGate().MinEvents
 		}
+		input.HealthGate.OnFailure = strings.ToUpper(strings.TrimSpace(input.HealthGate.OnFailure))
 		if input.HealthGate.OnFailure == "" {
 			input.HealthGate.OnFailure = "ROLLBACK"
 		}

@@ -199,10 +199,10 @@ func (m *mockVersionRepo) GetByModelAndVersion(_ context.Context, modelID uuid.U
 	return nil, fmt.Errorf("version.GetByModelAndVersion: %w", ErrNotFound)
 }
 
-func (m *mockVersionRepo) ListByModel(_ context.Context, modelID uuid.UUID, limit, offset int) ([]RegistryVersion, int, error) {
+func (m *mockVersionRepo) ListByModel(_ context.Context, modelID uuid.UUID, status string, limit, offset int) ([]RegistryVersion, int, error) {
 	var result []RegistryVersion
 	for _, v := range m.versions {
-		if v.ModelID == modelID {
+		if v.ModelID == modelID && (status == "" || v.Status == status) {
 			result = append(result, *v)
 		}
 	}

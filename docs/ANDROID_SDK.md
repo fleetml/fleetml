@@ -109,7 +109,8 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    ```
 
    You should see `Device: ` with the phone's serial and model, `Installed on 1 device.`,
-   the two forwarded ports, then `I FleetML : Model iris 1.0.0 is active`, and the
+   the two forwarded ports (only the first time: run again, the forwards are
+   already there and `adb reverse` prints nothing), then `I FleetML : Model iris 1.0.0 is active`, and the
    app's screen **Active model: iris 1.0.0**. Tap **Classify sample flower**
    to run it. If it says `Not active after 3 minutes`, see
    [Troubleshooting](ADVANCED.md#troubleshooting): the phone locked, a
@@ -151,14 +152,14 @@ with the same server and key. The emulator instead of a phone:
 
 ## Install
 
-The SDK is on Maven Central; 0.10.5 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.10.6 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.5")
+    implementation("dev.fleetml:fleetml-sdk:0.10.6")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -193,7 +194,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.5") {
+implementation("dev.fleetml:fleetml-sdk:0.10.6") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -226,7 +227,7 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.10.5-dev` (any version string) in the app's
+and `sdkVersion=0.10.6-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
@@ -293,7 +294,7 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.5")
+    implementation("dev.fleetml:fleetml-sdk:0.10.6")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -655,7 +656,7 @@ maintainers run it by hand.
 
    ```bash
    ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
-   adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+   adb shell am start -n <application ID>/.MainActivity
    ```
 
 The SDK logs every step to logcat with the tag `FleetML`
@@ -694,7 +695,8 @@ on every heartbeat.
 After fixing something (a port forward, a key, a deployment), the app does
 not have to wait for its next heartbeat: `FleetML.syncNow()` runs one now, and
 force-stopping and reopening the app (`adb shell am force-stop <application ID>`,
-then start it again) registers and heartbeats straight away. The SDK's timers
+then start it again) heartbeats straight away (with its saved
+registration: no new `Registered` line). The SDK's timers
 run only while the app is in the foreground: an app behind another one waits
 for its hourly background check ([Battery and data](#battery-and-data)), so
 bring it to the front after a fix.
@@ -738,7 +740,7 @@ instead:
 ```bash
 adb reverse --remove-all
 adb shell am force-stop <application ID>
-adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+adb shell am start -n <application ID>/.MainActivity
 ```
 
 `onModelReady` fires for the cached model at once and
@@ -775,7 +777,7 @@ emulator, and 70 seconds on a phone, whose Wi-Fi takes longer to come back.
 ```bash
 adb shell cmd connectivity airplane-mode enable
 adb shell am force-stop <application ID>
-adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+adb shell am start -n <application ID>/.MainActivity
 ```
 
 and `adb shell cmd connectivity airplane-mode disable` brings the network
@@ -835,7 +837,7 @@ the emulator (the name `adb devices` lists) when a phone is attached too:
 export ANDROID_SERIAL=emulator-5554
 adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
 ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugHost=10.0.2.2 -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
-adb shell monkey -p <application ID> -c android.intent.category.LAUNCHER 1
+adb shell am start -n <application ID>/.MainActivity
 ```
 
 Without the forward the app registers and then logs
@@ -941,8 +943,8 @@ comes back with only a key of another project, which the server refuses: a
 key alone must not take a known device over. Remove the old device record
 with the admin key, then start the app again. Its ID is in
 `fleetml device list` (without `--project` it lists the devices of every
-project: the row with your phone's Chipset, a device has one record; the
-dashboard's Devices page shows it too):
+project: the row with your phone's Chipset, one record per FleetML app on
+the phone; the dashboard's Devices page shows it too):
 
 ```bash
 curl -fsS -X DELETE -H "Authorization: Bearer $FLEETML_ADMIN_KEY" "localhost:${FLEETML_REST_PORT:-18080}/api/v1/devices/<device ID>" && echo removed
@@ -1027,7 +1029,7 @@ adb reverse tcp:$s3 tcp:$s3
 cd android
 $env:ORG_GRADLE_PROJECT_fleetmlEnrollmentKey = $EK
 .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=localhost" "-PfleetmlDebugPort=$grpc"
-adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
+adb shell am start -n com.fleetml.sample/.MainActivity
 adb logcat -s FleetML
 ```
 
@@ -1101,7 +1103,7 @@ and a stale host as
    adb reverse --remove-all
    adb shell pm clear com.fleetml.sample
    .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=<LAN IP>" "-PfleetmlDebugPort=$grpc"
-   adb shell monkey -p com.fleetml.sample -c android.intent.category.LAUNCHER 1
+   adb shell am start -n com.fleetml.sample/.MainActivity
    ```
 
    The app connects by itself; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`

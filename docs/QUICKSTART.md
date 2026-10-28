@@ -19,7 +19,7 @@ and keep it open until the end.
    docker compose version && git --version && jq --version
    ```
 
-   You should see `Docker Compose version v2` and `jq-` on the last line.
+   You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
 
 2. **Start FleetML.** The first start takes a few minutes, to download and
    build the images:
@@ -204,7 +204,8 @@ shows the dashboard. Steps 1 to 3 are once per machine:
    ```
 
    The images step 2 built live in Docker Desktop and go with
-   `docker image prune` or Docker Desktop's Images page. WSL and Docker
+   `docker image rm fleetml-prod-server fleetml-prod-dashboard` or Docker
+   Desktop's Images page. WSL and Docker
    Desktop stay.
 
 How it fits together, in more detail:
@@ -270,6 +271,9 @@ reads it from the same `wsl` line, so the key is in no command history:
 wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' | fleetml config set-key
 fleetml config set server "http://localhost:$(wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s ${FLEETML_REST_PORT:-18080}')"
 ```
+
+The second line saves the REST port in effect: after you move it
+([Other ports](ADVANCED.md#other-ports)), run it again.
 
 The second line saves the stack's REST port with it (the CLI's default is
 the quickstart's port), so a new window reaches the same server; a key that
@@ -360,7 +364,7 @@ Windows 11) or a company's application control may scan or block an unsigned
 program, also when it is started from a terminal. The CLI keeps its settings in `%USERPROFILE%\.fleetml\config.yaml`
 ([CONFIG.md](CONFIG.md#cli)).
 
-`fleetml version` prints the release, for example `✓ fleetml v0.10.5`. In PowerShell,
+`fleetml version` prints the release, for example `✓ fleetml v0.10.6`. In PowerShell,
 point it at the server with the `$env:FLEETML_SERVER` line of [On Windows](#on-windows) step 5
 and `$env:FLEETML_API_KEY = '<the admin key>'` (or the `wsl` line in
 [On Windows](#on-windows)), or once for every window with
@@ -670,7 +674,7 @@ curl -s $FLEETML_SERVER/readyz; echo
 curl -s $FLEETML_SERVER/metrics | grep -E '^fleetml_(deployments|alerts_sent_total|telemetry_events_accepted_total)'
 ```
 
-`/livez` answers `{"status":"ok","version":"0.10.5"}` and `/readyz` adds the
+`/livez` answers `{"status":"ok","version":"0.10.6"}` and `/readyz` adds the
 three dependencies. The gRPC port also serves the standard
 `grpc.health.v1` health service.
 

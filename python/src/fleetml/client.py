@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import time
 from typing import Any, Callable, Collection, Dict, List, Mapping, Optional, Sequence, TypeVar, Union
 
@@ -32,6 +33,16 @@ T = TypeVar("T")
 # ACTIVE, one step at a time as the server requires; an ACTIVE version keeps
 # its status, and from ARCHIVED the server refuses the first step.
 _PROMOTE_STEPS: Dict[str, Sequence[str]] = {"DRAFT": ("STAGED", "ACTIVE"), "STAGED": ("ACTIVE",), "ACTIVE": ()}
+
+# What the server accepts for a push (any case), checked before anything is created.
+_QUANTIZATIONS = ("FP32", "FP16", "INT8", "INT4", "DYNAMIC")
+_RUNTIMES = ("TFLITE", "ONNX", "COREML", "GGUF", "CUSTOM")
+# Semver 2.0.0 (prerelease and build allowed, no leading zeros), with the optional "v".
+_SEMVER = re.compile(
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(-(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?"
+    r"(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$"
+)
 
 DEFAULT_SERVER = "http://localhost:18080"
 
@@ -148,8 +159,11 @@ class FleetML:
         they do not exist, declares the variant with the file's size and
         sha256, uploads the file to the presigned URL (without the API key),
         and asks the server to verify it. With ``promote`` the version is then
-        moved to STAGED and ACTIVE. Returns the version.
+        moved to STAGED and ACTIVE. Returns the version. A quantization,
+        target_runtime or version the server would refuse raises
+        ``FleetMLError`` (400 VALIDATION_ERROR) before anything is created.
         """
+        _check_push_inputs(quantization, target_runtime, version)
         size = os.path.getsize(path)
         digest = hashlib.sha256()
         with open(path, "rb") as f:
@@ -513,3 +527,21 @@ class Drift(_API):
     def history(self, version_id: str) -> List[DriftResult]:
         """The last 50 drift results, newest first."""
         return from_list(self._c._request("GET", f"/drift/{version_id}/history"), DriftResult.from_api)
+
+
+def _check_push_inputs(quantization: str, target_runtime: str, version: str) -> None:
+    """Refuses what the server would refuse, so a refused push leaves no model or version."""
+    if quantization.strip().upper() not in _QUANTIZATIONS:
+        raise FleetMLError(
+            400, "VALIDATION_ERROR", f"quantization must be one of {', '.join(_QUANTIZATIONS)}, got {quantization!r}"
+        )
+    if target_runtime.strip().upper() not in _RUNTIMES:
+        raise FleetMLError(
+            400, "VALIDATION_ERROR", f"target_runtime must be one of {', '.join(_RUNTIMES)}, got {target_runtime!r}"
+        )
+    if not _SEMVER.fullmatch(version):
+        raise FleetMLError(
+            400,
+            "VALIDATION_ERROR",
+            f'invalid version "{version}": expected MAJOR.MINOR.PATCH (semver 2.0.0), such as 1.0.0 or 1.0.0-rc.1',
+        )

@@ -50,7 +50,7 @@ func (c *Client) authorize(req *http.Request) {
 // refused, since a key that is right for another server reads the same.
 func errUnauthorized(server, serverMsg string, haveKey bool) error {
 	if !haveKey {
-		serverMsg += "; no API key is set: Get started saved the admin key in ~/.fleetml.env (`source ~/.fleetml.env && export FLEETML_API_KEY=$FLEETML_ADMIN_KEY`)"
+		serverMsg += "; no API key is set: run `fleetml config set-key` with your key, or set FLEETML_API_KEY in your environment"
 	}
 	return fmt.Errorf("unauthorized by %s (%s): set an admin API key for that server with `fleetml config set-key` or FLEETML_API_KEY, "+
 		"or point the CLI at the right server (FLEETML_SERVER, `fleetml config set server <URL>` or --server)", server, serverMsg)

@@ -200,10 +200,10 @@ func (m *mockVersionRepo) GetByModelAndVersion(_ context.Context, modelID uuid.U
 	return nil, fmt.Errorf("version.GetByModelAndVersion: %w", registry.ErrNotFound)
 }
 
-func (m *mockVersionRepo) ListByModel(_ context.Context, modelID uuid.UUID, limit, offset int) ([]registry.RegistryVersion, int, error) {
+func (m *mockVersionRepo) ListByModel(_ context.Context, modelID uuid.UUID, status string, limit, offset int) ([]registry.RegistryVersion, int, error) {
 	var result []registry.RegistryVersion
 	for _, v := range m.versions {
-		if v.ModelID == modelID {
+		if v.ModelID == modelID && (status == "" || v.Status == status) {
 			result = append(result, *v)
 		}
 	}
@@ -676,6 +676,38 @@ func TestVersionStatus_Unknown(t *testing.T) {
 	errBody := parseBody(t, w)["error"].(map[string]interface{})
 	assert.Equal(t, "VALIDATION_ERROR", errBody["code"])
 	assert.Equal(t, `invalid input: status must be one of DRAFT, STAGED, ACTIVE, ARCHIVED, got "LIVE"`, errBody["message"])
+}
+
+// The version list filters by status (any case); an unknown status is refused
+// with the allowed values; no status lists every version.
+func TestVersionList_StatusFilter(t *testing.T) {
+	svc := newTestService()
+	r := setupTestRouter(svc)
+	w := doJSON(r, "POST", "/api/v1/projects", map[string]string{"name": "P"})
+	projectID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
+	w = doJSON(r, "POST", "/api/v1/projects/"+projectID+"/models", map[string]string{"name": "m", "framework": "TFLITE", "task_type": "CLASSIFICATION"})
+	modelID := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
+	w = doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{"version": "1.0.0"})
+	staged := parseBody(t, w)["data"].(map[string]interface{})["id"].(string)
+	doJSON(r, "POST", "/api/v1/models/"+modelID+"/versions", map[string]string{"version": "2.0.0"})
+	w = doJSON(r, "PATCH", "/api/v1/versions/"+staged+"/status", map[string]string{"status": "STAGED"})
+	require.Equal(t, http.StatusOK, w.Code)
+
+	count := func(query string) int {
+		w := doJSON(r, "GET", "/api/v1/models/"+modelID+"/versions"+query, nil)
+		require.Equal(t, http.StatusOK, w.Code, query)
+		return len(parseBody(t, w)["data"].([]interface{}))
+	}
+	assert.Equal(t, 2, count(""))
+	assert.Equal(t, 1, count("?status=STAGED"))
+	assert.Equal(t, 1, count("?status=draft"))
+	assert.Equal(t, 0, count("?status=ACTIVE"))
+
+	w = doJSON(r, "GET", "/api/v1/models/"+modelID+"/versions?status=BOGUS", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	errBody := parseBody(t, w)["error"].(map[string]interface{})
+	assert.Equal(t, "VALIDATION_ERROR", errBody["code"])
+	assert.Equal(t, `invalid input: status must be one of DRAFT, STAGED, ACTIVE, ARCHIVED, got "BOGUS"`, errBody["message"])
 }
 
 // --- Variant handler tests ---

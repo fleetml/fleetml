@@ -21,10 +21,12 @@ and keep it open until the end.
    docker compose version && git --version && jq --version
    ```
 
-   You should see `Docker Compose version v2` and `jq-` on the last line.
+   You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
 
 2. **Start FleetML.** The first start takes a few minutes, to download and
-   build the images:
+   build the images. This block clones the repository if you are not already
+   in it, writes the server's secrets to `~/.fleetml.env` once, starts the
+   stack and waits until it answers:
 
    <!-- golden: start -->
    ```bash
@@ -69,9 +71,10 @@ and keep it open until the end.
 
    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
-5. **Put a device on it**: the Linux device agent in a container on this
-   machine. It registers with the enrollment key from step 4, downloads the
-   model, checks it and makes it active:
+5. **Put a device on it**: the Linux device agent, which registers with the
+   enrollment key from step 4, downloads the model, checks it and makes it
+   active. This block downloads the agent, runs it in an Ubuntu container as
+   an unprivileged user and waits until it reports the model active:
 
    <!-- golden: device -->
    ```bash
@@ -102,6 +105,8 @@ and keep it open until the end.
    You should see `Dashboard: http://localhost:<port>`, and in the browser the
    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
+
+   ![The dashboard after Get started: the Deployments page with the COMPLETE deployment of iris 1.0.0 to all devices](docs/screenshots/get-started.png)
 
 7. **Clean up**, when you are done (after the
    [tour](docs/QUICKSTART.md#tour), if you take it: this also stops its
@@ -190,37 +195,36 @@ a few minutes more on a first run, which pulls and downloads them):
   fleet: iris 2.1.0 on 20
 ```
 
-It starts the dev stack (compose project `fleetml`: Postgres, SeaweedFS and
-NATS on ports 15432, 19000 and 14222) and leaves it running when it ends;
-`docker compose -f deploy/docker-compose.yml down` stops it, and `-v`
-deletes its data too.
+It leaves the dev stack it starts running (compose project `fleetml`, ports
+15432, 19000 and 14222): `docker compose -f deploy/docker-compose.yml down -v`
+removes it and its data.
 
 ## Features
 
-The end-to-end tests live in [test/e2e](test/e2e) and run with `make e2e`.
+The end-to-end tests in [test/e2e](test/e2e) cover every row; `make e2e` runs them.
 
-| Feature | Status | See it |
-|---|---|---|
-| **Model registry with integrity checks.** Files go straight to S3-compatible storage, and the server checks each upload's sha256 and size before deployment. | DONE | [Tour step 1](docs/QUICKSTART.md#1-publish-a-model), e2e `TestE2E_ArtifactIntegrity` |
-| **Variant selection.** Each device gets a build it can run, chosen by OS runtime, RAM and capability score. | DONE | [Tour step 2](docs/QUICKSTART.md#2-a-fleet-and-a-rollout), [ROLLOUTS.md](docs/ROLLOUTS.md) |
-| **Canary rollouts with a health gate.** The gate watches the canary cohort's error rate, and optionally p95 latency, and rolls back or pauses. | DONE | [Tour step 3](docs/QUICKSTART.md#3-a-canary-that-rolls-itself-back), e2e `TestE2E_HealthGateIsCohortScoped` |
-| **Rolling rollouts.** Batches by device count or percentage at an interval, with the same gate. | DONE | e2e `TestE2E_RollingBatches` |
-| **Rollback, cancel, one version per model.** Manual rollback, also after completion, returns devices to the previous version; the newest deployment wins. | DONE | e2e `TestE2E_RollbackFromComplete` |
-| **A/B experiments.** Sticky cohorts, telemetry per arm, a fixed-horizon Welch t-test and a maximum duration. | DONE | [Tour step 4](docs/QUICKSTART.md#4-an-ab-experiment), e2e `TestE2E_ABExperiment` |
-| **Drift detection.** PSI on latency, confidence and input features, last 24 hours against the 7 days before; CRITICAL raises an alert. | DONE | [Tour step 5](docs/QUICKSTART.md#5-drift) |
-| **Alerts.** Rollback and drift alerts on NATS and to signed webhooks, Slack and email, with retries and a delivery log. | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
-| **Android SDK.** Kotlin, minSdk 26, with resumable verified downloads, validation, last-known-good, offline start and persistent telemetry; tested on the emulator and a physical Android 15 phone. | DONE | [ANDROID_SDK.md](docs/ANDROID_SDK.md), instrumented `LiveServerTest` |
-| **iOS SDK.** Swift package, iOS 15 and later, tested on the iOS 16.4 and 26.5 simulators and a physical iPhone 16 Pro Max on iOS 26.6.1; Core ML validation, Keychain credentials. | DONE | [IOS_SDK.md](docs/IOS_SDK.md), `swift test` at the repository root, simulator `LiveServerTests` |
-| **Linux device agent.** A static binary (amd64, arm64) and systemd service with the same rollout, validation and last-known-good rules. | DONE | [LINUX_AGENT.md](docs/LINUX_AGENT.md), `go test ./internal/agent` |
-| **Battery and data.** Hourly background checks, batched telemetry, and downloads on unmetered networks or while charging unless urgent, all set from the server. | DONE | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data), e2e `TestE2E_UrgentAndDeviceConfig`, `LiveServerTests` |
-| **Dashboard.** Models, deployments, experiments, drift and alert sinks, with server-side login sessions; works on phones. | DONE | [Tour step 6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
-| **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices. | DONE | [Tour](docs/QUICKSTART.md#tour) |
-| **Security.** API keys with per-project roles, per-project enrollment keys, revocable device tokens, and devices confined to their project. | DONE | [SECURITY.md](SECURITY.md), e2e `TestE2E_ProjectIsolation`, `TestE2E_RolesAndAudit` |
-| **Operations.** Health probes, Prometheus metrics and a Grafana dashboard; telemetry is delivered at least once and stored once per event ID. | DONE | [Tour step 7](docs/QUICKSTART.md#7-operations), e2e `TestE2E_OpsEndpoints` |
-| **Roles and audit log.** Viewer, operator and admin roles per project, and an audit log of every change and refused request. | DONE | [ARCHITECTURE.md](docs/ARCHITECTURE.md#users-roles-and-the-audit-log) |
-| **Helm chart.** Server, dashboard and optional bundled Postgres, NATS and SeaweedFS; the end-to-end suite runs against it in kind. | DONE | [deploy/helm/fleetml](deploy/helm/fleetml) |
-| **Delta updates.** Devices with the previous version download only a delta: 440 KB for a 20 MB model with a retrained head. | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#delta-updates) |
-| **Artifact signing.** Per-project ed25519 signatures, checked on the device before download; keys rotate with a grace period. | DONE | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
+| Feature | See it |
+|---|---|
+| **Model registry with integrity checks.** Uploads go straight to S3-compatible storage, and the server checks each file's sha256 and size before it can be deployed. | [Tour step 1](docs/QUICKSTART.md#1-publish-a-model) |
+| **Variant selection.** Each device gets a build it can run, chosen by OS runtime, RAM and capability score. | [Tour step 2](docs/QUICKSTART.md#2-a-fleet-and-a-rollout), [ROLLOUTS.md](docs/ROLLOUTS.md) |
+| **Canary rollouts with a health gate.** The gate watches the canary cohort's error rate, and optionally p95 latency, and rolls back or pauses. | [Tour step 3](docs/QUICKSTART.md#3-a-canary-that-rolls-itself-back) |
+| **Rolling rollouts.** Batches by device count or percentage at an interval, with the same gate. | [ROLLOUTS.md](docs/ROLLOUTS.md) |
+| **Rollback, cancel, one version per model.** A manual rollback, also after completion, returns devices to the previous version, and the newest deployment wins. | [ROLLOUTS.md](docs/ROLLOUTS.md) |
+| **A/B experiments.** Sticky cohorts, telemetry per arm, a fixed-horizon Welch t-test and a maximum duration. | [Tour step 4](docs/QUICKSTART.md#4-an-ab-experiment) |
+| **Drift detection.** PSI on latency, confidence and input features, the last 24 hours against the 7 days before, with an alert on CRITICAL. | [Tour step 5](docs/QUICKSTART.md#5-drift) |
+| **Alerts.** Rollback and drift alerts on NATS and to signed webhooks, Slack and email, with retries and a delivery log. | [ROLLOUTS.md](docs/ROLLOUTS.md#alert-sinks) |
+| **Android SDK.** A Kotlin SDK (minSdk 26) with resumable verified downloads, validation, last-known-good, offline start and persistent telemetry, tested on the emulator and a physical phone. | [ANDROID_SDK.md](docs/ANDROID_SDK.md) |
+| **iOS SDK.** A Swift package (iOS 15 and later) with Core ML validation and Keychain credentials, tested on simulators and a physical phone. | [IOS_SDK.md](docs/IOS_SDK.md) |
+| **Linux device agent.** A static binary (amd64, arm64) and systemd service with the same rollout, validation and last-known-good rules. | [LINUX_AGENT.md](docs/LINUX_AGENT.md) |
+| **Battery and data.** Hourly background checks, batched telemetry, and downloads on unmetered networks or while charging unless urgent, all set from the server. | [Android](docs/ANDROID_SDK.md#battery-and-data), [iOS](docs/IOS_SDK.md#battery-and-data) |
+| **Dashboard.** Models, deployments, experiments, drift and alert sinks, with server-side login sessions, on a desktop or a phone. | [Tour step 6](docs/QUICKSTART.md#6-dashboard), [screenshots](docs/screenshots) |
+| **CLI.** `fleetml push`, `deploy`, `experiment`, `drift`, and `simulate` for a fleet of simulated devices. | [Tour](docs/QUICKSTART.md#tour) |
+| **Security.** API keys with per-project roles, per-project enrollment keys, revocable device tokens, and devices confined to their project. | [SECURITY.md](SECURITY.md) |
+| **Operations.** Health probes, Prometheus metrics and a Grafana dashboard, with telemetry delivered at least once and stored once per event ID. | [Tour step 7](docs/QUICKSTART.md#7-operations) |
+| **Roles and audit log.** Viewer, operator and admin roles per project, and an audit log of every change and refused request. | [ARCHITECTURE.md](docs/ARCHITECTURE.md#users-roles-and-the-audit-log) |
+| **Helm chart.** The server, the dashboard and optional bundled Postgres, NATS and SeaweedFS, tested end to end in kind. | [deploy/helm/fleetml](deploy/helm/fleetml) |
+| **Delta updates.** Devices with the previous version download only a delta: 440 KB for a 20 MB model with a retrained head. | [ROLLOUTS.md](docs/ROLLOUTS.md#delta-updates) |
+| **Artifact signing.** Per-project ed25519 signatures, checked on the device before download, with keys that rotate with a grace period. | [ROLLOUTS.md](docs/ROLLOUTS.md#artifact-signing) |
 
 ## Install the SDKs
 
@@ -229,12 +233,12 @@ the app needs compileSdk 34 or later and minSdk 26,
 [details](docs/ANDROID_SDK.md#install)):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.5")
+implementation("dev.fleetml:fleetml-sdk:0.10.6")
 implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 ```
 
 iOS, in Xcode with **File → Add Package Dependencies** and the repository URL
-(Dependency Rule **Up to Next Major Version** from 0.10.5;
+(Dependency Rule **Up to Next Major Version** from 0.10.6;
 [details](docs/IOS_SDK.md#install)):
 
 ```text
@@ -274,9 +278,9 @@ has the request paths, data model, device protocol and trust boundaries.
 
 | Credential | Who uses it | Manage |
 |---|---|---|
-| API key | CLI and scripts (`Authorization: Bearer`); the dashboard logs in with one. Each key acts as a user with a role per project (viewer, operator, admin) or as a global admin | The REST routes in [CONFIG.md](docs/CONFIG.md#api-keys) |
-| Dashboard session | One browser after logging in (`httpOnly` cookie, 12 hours) | Settings → Active sessions, `GET /api/v1/auth/sessions`, `POST /api/v1/auth/sessions/{id}/revoke` |
-| Enrollment key | An app's first device registration, per project | `fleetml enrollment-key create --project <id>` and `list`; `POST /api/v1/enrollment-keys/{id}/rotate`, `.../revoke` |
+| API key | CLI and scripts (`Authorization: Bearer`); the dashboard logs in with one. Each key acts as a user with a role per project (viewer, operator, admin) or as a global admin | [CONFIG.md](docs/CONFIG.md#api-keys) |
+| Dashboard session | One browser after logging in (`httpOnly` cookie, 12 hours) | `GET /api/v1/auth/sessions`, `POST .../{id}/revoke` |
+| Enrollment key | An app's first device registration, per project | `fleetml enrollment-key create`, `list`, `revoke`; `POST /api/v1/enrollment-keys/{id}/rotate` |
 | Device token | Every device call after registering (30 days, refreshed by the SDK) | `POST /api/v1/devices/{id}/revoke` |
 
 ## Configuration

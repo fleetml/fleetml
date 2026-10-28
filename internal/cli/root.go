@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/spf13/cobra"
 
@@ -102,7 +103,9 @@ func newConfigCmd() *cobra.Command {
 					return err
 				}
 			}
-			// A pipe or a file may bring CRLF and a UTF-8 BOM (Windows PowerShell 5.1).
+			// A pipe or a file may bring CRLF and a UTF-8 BOM (Windows PowerShell 5.1),
+			// or be UTF-16 with a BOM (a file PowerShell 5.1 wrote with `>`).
+			key = fromUTF16(key)
 			key = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(key), "\ufeff"))
 			if key == "" {
 				return errors.New("no API key: type or paste it at the prompt, pipe it in, or pass it as the argument")
@@ -163,4 +166,32 @@ type configError struct {
 
 func (e *configError) Error() string {
 	return "unknown config key: " + e.key
+}
+
+// fromUTF16 decodes s when it starts with a UTF-16 byte order mark (FF FE
+// little-endian, FE FF big-endian) and returns anything else unchanged. A line
+// read up to '\n' ends before the second byte of a little-endian line end, so
+// an odd length is padded.
+func fromUTF16(s string) string {
+	b := []byte(s)
+	if len(b) < 2 {
+		return s
+	}
+	little := b[0] == 0xff && b[1] == 0xfe
+	if !little && (b[0] != 0xfe || b[1] != 0xff) {
+		return s
+	}
+	b = b[2:]
+	if len(b)%2 == 1 {
+		b = append(b, 0)
+	}
+	u := make([]uint16, len(b)/2)
+	for i := range u {
+		if little {
+			u[i] = uint16(b[2*i]) | uint16(b[2*i+1])<<8
+		} else {
+			u[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
+		}
+	}
+	return string(utf16.Decode(u))
 }

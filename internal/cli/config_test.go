@@ -131,6 +131,15 @@ func TestSetKeyFromStdin(t *testing.T) {
 		require.NoError(t, run(in))
 		assert.Equal(t, "k-plain", LoadFileConfig().APIKey, "input %q", in)
 	}
+	// A file PowerShell 5.1 writes with `>` (or Out-File) is UTF-16 with a BOM.
+	for _, in := range []string{
+		"\xff\xfek\x00-\x00u\x00\r\x00\n\x00", // UTF-16LE, CRLF
+		"\xff\xfek\x00-\x00u\x00",             // UTF-16LE, no line end
+		"\xfe\xff\x00k\x00-\x00u\x00\r\x00\n", // UTF-16BE, CRLF
+	} {
+		require.NoError(t, run(in))
+		assert.Equal(t, "k-u", LoadFileConfig().APIKey, "input %q", in)
+	}
 	require.NoError(t, run("", "\ufeffk-arg"))
 	assert.Equal(t, "k-arg", LoadFileConfig().APIKey, "an argument pasted with a BOM")
 	require.NoError(t, run("", "key-from-arg"))
