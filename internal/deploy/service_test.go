@@ -126,6 +126,22 @@ func TestCreateDeployment(t *testing.T) {
 		})
 		assert.ErrorIs(t, err, ErrInvalidInput)
 	})
+
+	t.Run("on_failure in any case, like strategy", func(t *testing.T) {
+		d, err := svc.Create(ctx, CreateInput{
+			ProjectID:      uuid.New(),
+			ModelVersionID: uuid.New(),
+			HealthGate:     &HealthGate{MaxErrorRate: 0.1, OnFailure: "pause"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "PAUSE", d.HealthGate.OnFailure)
+		_, err = svc.Create(ctx, CreateInput{
+			ProjectID:      uuid.New(),
+			ModelVersionID: uuid.New(),
+			HealthGate:     &HealthGate{MaxErrorRate: 0.1, OnFailure: "stop"},
+		})
+		assert.ErrorIs(t, err, ErrInvalidInput)
+	})
 }
 
 // progress moves only a ROLLING_OUT deployment; any other status is refused,

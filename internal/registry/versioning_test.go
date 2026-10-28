@@ -24,6 +24,17 @@ func TestParseSemver(t *testing.T) {
 		{name: "non-numeric", input: "a.b.c", wantErr: true},
 		{name: "negative", input: "-1.0.0", wantErr: true},
 		{name: "empty", input: "", wantErr: true},
+		{name: "prerelease", input: "1.0.0-rc.1", want: Semver{1, 0, 0}},
+		{name: "build metadata", input: "1.0.0+build", want: Semver{1, 0, 0}},
+		{name: "prerelease and build", input: "v2.1.0-alpha-2.0+exp.sha.5114f85", want: Semver{2, 1, 0}},
+		{name: "leading zero major", input: "01.0.0", wantErr: true},
+		{name: "leading zero minor", input: "1.00.0", wantErr: true},
+		{name: "empty prerelease", input: "1.0.0-", wantErr: true},
+		{name: "prerelease leading zero", input: "1.0.0-01", wantErr: true},
+		{name: "empty prerelease identifier", input: "1.0.0-rc..1", wantErr: true},
+		{name: "empty build", input: "1.0.0+", wantErr: true},
+		{name: "bad prerelease character", input: "1.0.0-rc_1", wantErr: true},
+		{name: "plus sign number", input: "+1.0.0", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -80,8 +91,10 @@ func TestNextVersions(t *testing.T) {
 
 // The message names the version as it was given, "v" included.
 func TestParseSemver_MessageNamesTheInput(t *testing.T) {
-	_, err := ParseSemver("v1")
-	if err == nil || !strings.Contains(err.Error(), `invalid semver "v1"`) {
-		t.Fatalf("got %v", err)
+	for _, in := range []string{"v1", "01.0.0", "1.0.0-01", "1.0.0+"} {
+		_, err := ParseSemver(in)
+		if err == nil || !strings.Contains(err.Error(), `invalid semver "`+in+`"`) {
+			t.Fatalf("%s: got %v", in, err)
+		}
 	}
 }

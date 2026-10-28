@@ -252,6 +252,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 		if input.HealthGate.MinEvents <= 0 {
 			input.HealthGate.MinEvents = DefaultHealthGate().MinEvents
 		}
+		input.HealthGate.OnFailure = strings.ToUpper(strings.TrimSpace(input.HealthGate.OnFailure))
 		if input.HealthGate.OnFailure == "" {
 			input.HealthGate.OnFailure = "ROLLBACK"
 		}
