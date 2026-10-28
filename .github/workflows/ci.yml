@@ -87,7 +87,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, python: "3.9" }
+          # ubuntu-latest is 26.04 now, and setup-python has no 3.9 for it.
+          - { os: ubuntu-24.04, python: "3.9" }
           - { os: ubuntu-latest, python: "3.12" }
           - { os: ubuntu-latest, python: "3.13" }
           - { os: windows-latest, python: "3.12" }
