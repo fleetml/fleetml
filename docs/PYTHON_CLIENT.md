@@ -24,7 +24,7 @@ zsh, on macOS or Linux) and keep it open until the end.
    docker compose version && git --version && python3 --version
    ```
 
-   You should see `Docker Compose version v2` and `Python 3.` on the last line.
+   You should see `Docker Compose version` (v2 or later) and `Python 3.` on the last line.
 
 2. **Start FleetML.** The first start takes a few minutes, to download and
    build the images:
