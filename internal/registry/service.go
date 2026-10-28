@@ -327,9 +327,14 @@ func (s *Service) GetVersion(ctx context.Context, id uuid.UUID) (*RegistryVersio
 	return s.versions.GetByID(ctx, id)
 }
 
-func (s *Service) ListVersions(ctx context.Context, modelID uuid.UUID, limit, offset int) ([]RegistryVersion, int, error) {
+// ListVersions lists a model's versions; a status (any case) keeps only those.
+func (s *Service) ListVersions(ctx context.Context, modelID uuid.UUID, status string, limit, offset int) ([]RegistryVersion, int, error) {
+	status = strings.ToUpper(strings.TrimSpace(status))
+	if _, known := validTransitions[status]; status != "" && !known {
+		return nil, 0, fmt.Errorf("%w: status must be one of DRAFT, STAGED, ACTIVE, ARCHIVED, got %q", ErrInvalidInput, status)
+	}
 	limit, offset = clampPagination(limit, offset)
-	return s.versions.ListByModel(ctx, modelID, limit, offset)
+	return s.versions.ListByModel(ctx, modelID, status, limit, offset)
 }
 
 func (s *Service) UpdateVersionStatus(ctx context.Context, id uuid.UUID, newStatus string, promotedBy *string) (*RegistryVersion, error) {
