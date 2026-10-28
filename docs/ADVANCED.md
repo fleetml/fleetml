@@ -552,7 +552,9 @@ read, never a command line. Then step 4 with
 key from that file:
 `export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^FLEETML_ADMIN_KEY=//p' fleetml-secrets.env)`.
 Keep `fleetml-secrets.env` as you would the secrets file, and delete it at
-clean-up with the rest. To change a key that may change (`S3_SECRET_KEY`,
+clean-up with the rest. Such a release has no `fleetml-secrets.yaml`: on
+an upgrade, leave `-f fleetml-secrets.yaml` out of the chart README's
+[Upgrading](../deploy/helm/fleetml/README.md#upgrading) block. To change a key that may change (`S3_SECRET_KEY`,
 or `JWT_SECRET` at the cost of the devices registering again; not
 `POSTGRES_PASSWORD` or `SIGNING_MASTER_KEY` of a release with data), edit
 it in `fleetml-secrets.env`, then replace the Secret and restart what reads
@@ -564,8 +566,11 @@ kubectl -n fleetml rollout restart statefulset/fleetml-s3 deploy/fleetml-server
 kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
 ```
 
-You should see `secret/fleetml-secrets configured`, the two `restarted`
-lines and `successfully rolled out`; then the chart README's port-forward
+You should see `secret/fleetml-secrets configured` (after a
+`Warning: resource secrets/fleetml-secrets is missing the kubectl.kubernetes.io/last-applied-configuration annotation`
+the first time: `kubectl create` made the Secret, `kubectl apply` adds the
+annotation, nothing is wrong), the two `restarted` lines and
+`successfully rolled out`; then the chart README's port-forward
 block of [Upgrading](../deploy/helm/fleetml/README.md#upgrading).
 
 **Other local ports.** If something on this machine already listens on one

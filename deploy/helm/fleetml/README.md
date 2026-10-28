@@ -30,11 +30,13 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
 
    <!-- golden: helm-tools -->
    ```bash
-   export KUBECONFIG=$HOME/.kube/fleetml-kind.yaml
+   export KUBECONFIG=$HOME/.kube/fleetml-kind.yaml PATH="$HOME/.local/bin:$PATH"
    kind version && helm version --short && kubectl version --client && jq --version && fleetml version
    ```
 
-   You should see `kind v` and `✓ fleetml v`.
+   You should see `kind v` and `✓ fleetml v`. The `PATH` part finds the CLI
+   in `~/.local/bin`, where the README's step 3 put it, also in a terminal
+   opened after that step.
 
 2. **A cluster**, written into that file:
 
@@ -218,13 +220,19 @@ kubectl -n fleetml rollout status deploy/fleetml-server --timeout=5m
 ```
 
 `--reuse-values` keeps what the install set (`s3.publicEndpoint` here);
-without it, pass every `--set` again. A changed server value or secret rolls
+without it, pass every `--set` again. A release made with a Secret of your
+own ([ADVANCED.md](../../../docs/ADVANCED.md#helm-chart-variants)) has no
+secrets file: leave `-f fleetml-secrets.yaml` out of the upgrade (its
+`secrets.existingSecret` is one of the values `--reuse-values` keeps). A changed server value or secret rolls
 the server pods one at a time; a changed `s3SecretKey` also restarts
 SeaweedFS, which reads its credentials at start (Postgres keeps its
 password, see [Install](#install)). The data stays in the volumes, the
 server applies any new database migrations when it starts, and devices
 reconnect by themselves. A port-forward stops working when the pod behind
-it is replaced, but keeps its local port, so starting the same line again
+it is replaced (when something uses it, kubectl prints an
+`E... "Unhandled Error" err="an error occurred forwarding ..."` line and
+`error: lost connection to pod` in this terminal: that is the old
+port-forward ending, not the upgrade failing), but keeps its local port, so starting the same line again
 stops with `address already in use`. After an upgrade (or an uninstall and
 a new install), stop this terminal's port-forwards and start step 4's two
 and step 6's dashboard one again:
@@ -250,7 +258,11 @@ revision (`helm history fleetml -n fleetml` lists them). Back to a revision
 made with chart 0.10.2 or older it stops with the same
 `volumeClaimTemplates` error and leaves the release `failed`, half on each
 version: run the upgrade above again to return to the current chart (the
-data stays), and stay on charts from 0.10.3 on.
+data stays), and stay on charts from 0.10.3 on. Before it stops, that
+rollback has already written the old revision's secrets to the Secret: if
+you rotated one since (`s3SecretKey`, for example), the server stays Not
+Ready (`The request signature we calculated does not match` in its log)
+until that upgrade writes the current ones back.
 
 ## Production
 
@@ -297,7 +309,7 @@ likely to set:
 | `server.image.repository`, `.tag`, `.pullPolicy` | `ghcr.io/fleetml/fleetml-server`, the app version, `IfNotPresent` | Server image |
 | `server.replicas` | `1` | Server replicas (they share the database and the telemetry stream) |
 | `server.dependencyTimeout` | `180s` | How long the server waits at start-up for Postgres, the object store and NATS, in total (`DEPENDENCY_TIMEOUT`) |
-| `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced, except `REST_PORT` and `GRPC_PORT`, which the chart refuses (the pod listens on 18080 and 19090; `server.service.restPort`/`grpcPort` change the Service's ports) |
+| `server.env` | `{}` | Extra server settings ([CONFIG.md](../../../docs/CONFIG.md)), e.g. `DASHBOARD_URL`; a name the chart sets itself is replaced, except `REST_PORT` and `GRPC_PORT`, which `helm install`, `upgrade` and `template` refuse (`helm lint` does not check them; the pod listens on 18080 and 19090; `server.service.restPort`/`grpcPort` change the Service's ports) |
 | `server.resources` | `{}` | Requests and limits for the server |
 | `server.service.type`, `.restPort`, `.grpcPort` | `ClusterIP`, `18080`, `19090` | The server's Service |
 | `dashboard.enabled`, `dashboard.image.*`, `dashboard.service.*` | `true`, the published image, `ClusterIP` port `80` | The dashboard, with `/api` proxied to the server |
