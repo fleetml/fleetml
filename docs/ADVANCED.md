@@ -83,7 +83,8 @@ build, when the stack starts. Look at what step 2 printed above the message:
   `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz` prints something
   other than FleetML's JSON (an error page, or nothing): another program
   listens on that port on `localhost` only, which Docker on macOS and
-  Windows does not detect. Move the port as in the entry above. (On a Mac
+  Windows does not detect (on macOS, a program on all interfaces,
+  `0.0.0.0`, goes unnoticed too). Move the port as in the entry above. (On a Mac
   whose `localhost` resolves to `::1` first, Docker answers there and the
   start succeeds; the other program then only answers `127.0.0.1`.)
 - Anything else: `docker compose -f deploy/docker-compose.prod.yml ps -a`
@@ -159,7 +160,9 @@ and `S3_PUBLIC_ENDPOINT`, the address devices download models from,
 LAN address there instead; the device guides change it in this file, see
 [the download address](#a-phone-or-another-machine-the-download-address)).
 It leaves an existing file alone, so running the block again reuses the
-saved values. **Keep the file.** The admin key in it is how you log in to
+saved values and keeps the data; it rebuilds the images, so compose
+recreates the server and dashboard containers (`Recreate`, a few seconds
+without them; devices reconnect by themselves). **Keep the file.** The admin key in it is how you log in to
 the dashboard and how the CLI and the REST API reach the server, and the
 server stores it on the first start only: later starts ignore
 `FLEETML_ADMIN_KEY`, so a lost key cannot be replaced by exporting a new one

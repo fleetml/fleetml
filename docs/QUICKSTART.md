@@ -436,9 +436,11 @@ end. The blocks of sections 1 to 5 end with a line that adds their
 variables to `~/.fleetml.env` (readable only by you: the enrollment key is
 among them; section 5 replaces the simulator's `SIM` line rather than adding
 a second one), so a second shell (another terminal tab, say)
-picks the tour up from the repository root with
+picks the tour up with this, whose first line goes into the clone (from
+the folder you ran Get started's step 2 in; already there, it does nothing):
 
 ```bash
+[ -f deploy/docker-compose.prod.yml ] || cd fleetml
 source ~/.fleetml.env
 export PATH="$HOME/.local/bin:$PATH"
 export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY

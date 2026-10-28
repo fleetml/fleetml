@@ -290,7 +290,9 @@ D=$(fleetml deploy create --project $P --version $(vid 1.0.0) --target '{"site":
 
 The block can run again: it reuses the project `edge` and its iris 1.0.0
 when they are there (or `P=<the project ID your team gave you>` in place of
-the first line). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
+the first line), and each run adds one more enrollment key and one more
+deployment of 1.0.0 (`fleetml enrollment-key list --project $P` and
+`fleetml deploy list --project $P` show them; they do no harm). `-o json | jq -r .key` takes the enrollment key itself, to paste or to hand
 to a provisioning script; without `-o json`, `enrollment-key create` prints a
 table with the key once. One key enrolls any number of machines; `fleetml enrollment-key revoke <key ID>` (the ID from `fleetml enrollment-key list --project $P`) stops new registrations with it, while machines already registered keep working. `vid` looks
 a version up by its number, so the block picks 1.0.0 even after more versions
