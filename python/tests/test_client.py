@@ -465,13 +465,42 @@ def test_push_promote_raises_when_the_server_refuses(fake: Fake, tmp_path: Path)
 def test_push_raises_the_create_error_when_nothing_is_found(fake: Fake, tmp_path: Path) -> None:
     model = tmp_path / "m.tflite"
     model.write_bytes(b"x")
-    fake.on(
-        "POST", "/api/v1/projects/p1/models", error(400, "VALIDATION_ERROR", "framework must be one of TFLITE, ONNX")
-    )
+    fake.on("POST", "/api/v1/projects/p1/models", error(403, "FORBIDDEN", "the key's role cannot create models"))
     fake.on("GET", "/api/v1/projects/p1/models", data([]))
     with pytest.raises(FleetMLError) as e:
-        fake.client().push(model, project="p1", model="iris", version="1.0.0", target_runtime="NOPE")
+        fake.client().push(model, project="p1", model="iris", version="1.0.0")
+    assert (e.value.status, e.value.code) == (403, "FORBIDDEN")
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"quantization": "INT3"}, "quantization must be one of FP32, FP16, INT8, INT4, DYNAMIC"),
+        ({"target_runtime": "PYTORCH"}, "target_runtime must be one of TFLITE, ONNX, COREML, GGUF, CUSTOM"),
+        ({"version": "v1"}, 'invalid version "v1"'),
+        ({"version": "01.0.0"}, 'invalid version "01.0.0"'),
+        ({"version": "1.0.0\n"}, 'invalid version "1.0.0\n"'),
+    ],
+)
+def test_push_refused_inputs_create_nothing(fake: Fake, tmp_path: Path, kwargs: Dict[str, str], message: str) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    args: Dict[str, str] = {"version": "1.0.0", **kwargs}
+    with pytest.raises(FleetMLError) as e:
+        fake.client().push(model, project="p1", model="iris", **args)  # type: ignore[arg-type]
     assert (e.value.status, e.value.code) == (400, "VALIDATION_ERROR")
+    assert message in e.value.message
+    assert fake.requests == [], "nothing is created"
+
+
+def test_push_accepts_any_case_and_a_prerelease(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    push_routes(fake)
+    fake.client().push(
+        model, project="p1", model="iris", version="1.0.0-rc.1", quantization="fp16", target_runtime="tflite"
+    )
+    assert [r.url.path for r in fake.requests][:2] == ["/api/v1/projects/p1/models", "/api/v1/models/m1/versions"]
 
 
 def test_push_upload_and_integrity_failures(fake: Fake, tmp_path: Path) -> None:

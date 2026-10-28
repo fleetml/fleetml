@@ -7,10 +7,41 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// semverRE is semver 2.0.0 (prerelease and build allowed, no leading zeros),
+// with the optional "v" the server also accepts.
+var semverRE = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
+	`(-(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?` +
+	`(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$`)
+
+// checkPushInputs refuses the values the server would refuse (its lists, any
+// case), so a refused push leaves no model or version behind.
+func checkPushInputs(quant, framework, ver, metadata string) error {
+	quantizations := []string{"FP32", "FP16", "INT8", "INT4", "DYNAMIC"}
+	if !slices.Contains(quantizations, strings.ToUpper(strings.TrimSpace(quant))) {
+		return fmt.Errorf("quantization must be one of %s, got %q", strings.Join(quantizations, ", "), quant)
+	}
+	runtimes := []string{"TFLITE", "ONNX", "COREML", "GGUF", "CUSTOM"}
+	if !slices.Contains(runtimes, strings.ToUpper(strings.TrimSpace(framework))) {
+		return fmt.Errorf("framework must be one of %s, got %q", strings.Join(runtimes, ", "), framework)
+	}
+	if !semverRE.MatchString(ver) {
+		return fmt.Errorf("invalid version %q: expected MAJOR.MINOR.PATCH (semver 2.0.0), such as 1.0.0 or 1.0.0-rc.1", ver)
+	}
+	if metadata != "" {
+		var md map[string]interface{}
+		if err := json.Unmarshal([]byte(metadata), &md); err != nil {
+			return fmt.Errorf("invalid --metadata JSON: %w", err)
+		}
+	}
+	return nil
+}
 
 func newPushCmd() *cobra.Command {
 	var projectID, modelName, ver, quant, framework, task, metadata string
@@ -22,6 +53,10 @@ func newPushCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			filePath := args[0]
+			// What the server would refuse is refused before anything is created.
+			if err := checkPushInputs(quant, framework, ver, metadata); err != nil {
+				return err
+			}
 
 			// Validate file
 			fi, err := os.Stat(filePath)
