@@ -195,7 +195,13 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    for the phone to check in, not for a new device. The first start asks on
    the phone to **find devices on your local network**: tap **Allow** (once
    for this app). The phone's screen then shows **Active model: iris
-   1.0.0**; tap **Classify sample flower** to run it.
+   1.0.0**; tap **Classify sample flower** to run it. The check-in above
+   passes for any project the key belongs to, but the screen shows iris
+   only when a deployment of that project reaches the sample: one with no
+   target, like step 4's, or one targeting `{"app":"sample"}`, the label the
+   sample registers with; otherwise it shows **Active model: bundled
+   iris (no assignment yet)**: the sample runs the model built into the
+   app, and FleetML has assigned it none.
 
    If it did not work, by what the block printed:
    - `Trust the developer on the phone (once)`: no other app from this Mac
@@ -227,7 +233,8 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    simulator, if you did step 5: the Chipset column tells them apart), and
    **Deployments** one `COMPLETE` deployment of iris 1.0.0.
 
-8. **Clean up**: the app on the simulator, the build, the server and all
+8. **Clean up**, from the clone (`cd` back into it if you went to your own
+   app's folder): the app on the simulator, the build, the server and all
    its data, and the saved secrets. The sample stays on the phone: iOS
    forgets the developer trust when the last app from your Mac is removed;
    leave the sample installed and the next install from this Mac needs no
@@ -592,12 +599,14 @@ struct MyApp: App {
    clone (for the Core ML sample models; push your own `.mlmodel` instead),
    with the key your team gave you or the quickstart's `$FLEETML_ADMIN_KEY`
    (which key does what: [Android's list](ANDROID_SDK.md#publish-and-deploy-with-the-cli)
-   applies here too). Project names are unique on a server:
+   applies here too). The first line keeps a `FLEETML_API_KEY` you have
+   already exported (your team's key: `export FLEETML_API_KEY=<key>` first)
+   and otherwise takes the quickstart's admin key. Project names are unique on a server:
    `project already exists: slug "myapp-ios"` means the project is there from an
    earlier run, so pick another name.
 
    ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=<the admin or project key your team gave you>
+   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=${FLEETML_API_KEY:-$FLEETML_ADMIN_KEY}
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
    P=$(fleetml project create --name myapp-ios -o json | jq -r .id)   # or P=<the project ID your team gave you>
    fleetml push models/iris/iris_v1.mlmodel --project $P --model iris --version 1.0.0 --framework COREML --quantization FP32 --metadata "$REQ"

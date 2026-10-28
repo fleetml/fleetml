@@ -234,14 +234,14 @@ home folder for FleetML's files, its own stack name and its own ports, then
 run Get started's steps 2 to 7 there:
 
 ```bash
-export DOCKER_CONFIG=$HOME/.docker HOME=$HOME/fleetml-2 COMPOSE_PROJECT_NAME=fleetml-2
+export MY_HOME=$HOME DOCKER_CONFIG=$HOME/.docker HOME=$HOME/fleetml-2 COMPOSE_PROJECT_NAME=fleetml-2
 export FLEETML_DASHBOARD_PORT=8082 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=29090 FLEETML_S3_PUBLIC_PORT=29100
-mkdir -p "$HOME" && cd "$HOME" && ln -sfn ../Library ../.android ../.gradle .
+mkdir -p "$HOME" && cd "$HOME" && ln -sfn "$MY_HOME/Library" "$MY_HOME/.android" "$MY_HOME/.gradle" .
 ```
 
 (`DOCKER_CONFIG` keeps Docker's own settings where they were, and the
-links give the new home folder the Android SDK, `adb`'s key and Gradle's
-cache of the first, so the Android guide's step 1 and the phone work there
+links, to `MY_HOME` (your own home folder), give the new home folder the
+Android SDK, `adb`'s key and Gradle's cache of the first wherever you put it, so the Android guide's step 1 and the phone work there
 as they do in your own home; on a Mac, `Library` also holds the keychain the
 iOS guide signs with.) In that
 terminal the containers are `fleetml-2-server-1` and so on, the CLI
