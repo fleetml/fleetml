@@ -528,10 +528,23 @@ On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
 server instead, and the tour runs against it: keep `FLEETML_SERVER` and
 `FLEETML_API_KEY` from the chart README's Get started instead of the tour's
 first `export` line, and add `--grpc localhost:$GRPC` to the tour's
-`fleetml simulate` lines in place of theirs. In a second shell, set the
-chart's `REST GRPC S3` line and its `export` line again, and
-`source ~/.fleetml.env` (the tour's project, versions and enrollment key),
-instead of the tour's [second-shell block](QUICKSTART.md#tour). The tour's
+`fleetml simulate` lines in place of theirs. A second shell picks the tour
+up with this block instead of the tour's
+[second-shell block](QUICKSTART.md#tour): it goes into the clone (where the
+chart README's `fleetml-secrets.yaml` is), reads the tour's project, versions
+and enrollment key from `~/.fleetml.env`, and sets the chart's ports (the
+line of its step 4, yours if you changed it) and its server and key:
+
+```bash
+[ -f deploy/docker-compose.prod.yml ] || cd fleetml
+source ~/.fleetml.env
+export PATH="$HOME/.local/bin:$PATH"
+REST=38080 GRPC=39090 S3=39100 DASH=38800
+export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^  adminKey: "\(.*\)"$/\1/p' fleetml-secrets.yaml)
+fleetml project list
+```
+
+You should see the tour's project, `tour`, in the list. The tour's
 `>> ~/.fleetml.env` lines then add its own variables (the project and
 version IDs, the enrollment key) to that file, next to a compose stack's
 secrets if one runs on the same machine: they change nothing on that stack,
