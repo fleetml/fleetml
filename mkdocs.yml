@@ -14,8 +14,14 @@ exclude_docs: |
 
 theme:
   name: material
-  # System fonts: the site loads nothing from other hosts.
+  # System fonts, and a repository link without the GitHub API call for its
+  # stars (web/docs-theme/partials/source.html): the site loads nothing from
+  # other hosts.
   font: false
+  custom_dir: web/docs-theme
+  # web/logo.svg, added to the site by scripts/mkdocs_hooks.py.
+  logo: assets/fleetml-logo.svg
+  favicon: assets/fleetml-logo.svg
   features:
     - navigation.sections
     - navigation.top
