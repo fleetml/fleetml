@@ -14,113 +14,113 @@ zsh, on macOS or Linux; on Windows, see [On Windows](docs/QUICKSTART.md#on-windo
 and keep it open until the end.
 
 1. **Check the tools.** You need Docker (Docker Desktop on a Mac), git, curl
-   and jq ([installing them](docs/ADVANCED.md#installing-the-tools)):
+    and jq ([installing them](docs/ADVANCED.md#installing-the-tools)):
 
-   <!-- golden: tools -->
-   ```bash
-   docker compose version && git --version && jq --version
-   ```
+    <!-- golden: tools -->
+    ```bash
+    docker compose version && git --version && jq --version
+    ```
 
-   You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
+    You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
 
 2. **Start FleetML.** The first start takes a few minutes, to download and
-   build the images. This block clones the repository if you are not already
-   in it, writes the server's secrets to `~/.fleetml.env` once, starts the
-   stack and waits until it answers:
+    build the images. This block clones the repository if you are not already
+    in it, writes the server's secrets to `~/.fleetml.env` once, starts the
+    stack and waits until it answers:
 
-   <!-- golden: start -->
-   ```bash
-   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
-   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
-   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
-   ```
+    <!-- golden: start -->
+    ```bash
+    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
+    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+    source ~/.fleetml.env
+    docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+    curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+    ```
 
-   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
-   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+    The block saved the server's secrets in `~/.fleetml.env`: keep that file.
 
 3. **Get the CLI**, checked against the release's checksums:
 
-   <!-- golden: cli -->
-   ```bash
-   OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
-   curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
-   grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
-   rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
-   export PATH="$HOME/.local/bin:$PATH"
-   fleetml version
-   ```
+    <!-- golden: cli -->
+    ```bash
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+    mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
+    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
+    export PATH="$HOME/.local/bin:$PATH"
+    fleetml version
+    ```
 
-   You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
+    You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
 
 4. **Publish the sample model and deploy it.** The project gets the time in
-   its name, so running the block again makes a new one:
+    its name, so running the block again makes a new one:
 
-   <!-- golden: publish -->
-   ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
-   P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
-   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-   V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
-   fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
-   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
-   ```
+    <!-- golden: publish -->
+    ```bash
+    export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+    P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
+    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+    V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
+    fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
+    export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
+    ```
 
-   You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
+    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
 5. **Put a device on it**: the Linux device agent, which registers with the
-   enrollment key from step 4, downloads the model, checks it and makes it
-   active. This block downloads the agent, runs it in an Ubuntu container as
-   an unprivileged user and waits until it reports the model active:
+    enrollment key from step 4, downloads the model, checks it and makes it
+    active. This block downloads the agent, runs it in an Ubuntu container as
+    an unprivileged user and waits until it reports the model active:
 
-   <!-- golden: device -->
-   ```bash
-   ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
-   docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
-     -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
-     exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
-       -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
-   ```
+    <!-- golden: device -->
+    ```bash
+    ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
+    docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
+      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
+      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
+        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
+    for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
+    ```
 
-   You should see `msg="model active" model=iris version=1.0.0`.
-   On a phone instead: the [Android](docs/ANDROID_SDK.md#get-started) guide
-   (a phone on a USB cable) or the [iOS](docs/IOS_SDK.md#get-started) guide
-   (the simulator, then an iPhone).
+    You should see `msg="model active" model=iris version=1.0.0`.
+    On a phone instead: the [Android](docs/ANDROID_SDK.md#get-started) guide
+    (a phone on a USB cable) or the [iOS](docs/IOS_SDK.md#get-started) guide
+    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
-   the dashboard's address: open it and paste the key into the login box:
+    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+    the dashboard's address: open it and paste the key into the login box:
 
-   <!-- golden: dashboard manual -->
-   ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
-   ```
+    <!-- golden: dashboard manual -->
+    ```bash
+    printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
+    ```
 
-   You should see `Dashboard: http://localhost:<port>`, and in the browser the
-   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
-   `COMPLETE` deployment of iris 1.0.0.
+    You should see `Dashboard: http://localhost:<port>`, and in the browser the
+    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
+    `COMPLETE` deployment of iris 1.0.0.
 
-   ![The dashboard after Get started: the Deployments page with the COMPLETE deployment of iris 1.0.0 to all devices](docs/screenshots/get-started.png)
+    ![The dashboard after Get started: the Deployments page with the COMPLETE deployment of iris 1.0.0 to all devices](docs/screenshots/get-started.png)
 
 7. **Clean up**, when you are done (after the
-   [tour](docs/QUICKSTART.md#tour), if you take it: this also stops its
-   simulator and Grafana): the device, the server and all its data, and the
-   saved secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would
-   keep the data):
+    [tour](docs/QUICKSTART.md#tour), if you take it: this also stops its
+    simulator and Grafana): the device, the server and all its data, and the
+    saved secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would
+    keep the data):
 
-   <!-- golden: quickstart-cleanup cleanup -->
-   ```bash
-   kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
-   ```
+    <!-- golden: quickstart-cleanup cleanup -->
+    ```bash
+    kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
+    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
+    ```
 
-   You should see `Network <stack>_default  Removed`.
+    You should see `Network <stack>_default  Removed`.
 
 Next: the [tour](docs/QUICKSTART.md#tour) (canary rollouts that roll
 themselves back, A/B tests, drift) against twenty simulated devices, on a

@@ -348,53 +348,53 @@ keeps devices apart) and the phone unlocked. The cable stays for the
 install; nothing goes through it afterwards.
 
 1. **Point the server's downloads at the machine's LAN address**, save it in
-   `~/.fleetml.env` so every later compose command keeps it, and restart the
-   server. On a Mac (`en1` instead of `en0` on some; on Linux,
-   `LAN=$(hostname -I | awk '{print $1}')`; on Windows, the IPv4 address
-   `ipconfig` prints for the Wi-Fi adapter, see
-   [From Windows](ANDROID_SDK.md#from-windows)):
+    `~/.fleetml.env` so every later compose command keeps it, and restart the
+    server. On a Mac (`en1` instead of `en0` on some; on Linux,
+    `LAN=$(hostname -I | awk '{print $1}')`; on Windows, the IPv4 address
+    `ipconfig` prints for the Wi-Fi adapter, see
+    [From Windows](ANDROID_SDK.md#from-windows)):
 
-   ```bash
-   LAN=$(ipconfig getifaddr en0); echo "LAN address: $LAN"
-   . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$LAN:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
-   ```
+    ```bash
+    LAN=$(ipconfig getifaddr en0); echo "LAN address: $LAN"
+    . ~/.fleetml.env && sed -i.bak "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=$LAN:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env && rm ~/.fleetml.env.bak
+    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml up -d
+    ```
 
-   You should see `LAN address: ` and an address such as `192.168.1.20`,
-   then `Container <stack>-server-1  Started`. From then on downloads go to
-   that address for every device, the USB and emulator paths included
-   ([Over USB](ANDROID_SDK.md#over-usb), step 3).
+    You should see `LAN address: ` and an address such as `192.168.1.20`,
+    then `Container <stack>-server-1  Started`. From then on downloads go to
+    that address for every device, the USB and emulator paths included
+    ([Over USB](ANDROID_SDK.md#over-usb), step 3).
 
 2. **Let the phone in.** With the macOS firewall on, allow Docker's incoming
-   connections when macOS asks. A Linux firewall needs TCP
-   `${FLEETML_GRPC_PORT:-19090}` and `${FLEETML_S3_PUBLIC_PORT:-19100}` open;
-   Windows needs the `New-NetFirewallRule` line in
-   [From Windows](ANDROID_SDK.md#from-windows).
+    connections when macOS asks. A Linux firewall needs TCP
+    `${FLEETML_GRPC_PORT:-19090}` and `${FLEETML_S3_PUBLIC_PORT:-19100}` open;
+    Windows needs the `New-NetFirewallRule` line in
+    [From Windows](ANDROID_SDK.md#from-windows).
 
 3. **Build the sample app with that address, install it, and start it.**
-   This removes the app from step 5 and the USB forwards first, so the app
-   starts afresh and really uses Wi-Fi (it registers again, with the same
-   device ID, and downloads the model from the LAN address). The reinstall
-   drops the app's device token: after Get started's step 4 was run a second
-   time (a new project and key), the phone is still registered in the first
-   project, so this step ends with `Not active after 3 minutes` once and
-   logcat shows `this device is already registered`; the last bullet of
-   Troubleshooting below removes the old record, then step 3's last two
-   lines finish it:
+    This removes the app from step 5 and the USB forwards first, so the app
+    starts afresh and really uses Wi-Fi (it registers again, with the same
+    device ID, and downloads the model from the LAN address). The reinstall
+    drops the app's device token: after Get started's step 4 was run a second
+    time (a new project and key), the phone is still registered in the first
+    project, so this step ends with `Not active after 3 minutes` once and
+    logcat shows `this device is already registered`; the last bullet of
+    Troubleshooting below removes the old record, then step 3's last two
+    lines finish it:
 
-   ```bash
-   adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=$LAN -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} </dev/null)
-   adb logcat -c && adb shell am start -S -n com.fleetml.sample/.MainActivity </dev/null
-   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting below"; sleep 2; done
-   ```
+    ```bash
+    adb uninstall com.fleetml.sample > /dev/null 2>&1; adb reverse --remove-all
+    (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=$LAN -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} </dev/null)
+    adb logcat -c && adb shell am start -S -n com.fleetml.sample/.MainActivity </dev/null
+    for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting below"; sleep 2; done
+    ```
 
-   You should see `Installed on 1 device.` and `I FleetML : Model iris 1.0.0 is active`,
-   and the app's screen **Active model: iris 1.0.0**, its config screen
-   showing the LAN address.
+    You should see `Installed on 1 device.` and `I FleetML : Model iris 1.0.0 is active`,
+    and the app's screen **Active model: iris 1.0.0**, its config screen
+    showing the LAN address.
 
 4. **Clean up** with Get started's step 7: it removes the app, the server
-   and its data, and `~/.fleetml.env` with the LAN address in it.
+    and its data, and `~/.fleetml.env` with the LAN address in it.
 
 Your own app over Wi-Fi: the same steps 1 and 2, then build it with
 `-PfleetmlDebugHost=$LAN` as in [Over USB](ANDROID_SDK.md#over-usb) step 4,

@@ -25,106 +25,106 @@ zsh, on macOS or Linux; on Windows, see [On Windows](QUICKSTART.md#on-windows))
 and keep it open until the end.
 
 1. **Check the tools.** You need Docker (Docker Desktop on a Mac), git, curl
-   and jq ([installing them](ADVANCED.md#installing-the-tools)):
+    and jq ([installing them](ADVANCED.md#installing-the-tools)):
 
-   <!-- golden: tools -->
-   ```bash
-   docker compose version && git --version && jq --version
-   ```
+    <!-- golden: tools -->
+    ```bash
+    docker compose version && git --version && jq --version
+    ```
 
-   You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
+    You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
 
 2. **Start FleetML.** The first start takes a few minutes, to download and
-   build the images:
+    build the images:
 
-   <!-- golden: start -->
-   ```bash
-   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
-   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
-   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
-   ```
+    <!-- golden: start -->
+    ```bash
+    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
+    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+    source ~/.fleetml.env
+    docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+    curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+    ```
 
-   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
-   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+    The block saved the server's secrets in `~/.fleetml.env`: keep that file.
 
 3. **Get the CLI**, checked against the release's checksums:
 
-   <!-- golden: cli -->
-   ```bash
-   OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
-   curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
-   grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
-   rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
-   export PATH="$HOME/.local/bin:$PATH"
-   fleetml version
-   ```
+    <!-- golden: cli -->
+    ```bash
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+    mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
+    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
+    export PATH="$HOME/.local/bin:$PATH"
+    fleetml version
+    ```
 
-   You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
+    You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
 
 4. **Publish the sample model and deploy it.** The project gets the time in
-   its name, so running the block again makes a new one:
+    its name, so running the block again makes a new one:
 
-   <!-- golden: publish -->
-   ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
-   P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
-   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-   V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
-   fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
-   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
-   ```
+    <!-- golden: publish -->
+    ```bash
+    export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+    P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
+    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+    V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
+    fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
+    export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
+    ```
 
-   You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
+    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
 5. **Put the agent on it**, in a container on this machine. It registers with the enrollment key from step 4, downloads the
-   model, checks it and makes it active:
+    model, checks it and makes it active:
 
-   <!-- golden: device -->
-   ```bash
-   ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
-   docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
-     -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
-     exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
-       -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
-   ```
+    <!-- golden: device -->
+    ```bash
+    ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
+    docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
+      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
+      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
+        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
+    for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
+    ```
 
-   You should see `msg="model active" model=iris version=1.0.0`.
-   The container runs `install.sh` and then the agent as the
-   `fleetml-agent` user, as [Without systemd](#without-systemd-and-in-containers)
-   describes; `-server` and `-download-host-override` point it at this
-   machine's ports, which a container reaches as `host.docker.internal`.
+    You should see `msg="model active" model=iris version=1.0.0`.
+    The container runs `install.sh` and then the agent as the
+    `fleetml-agent` user, as [Without systemd](#without-systemd-and-in-containers)
+    describes; `-server` and `-download-host-override` point it at this
+    machine's ports, which a container reaches as `host.docker.internal`.
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
-   the dashboard's address: open it and paste the key into the login box:
+    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+    the dashboard's address: open it and paste the key into the login box:
 
-   <!-- golden: dashboard manual -->
-   ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
-   ```
+    <!-- golden: dashboard manual -->
+    ```bash
+    printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
+    ```
 
-   You should see `Dashboard: http://localhost:<port>`, and in the browser the
-   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
-   `COMPLETE` deployment of iris 1.0.0.
+    You should see `Dashboard: http://localhost:<port>`, and in the browser the
+    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
+    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**: the device, the server and all its data, and the saved
-   secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would keep
-   the data):
+    secrets (the CLI stays in `~/.local/bin`; `down` without `-v` would keep
+    the data):
 
-   <!-- golden: cleanup cleanup -->
-   ```bash
-   docker rm -f fleetml-agent
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -rf fleetml-agent ~/.fleetml.env
-   ```
+    <!-- golden: cleanup cleanup -->
+    ```bash
+    docker rm -f fleetml-agent
+    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -rf fleetml-agent ~/.fleetml.env
+    ```
 
-   You should see `Network <stack>_default  Removed`.
+    You should see `Network <stack>_default  Removed`.
 
 Then the agent on a real machine: [Install](#install) and
 [Connect and verify](#connect-and-verify); a server on another machine:
@@ -481,27 +481,27 @@ complete and verified.
 For each assignment the agent:
 
 1. checks the assignment's signature with the project's signing keys and, if
-   it does not verify, reports `SIGNATURE_INVALID` and downloads nothing
-   ([artifact signing](ROLLOUTS.md#artifact-signing));
+    it does not verify, reports `SIGNATURE_INVALID` and downloads nothing
+    ([artifact signing](ROLLOUTS.md#artifact-signing));
 2. downloads to `state_dir/downloads/<variant>.part`, resuming with an HTTP
-   `Range` request after an interruption, and checks the sha256; when the
-   server offers a delta from the version the agent has, only the delta is
-   downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates)); a
-   download that fails, or a model that cannot be put into `models_dir`, is
-   retried on every heartbeat and reported once as
-   `MODEL_LOAD_FAILED` with the error, which `fleetml device get` shows as the
-   device's `last_model_event`;
+    `Range` request after an interruption, and checks the sha256; when the
+    server offers a delta from the version the agent has, only the delta is
+    downloaded and applied ([delta updates](ROLLOUTS.md#delta-updates)); a
+    download that fails, or a model that cannot be put into `models_dir`, is
+    retried on every heartbeat and reported once as
+    `MODEL_LOAD_FAILED` with the error, which `fleetml device get` shows as the
+    device's `last_model_event`;
 3. runs the `validator` command, if any, with `FLEETML_MODEL_FILE`,
-   `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` in its environment;
+    `FLEETML_MODEL_NAME` and `FLEETML_MODEL_VERSION` in its environment;
 4. if it passes, switches the `current` symlink, keeps the previous version as
-   last-known-good, reports `MODEL_LOAD`, and runs `post_activate` (with
-   `FLEETML_MODEL_PATH` set to the `current` link);
+    last-known-good, reports `MODEL_LOAD`, and runs `post_activate` (with
+    `FLEETML_MODEL_PATH` set to the `current` link);
 5. if it fails, leaves `current` alone, reports `MODEL_LOAD_FAILED` with the
-   command's output (so a canary's health gate can roll the release back),
-   moves the file to `state_dir/rejected/<model>/<version>-<variant>/model.bin`
-   (the last rejected version of each model is kept there, readable only by
-   `fleetml-agent`), and does not retry that variant for an hour, a wait it
-   keeps in `state.json` across restarts.
+    command's output (so a canary's health gate can roll the release back),
+    moves the file to `state_dir/rejected/<model>/<version>-<variant>/model.bin`
+    (the last rejected version of each model is kept there, readable only by
+    `fleetml-agent`), and does not retry that variant for an hour, a wait it
+    keeps in `state.json` across restarts.
 
 While you work on a validator, run it against the rejected file by hand, as
 the agent's user, and see its exit code; with `sudo`:

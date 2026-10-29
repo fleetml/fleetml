@@ -30,123 +30,123 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 **keep it unlocked** while you test: a locked phone pauses the app.
 
 1. <a id="step-1"></a>**Check the tools.** This installs JDK 17, the one the build needs, and
-   puts `adb` on the `PATH` of this terminal:
+    puts `adb` on the `PATH` of this terminal:
 
-   <!-- golden: android-tools device -->
-   ```bash
-   brew install -q openjdk@17
-   export JAVA_HOME=$(brew --prefix openjdk@17) ANDROID_HOME=$HOME/Library/Android/sdk
-   export PATH="$ANDROID_HOME/platform-tools:$PATH"
-   docker compose version && jq --version && "$JAVA_HOME/bin/java" -version && adb version
-   ```
+    <!-- golden: android-tools device -->
+    ```bash
+    brew install -q openjdk@17
+    export JAVA_HOME=$(brew --prefix openjdk@17) ANDROID_HOME=$HOME/Library/Android/sdk
+    export PATH="$ANDROID_HOME/platform-tools:$PATH"
+    docker compose version && jq --version && "$JAVA_HOME/bin/java" -version && adb version
+    ```
 
-   You should see `openjdk version "17.` and `Android Debug Bridge version`.
+    You should see `openjdk version "17.` and `Android Debug Bridge version`.
 
 2. <a id="step-2"></a>**Start FleetML.** The first start takes a few minutes, to download and
-   build the images:
+    build the images:
 
-   <!-- golden: start -->
-   ```bash
-   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
-   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
-   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
-   ```
+    <!-- golden: start -->
+    ```bash
+    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
+    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+    source ~/.fleetml.env
+    docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+    curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+    ```
 
-   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
-   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+    The block saved the server's secrets in `~/.fleetml.env`: keep that file.
 
 3. <a id="step-3"></a>**Get the CLI**, checked against the release's checksums:
 
-   <!-- golden: cli -->
-   ```bash
-   OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
-   curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
-   grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
-   rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
-   export PATH="$HOME/.local/bin:$PATH"
-   fleetml version
-   ```
+    <!-- golden: cli -->
+    ```bash
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+    mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
+    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
+    export PATH="$HOME/.local/bin:$PATH"
+    fleetml version
+    ```
 
-   You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
+    You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
 
 4. <a id="step-4"></a>**Publish the sample model and deploy it.** The project gets the time in
-   its name, so running the block again makes a new one:
+    its name, so running the block again makes a new one:
 
-   <!-- golden: publish -->
-   ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
-   P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
-   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-   V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
-   fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
-   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
-   ```
+    <!-- golden: publish -->
+    ```bash
+    export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+    P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
+    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+    V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
+    fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
+    export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
+    ```
 
-   You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
+    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
 5. <a id="step-5"></a>**Put the phone on it.** Unlock the phone and keep its screen on until
-   this step ends: a locked phone stops the app. This builds the sample app
-   with the enrollment key from step 4 and installs it, forwards the
-   server's ports to the phone (after the install, since a build can restart
-   `adb`, which drops the forwards), starts the app and waits until the
-   model is active on the phone (a minute or two the first time, for the
-   build). It takes the first device `adb devices` lists and says which; with
-   an emulator or a second phone attached, run `export ANDROID_SERIAL=<serial>`
-   with the phone's serial from `adb devices` first:
+    this step ends: a locked phone stops the app. This builds the sample app
+    with the enrollment key from step 4 and installs it, forwards the
+    server's ports to the phone (after the install, since a build can restart
+    `adb`, which drops the forwards), starts the app and waits until the
+    model is active on the phone (a minute or two the first time, for the
+    build). It takes the first device `adb devices` lists and says which; with
+    an emulator or a second phone attached, run `export ANDROID_SERIAL=<serial>`
+    with the phone's serial from `adb devices` first:
 
-   <!-- golden: android-phone device -->
-   ```bash
-   export ANDROID_SERIAL=${ANDROID_SERIAL:-$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')}; echo "Device: $ANDROID_SERIAL, $(adb shell getprop ro.product.model)"
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null) &&
-   adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090} &&
-   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100} &&
-   adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity < /dev/null &&
-   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting"; sleep 2; done ||
-   echo "Step 5 stopped at the error above: see Troubleshooting"
-   ```
+    <!-- golden: android-phone device -->
+    ```bash
+    export ANDROID_SERIAL=${ANDROID_SERIAL:-$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')}; echo "Device: $ANDROID_SERIAL, $(adb shell getprop ro.product.model)"
+    (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null) &&
+    adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090} &&
+    adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100} &&
+    adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity < /dev/null &&
+    for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting"; sleep 2; done ||
+    echo "Step 5 stopped at the error above: see Troubleshooting"
+    ```
 
-   You should see `Device: ` with the phone's serial and model, `Installed on 1 device.`,
-   the two forwarded ports (only the first time: run again, the forwards are
-   already there and `adb reverse` prints nothing), then `I FleetML : Model iris 1.0.0 is active`, and the
-   app's screen **Active model: iris 1.0.0**. Tap **Classify sample flower**
-   to run it. If it says `Not active after 3 minutes`, see
-   [Troubleshooting](ADVANCED.md#troubleshooting): the phone locked, a
-   missing forward, or the wrong device. A failed build or install stops the
-   block with `Step 5 stopped at the error above`: Troubleshooting has the
-   install errors too.
+    You should see `Device: ` with the phone's serial and model, `Installed on 1 device.`,
+    the two forwarded ports (only the first time: run again, the forwards are
+    already there and `adb reverse` prints nothing), then `I FleetML : Model iris 1.0.0 is active`, and the
+    app's screen **Active model: iris 1.0.0**. Tap **Classify sample flower**
+    to run it. If it says `Not active after 3 minutes`, see
+    [Troubleshooting](ADVANCED.md#troubleshooting): the phone locked, a
+    missing forward, or the wrong device. A failed build or install stops the
+    block with `Step 5 stopped at the error above`: Troubleshooting has the
+    install errors too.
 
 6. <a id="step-6"></a>**See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
-   the dashboard's address: open it and paste the key into the login box:
+    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+    the dashboard's address: open it and paste the key into the login box:
 
-   <!-- golden: dashboard manual -->
-   ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
-   ```
+    <!-- golden: dashboard manual -->
+    ```bash
+    printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
+    ```
 
-   You should see `Dashboard: http://localhost:<port>`, and in the browser the
-   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
-   `COMPLETE` deployment of iris 1.0.0.
+    You should see `Dashboard: http://localhost:<port>`, and in the browser the
+    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
+    `COMPLETE` deployment of iris 1.0.0.
 
 7. <a id="step-7"></a>**Clean up**: the app, the forwards, the server and all its data, and
-   the saved secrets:
+    the saved secrets:
 
-   <!-- golden: android-cleanup device cleanup -->
-   ```bash
-   adb uninstall com.fleetml.sample; adb reverse --remove-all
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
-   ```
+    <!-- golden: android-cleanup device cleanup -->
+    ```bash
+    adb uninstall com.fleetml.sample; adb reverse --remove-all
+    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml down -v && rm -f ~/.fleetml.env
+    ```
 
-   You should see `Success` and `Network <stack>_default  Removed`. With two
-   devices attached, `adb` works on the one in `ANDROID_SERIAL` (step 5);
-   the other one keeps the app and its forwards until
-   `adb -s <its serial> uninstall com.fleetml.sample; adb -s <its serial> reverse --remove-all`
-   (`adb devices` lists the serials).
+    You should see `Success` and `Network <stack>_default  Removed`. With two
+    devices attached, `adb` works on the one in `ANDROID_SERIAL` (step 5);
+    the other one keeps the app and its forwards until
+    `adb -s <its serial> uninstall com.fleetml.sample; adb -s <its serial> reverse --remove-all`
+    (`adb devices` lists the serials).
 
 Then your own app: [Install](#install) and [Configure and start](#configure-and-start),
 with the same server and key. The emulator instead of a phone:
@@ -609,61 +609,61 @@ maintainers run it by hand.
 ### Over USB
 
 1. Turn on USB debugging in the phone's developer options, connect it and
-   accept the authorisation prompt; `adb devices` then lists it as `device`.
-   On macOS and Linux, `adb` and `emulator` are in the Android SDK, not on the
-   `PATH`: `export PATH="$HOME/Library/Android/sdk/platform-tools:$HOME/Library/Android/sdk/emulator:$PATH"`
-   (`$HOME/Android/Sdk/...` on Linux).
-   On Windows, `adb devices` lists a phone only with its maker's USB driver
-   (Google's for Pixel phones, from the SDK Manager), see
-   [From Windows](#from-windows).
+    accept the authorisation prompt; `adb devices` then lists it as `device`.
+    On macOS and Linux, `adb` and `emulator` are in the Android SDK, not on the
+    `PATH`: `export PATH="$HOME/Library/Android/sdk/platform-tools:$HOME/Library/Android/sdk/emulator:$PATH"`
+    (`$HOME/Android/Sdk/...` on Linux).
+    On Windows, `adb devices` lists a phone only with its maker's USB driver
+    (Google's for Pixel phones, from the SDK Manager), see
+    [From Windows](#from-windows).
 2. Pin `adb` and Gradle to the phone in this shell, with its serial from
-   `adb devices`. With more than one device attached, an emulator or a
-   colleague's phone, Gradle otherwise installs on every one of them and `adb`
-   asks which one to use:
+    `adb devices`. With more than one device attached, an emulator or a
+    colleague's phone, Gradle otherwise installs on every one of them and `adb`
+    asks which one to use:
 
-   ```bash
-   export ANDROID_SERIAL=<the phone's serial>
-   ```
+    ```bash
+    export ANDROID_SERIAL=<the phone's serial>
+    ```
 
 3. Forward the REST, gRPC and model-file ports, so the phone reaches the
-   machine as `localhost` (again after each reconnect of the cable, and
-   after a build that restarted `adb`: `adb reverse --list` shows what is
-   forwarded):
+    machine as `localhost` (again after each reconnect of the cable, and
+    after a build that restarted `adb`: `adb reverse --list` shows what is
+    forwarded):
 
-   ```bash
-   . ~/.fleetml.env
-   adb reverse tcp:${FLEETML_REST_PORT:-18080} tcp:${FLEETML_REST_PORT:-18080}
-   adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
-   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-   ```
+    ```bash
+    . ~/.fleetml.env
+    adb reverse tcp:${FLEETML_REST_PORT:-18080} tcp:${FLEETML_REST_PORT:-18080}
+    adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
+    adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
+    ```
 
-   The model files' port matters as much as the gRPC port: the server hands
-   out model downloads as presigned URLs for its `S3_PUBLIC_ENDPOINT`,
-   `localhost` on that port in the quickstart, so without that forward the
-   phone registers and then fails every download
-   ([CONFIG.md](CONFIG.md#network-and-storage)). The lines read the saved
-   ports, so a stack started with other ports needs no change. On the dev
-   stack (`make dev`), forward 19000, its object store, instead of the
-   model files' port. If the server's
-   `S3_PUBLIC_ENDPOINT` is your LAN address (after [Over Wi-Fi](#over-wi-fi)),
-   downloads go there instead, also over USB: the phone must be on that
-   network and the debug network security config must allow the address, or
-   every download fails with `CLEARTEXT communication to <LAN IP> not permitted`;
-   or put it [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address)
-   (the block there). This shows the value in use:
+    The model files' port matters as much as the gRPC port: the server hands
+    out model downloads as presigned URLs for its `S3_PUBLIC_ENDPOINT`,
+    `localhost` on that port in the quickstart, so without that forward the
+    phone registers and then fails every download
+    ([CONFIG.md](CONFIG.md#network-and-storage)). The lines read the saved
+    ports, so a stack started with other ports needs no change. On the dev
+    stack (`make dev`), forward 19000, its object store, instead of the
+    model files' port. If the server's
+    `S3_PUBLIC_ENDPOINT` is your LAN address (after [Over Wi-Fi](#over-wi-fi)),
+    downloads go there instead, also over USB: the phone must be on that
+    network and the debug network security config must allow the address, or
+    every download fails with `CLEARTEXT communication to <LAN IP> not permitted`;
+    or put it [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address)
+    (the block there). This shows the value in use:
 
-   ```bash
-   docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
-   ```
+    ```bash
+    docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | grep S3_PUBLIC_ENDPOINT
+    ```
 
 4. Build and install the debug build, whose host is `localhost`, with the
-   enrollment key from [Publish and deploy](#publish-and-deploy-with-the-cli)
-   (`$FLEETML_ENROLLMENT_KEY`), and start the app:
+    enrollment key from [Publish and deploy](#publish-and-deploy-with-the-cli)
+    (`$FLEETML_ENROLLMENT_KEY`), and start the app:
 
-   ```bash
-   ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
-   adb shell am start -n <application ID>/.MainActivity
-   ```
+    ```bash
+    ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090}
+    adb shell am start -n <application ID>/.MainActivity
+    ```
 
 The SDK logs every step to logcat with the tag `FleetML`
 (`adb logcat -s FleetML`). Within seconds of `FleetML.init`,
@@ -868,66 +868,66 @@ the repository. Contributors on the dev stack (`make dev`) use the key from
 files' port.
 
 1. Start the server with the quickstart's "Run FleetML" block (or
-   `source ~/.fleetml.env` in a new shell).
+    `source ~/.fleetml.env` in a new shell).
 
 2. Start an emulator (API 26 or later), from Android Studio's Device Manager
-   or `emulator -avd <name>`, pin to it and forward the object store's port:
+    or `emulator -avd <name>`, pin to it and forward the object store's port:
 
-   ```bash
-   export ANDROID_SERIAL=emulator-5554
-   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-   ```
+    ```bash
+    export ANDROID_SERIAL=emulator-5554
+    adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
+    ```
 
-   The sample app connects to `10.0.2.2` on the gRPC port by default.
+    The sample app connects to `10.0.2.2` on the gRPC port by default.
 
 3. Publish the sample models, create an enrollment key and deploy 1.0.0 to the
-   sample app's label (`app=sample`), as in [Publish and
-   deploy](#publish-and-deploy-with-the-cli) with these names:
+    sample app's label (`app=sample`), as in [Publish and
+    deploy](#publish-and-deploy-with-the-cli) with these names:
 
-   ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
-   P=$(fleetml project create --name android-demo -o json | jq -r .id)
-   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-   fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
-   M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
-   V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
-   V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
-   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name emulator -o json | jq -r .key)
-   D=$(fleetml deploy create --project $P --version $V1 --target '{"app":"sample"}' -o json | jq -r .id)
-   fleetml deploy start $D
-   ```
+    ```bash
+    export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+    P=$(fleetml project create --name android-demo -o json | jq -r .id)
+    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+    fleetml push models/iris/iris_v2.tflite --project $P --model iris --version 2.0.0
+    M=$(fleetml model list --project $P -o json | jq -r '.[] | select(.name == "iris") | .id')
+    V1=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "1.0.0") | .id')
+    V2=$(fleetml ver list --model $M -o json | jq -r '.[] | select(.version == "2.0.0") | .id')
+    export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name emulator -o json | jq -r .key)
+    D=$(fleetml deploy create --project $P --version $V1 --target '{"app":"sample"}' -o json | jq -r .id)
+    fleetml deploy start $D
+    ```
 
 4. Build and install the sample app with the key (it connects by itself on
-   its first start; or type the settings on its config screen and tap
-   **Save and connect**), and open it. A fresh clone has no
-   `android/local.properties`, so Gradle on the command line finds the Android
-   SDK through `ANDROID_HOME` (`$HOME/Library/Android/sdk` on macOS,
-   `$HOME/Android/Sdk` on Linux, where Android Studio puts it), and it needs JDK
-   17 ([From a clone](#from-a-clone)); Android Studio writes `local.properties`
-   when it opens the project.
+    its first start; or type the settings on its config screen and tap
+    **Save and connect**), and open it. A fresh clone has no
+    `android/local.properties`, so Gradle on the command line finds the Android
+    SDK through `ANDROID_HOME` (`$HOME/Library/Android/sdk` on macOS,
+    `$HOME/Android/Sdk` on Linux, where Android Studio puts it), and it needs JDK
+    17 ([From a clone](#from-a-clone)); Android Studio writes `local.properties`
+    when it opens the project.
 
-   ```bash
-   export ANDROID_HOME=$HOME/Library/Android/sdk JAVA_HOME=/opt/homebrew/opt/openjdk@17
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null)
-   adb shell am start -n com.fleetml.sample/.MainActivity
-   ```
+    ```bash
+    export ANDROID_HOME=$HOME/Library/Android/sdk JAVA_HOME=/opt/homebrew/opt/openjdk@17
+    (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew :sample-app:installDebug -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null)
+    adb shell am start -n com.fleetml.sample/.MainActivity
+    ```
 
-   A build with a key it has not used before connects with that key, also
-   where the sample app ran before; a reinstall of the same build keeps
-   what its config screen saved, and `adb shell pm clear com.fleetml.sample`
-   starts it from nothing (the device's token goes too, so a key of another
-   project is then refused: see `this device is already registered` below).
+    A build with a key it has not used before connects with that key, also
+    where the sample app ran before; a reinstall of the same build keeps
+    what its config screen saved, and `adb shell pm clear com.fleetml.sample`
+    starts it from nothing (the device's token goes too, so a key of another
+    project is then refused: see `this device is already registered` below).
 
-   The app registers, downloads iris 1.0.0, validates it and shows
-   **Active model: iris 1.0.0**; logcat shows the lines in [Over
-   USB](#over-usb). **Classify sample flower** runs it and reports inference
-   telemetry. `fleetml deploy create --project $P --version $V2 --target '{"app":"sample"}'`
-   and `deploy start` update the app to 2.0.0 on its next heartbeat.
+    The app registers, downloads iris 1.0.0, validates it and shows
+    **Active model: iris 1.0.0**; logcat shows the lines in [Over
+    USB](#over-usb). **Classify sample flower** runs it and reports inference
+    telemetry. `fleetml deploy create --project $P --version $V2 --target '{"app":"sample"}'`
+    and `deploy start` update the app to 2.0.0 on its next heartbeat.
 
 5. Offline start: airplane mode as in [Offline and update
-   tests](#offline-and-update-tests), force-stop and reopen the app. The
-   cached model is active immediately and inference works; events are queued
-   and sent once airplane mode is off.
+    tests](#offline-and-update-tests), force-stop and reopen the app. The
+    cached model is active immediately and inference works; events are queued
+    and sent once airplane mode is off.
 
 The sample app runs on a phone the same way: over USB, the three forwards and
 `-PfleetmlDebugHost=localhost` on the Gradle line (the config screen then
@@ -1074,49 +1074,50 @@ and a stale host as
 **Over Wi-Fi**, the phone and the Windows machine on the same network:
 
 1. The Windows machine's LAN address is the IPv4 address `ipconfig` prints
-   for the Wi-Fi or Ethernet adapter (not WSL's `ip addr`, an internal one).
+    for the Wi-Fi or Ethernet adapter (not WSL's `ip addr`, an internal one).
 2. In the Ubuntu shell, in the stack's clone, save it as the address devices
-   download from and restart the server with it:
+    download from and restart the server with it:
 
-   ```bash
-   . ~/.fleetml.env && sed -i "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d
-   ```
+    ```bash
+    . ~/.fleetml.env && sed -i "s/S3_PUBLIC_ENDPOINT=[^ ]*/S3_PUBLIC_ENDPOINT=<LAN IP>:${FLEETML_S3_PUBLIC_PORT:-19100}/" ~/.fleetml.env
+    source ~/.fleetml.env
+    docker compose -f deploy/docker-compose.prod.yml up -d
+    ```
 
 3. In an administrator PowerShell, mark the Wi-Fi network private (Settings,
-   Network and internet, Wi-Fi, the network, Private network; or
-   `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`;
-   `Get-NetConnectionProfile` lists the interface aliases, if yours is not
-   `Wi-Fi`) and let the gRPC and model files' ports in on private networks
-   only, read from the Ubuntu shell's `~/.fleetml.env`:
+    Network and internet, Wi-Fi, the network, Private network; or
+    `Set-NetConnectionProfile -InterfaceAlias Wi-Fi -NetworkCategory Private`;
+    `Get-NetConnectionProfile` lists the interface aliases, if yours is not
+    `Wi-Fi`) and let the gRPC and model files' ports in on private networks
+    only, read from the Ubuntu shell's `~/.fleetml.env`:
 
-   ```powershell
-   $grpc, $s3 = (wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && echo ${FLEETML_GRPC_PORT:-19090} ${FLEETML_S3_PUBLIC_PORT:-19100}').Split(' ')
-   New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort $grpc,$s3 -Action Allow -Profile Private
-   ```
+    ```powershell
+    $grpc, $s3 = (wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && echo ${FLEETML_GRPC_PORT:-19090} ${FLEETML_S3_PUBLIC_PORT:-19100}').Split(' ')
+    New-NetFirewallRule -DisplayName FleetML -Direction Inbound -Protocol TCP -LocalPort $grpc,$s3 -Action Allow -Profile Private
+    ```
 
-   `Remove-NetFirewallRule -DisplayName FleetML` removes it when you are
-   done. If the phone still cannot connect, a block rule may win over it:
-   cancelling Docker Desktop's firewall prompt once leaves one, and
-   `Get-NetFirewallRule -Action Block -Enabled True | Where-Object DisplayName -like '*Docker*'`
-   lists it.
+    `Remove-NetFirewallRule -DisplayName FleetML` removes it when you are
+    done. If the phone still cannot connect, a block rule may win over it:
+    cancelling Docker Desktop's firewall prompt once leaves one, and
+    `Get-NetFirewallRule -Action Block -Enabled True | Where-Object DisplayName -like '*Docker*'`
+    lists it.
+
 4. Back in the first PowerShell, without the cable's forwards, the app built
-   with the LAN address (the screen then shows it, and its debug build may
-   talk plain HTTP to it):
+    with the LAN address (the screen then shows it, and its debug build may
+    talk plain HTTP to it):
 
-   ```powershell
-   adb reverse --remove-all
-   adb shell pm clear com.fleetml.sample
-   .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=<LAN IP>" "-PfleetmlDebugPort=$grpc"
-   adb shell am start -n com.fleetml.sample/.MainActivity
-   ```
+    ```powershell
+    adb reverse --remove-all
+    adb shell pm clear com.fleetml.sample
+    .\gradlew.bat :sample-app:installDebug "-PfleetmlDebugHost=<LAN IP>" "-PfleetmlDebugPort=$grpc"
+    adb shell am start -n com.fleetml.sample/.MainActivity
+    ```
 
-   The app connects by itself; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`
-   on the LAN address, downloads go there also over USB and on the emulator,
-   so those need `-PfleetmlDebugHost=<LAN IP>` too (and the host typed on
-   the screen: `localhost` over USB, `10.0.2.2` on the emulator), or the
-   endpoint [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address).
+    The app connects by itself; logcat shows the same lines. With `S3_PUBLIC_ENDPOINT`
+    on the LAN address, downloads go there also over USB and on the emulator,
+    so those need `-PfleetmlDebugHost=<LAN IP>` too (and the host typed on
+    the screen: `localhost` over USB, `10.0.2.2` on the emulator), or the
+    endpoint [back to `localhost`](ADVANCED.md#a-phone-or-another-machine-the-download-address).
 
 **On the emulator**: the same PowerShell lines with
 `$env:ANDROID_SERIAL = 'emulator-5554'`, only `adb reverse tcp:$s3 tcp:$s3`
@@ -1196,18 +1197,18 @@ After that the SDK:
 For each assignment in a heartbeat the SDK:
 
 1. **Checks the signature** of the assignment with the project's signing
-   keys (sent with registration and every heartbeat): an artifact whose
-   signature does not verify is not downloaded, the current model stays, and
-   `SIGNATURE_INVALID` is reported ([artifact signing](ROLLOUTS.md#artifact-signing)).
+    keys (sent with registration and every heartbeat): an artifact whose
+    signature does not verify is not downloaded, the current model stays, and
+    `SIGNATURE_INVALID` is reported ([artifact signing](ROLLOUTS.md#artifact-signing)).
 2. **Downloads** the model from the presigned URL, streaming to a `.part` file.
-   An interrupted download resumes with an HTTP Range request. When the server offers a delta from the
-   version the device has, only the delta is downloaded and applied
-   ([delta updates](ROLLOUTS.md#delta-updates)).
+    An interrupted download resumes with an HTTP Range request. When the server offers a delta from the
+    version the device has, only the delta is downloaded and applied
+    ([delta updates](ROLLOUTS.md#delta-updates)).
 3. **Verifies** the sha256 before moving the file into place.
 4. **Validates** it with a `ModelValidator`.
 5. **Activates** it only if validation passed: the model becomes active, the
-   previously active version becomes last-known-good, the device reports the
-   new version as loaded and `onModelReady(model)` is called.
+    previously active version becomes last-known-good, the device reports the
+    new version as loaded and `onModelReady(model)` is called.
 
 If validation fails, the active (last-known-good) model stays in place, the SDK
 reports a `MODEL_LOAD_FAILED` event with the error (so a canary's health gate
