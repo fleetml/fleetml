@@ -60,7 +60,8 @@ minutes on a cold Docker cache, most of it pulling the base images and
 building the server and dashboard images; the 3 minutes start after the
 build, when the stack starts. Look at what step 2 printed above the message:
 
-- `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
+- `Bind for 0.0.0.0:<port> failed: port is already allocated` (Docker
+  Engine on Linux: `failed to bind host port for 0.0.0.0:<port>...: address already in use`; on
   Windows, `Ports are not available: exposing port TCP 0.0.0.0:<port> ...`
   ending in `bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
   for a port a Windows program holds, or in `bind: An attempt was made to access a socket in a way forbidden by its access permissions`
@@ -199,7 +200,10 @@ export FLEETML_DASHBOARD_PORT=8081 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=290
 
 Step 2 saves the first four in `~/.fleetml.env` (see
 [CONFIG.md](CONFIG.md#docker-compose)), with `S3_PUBLIC_ENDPOINT` on the
-model files' port, and every later block reads them from there. It saves
+model files' port, and every later block reads them from there. It does not
+save a `COMPOSE_PROJECT_NAME` you export yourself: export it again in every
+new terminal, or compose there starts a second, empty `fleetml-prod` stack
+(the second stack below does this with its first line). It saves
 them only when that file does not exist yet, so this works before the first
 start only.
 
