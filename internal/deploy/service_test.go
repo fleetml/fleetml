@@ -44,6 +44,22 @@ func TestCreateDeployment(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidInput)
 	})
 
+	t.Run("settings of another strategy are refused", func(t *testing.T) {
+		stages := []CanaryStageInput{{Percentage: 50, MinDuration: "1m"}, {Percentage: 100}}
+		for _, in := range []CreateInput{
+			{CanaryStages: stages},
+			{Strategy: "ROLLING", CanaryStages: stages},
+			{RollingConfig: &RollingConfig{BatchSize: 2}},
+			{Strategy: "CANARY", RollingConfig: &RollingConfig{BatchSize: 2}},
+			{HealthGate: &HealthGate{MaxErrorRate: 0.05}},
+			{Strategy: "all_at_once", HealthGate: &HealthGate{MaxErrorRate: 0.05}},
+		} {
+			in.ProjectID, in.ModelVersionID = uuid.New(), uuid.New()
+			_, err := svc.Create(ctx, in)
+			assert.ErrorIs(t, err, ErrInvalidInput, "%+v", in)
+		}
+	})
+
 	t.Run("canary default stages", func(t *testing.T) {
 		d, err := svc.Create(ctx, CreateInput{
 			ProjectID:      uuid.New(),
@@ -122,6 +138,7 @@ func TestCreateDeployment(t *testing.T) {
 		_, err := svc.Create(ctx, CreateInput{
 			ProjectID:      uuid.New(),
 			ModelVersionID: uuid.New(),
+			Strategy:       "CANARY",
 			HealthGate:     &HealthGate{MaxErrorRate: 2.0},
 		})
 		assert.ErrorIs(t, err, ErrInvalidInput)
@@ -131,6 +148,7 @@ func TestCreateDeployment(t *testing.T) {
 		d, err := svc.Create(ctx, CreateInput{
 			ProjectID:      uuid.New(),
 			ModelVersionID: uuid.New(),
+			Strategy:       "CANARY",
 			HealthGate:     &HealthGate{MaxErrorRate: 0.1, OnFailure: "pause"},
 		})
 		require.NoError(t, err)
@@ -138,6 +156,7 @@ func TestCreateDeployment(t *testing.T) {
 		_, err = svc.Create(ctx, CreateInput{
 			ProjectID:      uuid.New(),
 			ModelVersionID: uuid.New(),
+			Strategy:       "CANARY",
 			HealthGate:     &HealthGate{MaxErrorRate: 0.1, OnFailure: "stop"},
 		})
 		assert.ErrorIs(t, err, ErrInvalidInput)

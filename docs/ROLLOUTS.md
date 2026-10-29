@@ -158,6 +158,10 @@ allows none). A key the request does not have, in `health_gate`,
 `rolling_config`, a canary stage or the deployment body itself, is refused
 with `400` naming it
 (`invalid JSON body: health_gate: unknown key "max_error" (known: ...)`).
+So is a setting of another strategy: `canary_stages` without
+`"strategy": "CANARY"`, `rolling_config` without `"ROLLING"`, and a
+`health_gate` on an `ALL_AT_ONCE` deployment, which has no stage to judge
+(`canary_stages needs strategy CANARY (this deployment is ALL_AT_ONCE)`).
 
 On each tick the gate looks only at telemetry for the new version **from the
 devices the current stage exposes**, recorded **since the stage started**.

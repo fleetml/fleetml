@@ -43,8 +43,11 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
     const body: NewDeployment = {
       project_id: v.project.id, model_version_id: v.id, strategy, target_selector: parseLabels(labels),
       name: `${v.label} ${strategy.toLowerCase().replace(/_/g, ' ')}`,
-      health_gate: { max_error_rate: Number(maxErrorRate) / 100, min_events: Number(minEvents), on_failure: onFailure },
       urgent,
+    }
+    // Only a staged rollout has a gate: the server refuses one on ALL_AT_ONCE.
+    if (strategy !== 'ALL_AT_ONCE') {
+      body.health_gate = { max_error_rate: Number(maxErrorRate) / 100, min_events: Number(minEvents), on_failure: onFailure }
     }
     if (strategy === 'CANARY') {
       body.canary_stages = stages.split(',').map(s => Number(s.trim())).filter(n => n > 0).map(percentage => ({ percentage, min_duration: stageTime }))
