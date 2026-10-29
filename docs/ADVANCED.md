@@ -564,7 +564,11 @@ You should see the tour's project, `tour`, in the list. The tour's
 version IDs, the enrollment key) to that file, next to a compose stack's
 secrets if one runs on the same machine: they change nothing on that stack,
 and the compose [Clean up](QUICKSTART.md#clean-up) removes them with the
-file.
+file. With no compose stack on the machine, the tour creates the file with
+only its own variables (the enrollment key among them), and the chart
+README's clean-up leaves it: `rm -f ~/.fleetml.env` when you are done, or a
+later README Get started finds the file, writes no server secrets into it,
+and its stack stops with `JWT_SECRET is missing`.
 
 ## Helm chart variants
 

@@ -135,7 +135,10 @@ Helm 3, `kubectl`, `jq`, `openssl` and the `fleetml` CLI (step 3 of the
    You should see `Deleting cluster "fleetml"`. The first line stops this
    terminal's background jobs: the simulator and the port-forwards.
    `kubectl` keeps a cache of the cluster's API in `~/.kube/cache`, which
-   does no harm (`rm -rf ~/.kube/cache` removes it).
+   does no harm (`rm -rf ~/.kube/cache` removes it). If you ran the tour
+   against the chart on a machine with no compose stack, `~/.fleetml.env`
+   holds only the tour's variables: `rm -f ~/.fleetml.env` removes it
+   ([why](../../../docs/ADVANCED.md#kubernetes-instead-of-compose)).
 
 Then [Upgrading](#upgrading), [Production](#production) and the
 [values](#values); a Secret of your own, other local ports and unreleased
