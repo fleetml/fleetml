@@ -503,6 +503,16 @@ def test_push_accepts_any_case_and_a_prerelease(fake: Fake, tmp_path: Path) -> N
     assert [r.url.path for r in fake.requests][:2] == ["/api/v1/projects/p1/models", "/api/v1/models/m1/versions"]
 
 
+def test_push_drops_a_leading_v(fake: Fake, tmp_path: Path) -> None:
+    model = tmp_path / "m.tflite"
+    model.write_bytes(b"x")
+    push_routes(fake, model_exists=True, version_exists=True)
+    fake.client().push(model, project="p1", model="iris", version="v1.0.0")
+    assert json.loads(fake.requests[2].content) == {"version": "1.0.0"}
+    calls = [(r.method, r.url.path) for r in fake.requests]
+    assert ("POST", "/api/v1/versions/v1/variants") in calls, "the existing 1.0.0 is found"
+
+
 def test_push_upload_and_integrity_failures(fake: Fake, tmp_path: Path) -> None:
     model = tmp_path / "m.tflite"
     model.write_bytes(b"x")

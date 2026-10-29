@@ -57,6 +57,8 @@ func newPushCmd() *cobra.Command {
 			if err := checkPushInputs(quant, framework, ver, metadata); err != nil {
 				return err
 			}
+			// The server keeps a version without its leading "v"; find and print it that way.
+			ver = strings.TrimPrefix(ver, "v")
 
 			// Validate file
 			fi, err := os.Stat(filePath)

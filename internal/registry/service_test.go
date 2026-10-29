@@ -503,6 +503,14 @@ func TestCreateVersion(t *testing.T) {
 		_, err := svc.CreateVersion(ctx, model.ID, "1.0.0", "", nil)
 		assert.ErrorIs(t, err, ErrConflict)
 	})
+
+	t.Run("a leading v is not kept", func(t *testing.T) {
+		v, err := svc.CreateVersion(ctx, model.ID, "v2.0.0", "", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", v.Version)
+		_, err = svc.CreateVersion(ctx, model.ID, "2.0.0", "", nil)
+		assert.ErrorIs(t, err, ErrConflict, "the same version as v2.0.0")
+	})
 }
 
 func TestStatusTransitions(t *testing.T) {

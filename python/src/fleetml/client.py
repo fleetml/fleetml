@@ -164,6 +164,8 @@ class FleetML:
         ``FleetMLError`` (400 VALIDATION_ERROR) before anything is created.
         """
         _check_push_inputs(quantization, target_runtime, version)
+        # The server keeps a version without its leading "v"; find it that way.
+        version = version[1:] if version.startswith("v") else version
         size = os.path.getsize(path)
         digest = hashlib.sha256()
         with open(path, "rb") as f:

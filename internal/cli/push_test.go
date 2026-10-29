@@ -93,6 +93,14 @@ func TestPush_RefusedInputsCreateNothing(t *testing.T) {
 
 	require.NoError(t, push("--version", "1.0.0-rc.1", "--quantization", "fp16", "--framework", "tflite"))
 	assert.Len(t, fake.Versions(), 1)
+
+	// A leading "v" names the same version: v2.0.0 then 2.0.0 is one version with two variants.
+	require.NoError(t, push("--version", "v2.0.0"))
+	require.NoError(t, push("--version", "2.0.0", "--quantization", "FP16"))
+	versions := fake.Versions()
+	require.Len(t, versions, 2)
+	assert.Equal(t, "2.0.0", versions[1]["version"])
+	assert.Len(t, fake.Variants(), 3)
 }
 
 // A small model was shown as "0KB" before.
