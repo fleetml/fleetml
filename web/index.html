@@ -144,7 +144,7 @@ details.full pre { background: var(--code-bg); border: 1px solid var(--line); bo
 ol.path { margin: 0; padding: 0; list-style: none; counter-reset: s; }
 ol.path li { counter-increment: s; position: relative; padding: 0 0 16px 46px; }
 ol.path li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; display: grid; place-items: center; }
-.apps { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.apps { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
 .apps figure { margin: 0; }
 .apps img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .apps figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 8px; }
