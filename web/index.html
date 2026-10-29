@@ -146,6 +146,7 @@ ol.path li { counter-increment: s; position: relative; padding: 0 0 16px 46px; }
 ol.path li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; display: grid; place-items: center; }
 .apps { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
 .apps figure { margin: 0; }
+@media (min-width: 980px) { .apps figure.ios { max-width: 360px; } }
 .apps img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .apps figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 8px; }
 
@@ -315,7 +316,7 @@ footer a { color: var(--muted); }
           <img src="/assets/app-android.png" width="516" height="301" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log.">
           <figcaption>The Android sample app</figcaption>
         </figure>
-        <figure>
+        <figure class="ios">
           <img src="/assets/app-ios.png" width="460" height="500" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds.">
           <figcaption>The iOS sample app</figcaption>
         </figure>
