@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,6 +41,22 @@ func (c *Client) SetAPIKey(key string) {
 }
 
 // authorize adds the API key header. It is never added to presigned storage URLs.
+// validKey reports whether s can be an API key: printable ASCII without
+// spaces. Anything else cannot go into an Authorization header, and the
+// request would fail before it reaches any server.
+func validKey(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] <= ' ' || s[i] > '~' {
+			return false
+		}
+	}
+	return true
+}
+
+// errBadKey names the key, not the server, when the key cannot be sent.
+var errBadKey = errors.New("the API key (FLEETML_API_KEY or the config file's) is not a key: it has a control character, " +
+	"a space or a non-ASCII character; set it again with `fleetml config set-key`")
+
 func (c *Client) authorize(req *http.Request) {
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -110,6 +127,9 @@ func (c *Client) do(method, path string, body, result interface{}) error {
 	if err != nil {
 		return err
 	}
+	if !validKey(c.apiKey) {
+		return errBadKey
+	}
 	req.Header.Set("Content-Type", "application/json")
 	c.authorize(req)
 
@@ -157,6 +177,9 @@ func (c *Client) GetRaw(path string) (json.RawMessage, error) {
 	req, err := http.NewRequest("GET", c.baseURL+path, http.NoBody)
 	if err != nil {
 		return nil, err
+	}
+	if !validKey(c.apiKey) {
+		return nil, errBadKey
 	}
 	c.authorize(req)
 	resp, err := c.httpClient.Do(req)

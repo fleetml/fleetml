@@ -134,6 +134,18 @@ func TestClient_ErrorHints(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "no API key")
 
+	// A saved key that cannot go into a header names the key, not the server.
+	for _, bad := range []string{"k\x00-\x00u", "k u", "kü"} {
+		badKey := NewClient(srv.URL)
+		badKey.SetAPIKey(bad)
+		err = badKey.Get("/x", nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is not a key", "key %q", bad)
+		assert.NotContains(t, err.Error(), "server unavailable", "key %q", bad)
+		_, err = badKey.GetRaw("/x")
+		assert.ErrorIs(t, err, errBadKey, "key %q", bad)
+	}
+
 	err = NewClient("http://127.0.0.1:1").Get("/x", nil)
 	require.Error(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), "server unavailable: "))

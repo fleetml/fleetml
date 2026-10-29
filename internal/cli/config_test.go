@@ -148,4 +148,13 @@ func TestSetKeyFromStdin(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no API key")
 	assert.Equal(t, "key-from-arg", LoadFileConfig().APIKey)
+	// Input that is not a key is refused, and the saved key stays: UTF-16LE
+	// without a BOM (it decodes to NULs between the letters), other control
+	// characters, a space inside, non-ASCII.
+	for _, in := range []string{"k\x00-\x00u\x00\r\x00\n\x00", "k-\x01u\n", "k u\n", "kü\n"} {
+		err = run(in)
+		require.Error(t, err, "input %q", in)
+		assert.Contains(t, err.Error(), "this is not an API key", "input %q", in)
+		assert.Equal(t, "key-from-arg", LoadFileConfig().APIKey, "input %q", in)
+	}
 }
