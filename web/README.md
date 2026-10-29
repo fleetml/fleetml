@@ -27,26 +27,45 @@ Then open `http://localhost:8000/` (the docs are at `/docs/`).
   filled at build time from the README or the guide it names (`SNIPPETS` in
   `build.py`), HTML-escaped. `python3 web/build.py --check site` compares each one with its
   source, byte for byte.
-- `{{version}}` is the top version of `CHANGELOG.md`, read at build time.
+- `{{version}}` and `{{release-date}}` are the top version of `CHANGELOG.md`
+  and its date, read at build time.
+- The rollout replay plays a recorded run of `scripts/demo.sh`:
+  `demo-transcript.txt` is its output (without the setup line that names the
+  local ports). `REPLAY` in `build.py` picks the lines, and the build writes
+  them to `assets/replay.json` for `replay.js` and, as the static copy for
+  readers without JavaScript or with reduced motion, into the page; the
+  status strip's values are read from the same lines. `--check` compares the
+  JSON and the static copy with the transcript. To record it again:
+  `./scripts/demo.sh > web/demo-transcript.txt` without a terminal (no
+  colours), then remove the `server ready on REST ...` line.
 - The page loads nothing from other sites: no fonts, scripts, analytics or
-  cookies. Its CSS and the few lines of JavaScript (copy buttons, the
-  screenshot tabs) are in `index.html`.
+  cookies. Its CSS and the JavaScript of the copy buttons and the screenshot
+  tabs are in `index.html`; the replay is `replay.js`.
 
 ## Images
 
 `web/make-assets.py` (Pillow) writes `web/assets/`, which is committed:
 
-- `shot-*.png`: the dashboard screenshots of `docs/screenshots/`, cropped to
-  their content, nothing redrawn;
+- `shot-*.png`, `hero.webp` and `hero.png`: the dashboard screenshots of
+  `docs/screenshots/`, cropped to their content, nothing redrawn;
+- `app-*.png`: the sample apps' screenshots, cropped to their status and
+  inference part;
 - `og.png`: the 1200x630 sharing image (the README's headline over the
   Deployments screenshot);
 - `icon-192.png`, `apple-touch-icon.png`: the logo as PNG.
 
 Run it again (`python3 web/make-assets.py`) when a screenshot or the logo changes.
 
-`logo.svg` is the mark: three bars for the stages of a rollout, the last one,
-every device, in the accent colour; indigo `#4f46e5` (the docs' primary
-colour) and teal `#5eead4`.
+`logo.svg` is the mark: a staged rollout as a staircase, up to a teal dot,
+the whole fleet; indigo `#4f46e5` (the docs' primary colour) and teal
+`#5eead4`. It is also the docs' header logo and favicon
+(`scripts/mkdocs_hooks.py` adds it to the docs).
+
+## The docs' theme
+
+`docs-theme/` is MkDocs Material's `custom_dir`: one partial,
+`partials/source.html`, the header's repository link without the call to
+the GitHub API for its stars, so the docs load nothing from other sites.
 
 ## Hosting
 
