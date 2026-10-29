@@ -123,6 +123,16 @@ step 5). The
   phone does not reach the server. `adb reverse --list` must show both
   ports; run step 5's two `adb reverse` lines again (a reconnected cable or a
   restarted `adb` drops them).
+- `Registered as device`, then nothing more: no deployment targets this
+  app. The sample registers with the label `app=sample`, and a deployment
+  reaches it only when its target matches (Get started's step 4 targets every
+  device; the guide's "Publish and deploy" block targets `app=myapp`, your
+  own app). `fleetml deploy list --project $P -o json | jq -c '.[] | {id, status, target_selector}'`
+  shows each deployment's target.
+- `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (step 5 stops there): a sample app
+  signed with another key, built on another computer, is on the phone.
+  `adb uninstall com.fleetml.sample` (that app's settings go with it), then
+  run step 5 again.
 - `Registered as device`, then `Download of <variant ID> ... failed`: the
   model files' forward is missing (the second `adb reverse` line), or the
   server hands out an address the phone cannot reach
