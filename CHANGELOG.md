@@ -5,6 +5,69 @@ All notable changes to FleetML are recorded here. The format follows
 [Semantic Versioning](https://semver.org/) (before 1.0, minor versions may
 change APIs).
 
+## [0.10.7] - 2026-10-29
+
+### What changed for readers
+
+Fixes every finding of the developer review of 0.10.6: one regression of
+0.10.6 in the iOS guide, two 0.10.6 docs fixes that stopped one step short,
+seven product bugs and the docs gaps each platform's reviewer hit. Upgrading
+from 0.10.6 needs nothing. Requests 0.10.6 accepted that 0.10.7 refuses
+(400 naming the reason): a deployment whose `canary_stages`,
+`rolling_config` or `health_gate` does not match its strategy (0.10.6
+dropped them, so such a deployment went to every device at once), and a
+variant pushed into an ARCHIVED version. A version created as `v2.0.0` is
+now stored as `2.0.0` (versions stored with a `v` before stay as they are).
+
+### Fixed
+
+- Regression of 0.10.6 (docs): the iOS guide said a registered device that
+  starts with another project's key is refused; it moves to that project,
+  as the guide says elsewhere.
+- Server: `canary_stages` without `"strategy": "CANARY"`, `rolling_config`
+  without `"ROLLING"`, and a `health_gate` on an ALL_AT_ONCE deployment were
+  dropped silently; they are refused with 400 naming the strategy they need.
+  The dashboard sends a gate only for a staged rollout.
+- Server, CLI and Python client: `v2.0.0` and `2.0.0` became two versions of
+  one model, and `fleetml push --version v2.0.0` printed `vv2.0.0`; a leading
+  `v` is dropped, so they are one version.
+- Server: a push into an ARCHIVED version, which is final, uploaded the file
+  first; it is refused before anything is uploaded.
+- CLI and Python client: a push whose upload or check failed left the model
+  and an empty DRAFT version behind; the push removes what it created and
+  says so.
+- CLI and Python client: an `.onnx` file pushed without `--framework`
+  (`target_runtime`) became a TFLITE variant; the file's extension picks the
+  runtime (`.onnx`, `.mlmodel`/`.mlpackage`, `.gguf`, TFLITE otherwise), and
+  a `--framework` the extension contradicts is warned about.
+- CLI: `config set-key` saved input that is not a key (UTF-16 without a
+  byte order mark, control characters), and every later call said the
+  server was unavailable; it refuses such input, and a saved key that cannot
+  be sent is named as the problem.
+- Dashboard: an ARCHIVED version offered Deploy and was listed in the new
+  deployment's picker (the server refused it); neither any more.
+
+### Docs
+
+- Incomplete fixes of 0.10.6, now whole: the "never shows `model active`"
+  entry in a new terminal goes into the clone and sources `~/.fleetml.env`
+  before step 4; the Kubernetes second shell is one complete block that
+  starts in the clone.
+- Android: step 5 stops at a failed build or install, and Troubleshooting
+  names `INSTALL_FAILED_UPDATE_INCOMPATIBLE` and a deployment that targets
+  other labels; a second run of "Publish and deploy".
+- iOS: 6a prints the model code when the model name is not known yet; the
+  own-app step 3 says when no server runs; the first build's time.
+- Linux agent: running the Connect block again after a later deploy moves
+  the machines back to 1.0.0.
+- Windows: the clean-up names the pulled images and the build cache; `wsl`
+  without `--exec` also breaks the server line; after a port move, step 4's
+  `export FLEETML_SERVER` line again.
+- Helm: after the tour on Kubernetes alone, remove the `~/.fleetml.env` it
+  created.
+- Docker Engine's port-conflict message; an exported `COMPOSE_PROJECT_NAME`
+  is not saved by step 2.
+
 ## [0.10.6] - 2026-10-28
 
 ### What changed for readers
@@ -1464,6 +1527,7 @@ The first release.
   Simulator cannot run background tasks, so the iOS background refresh has
   been checked on the Simulator only up to scheduling.
 
+[0.10.7]: https://github.com/fleetml/fleetml/compare/v0.10.6...v0.10.7
 [0.10.6]: https://github.com/fleetml/fleetml/compare/v0.10.5...v0.10.6
 [0.10.5]: https://github.com/fleetml/fleetml/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/fleetml/fleetml/compare/v0.10.3...v0.10.4
