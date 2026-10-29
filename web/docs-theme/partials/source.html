@@ -1,0 +1,14 @@
+{#-
+  The repository link in the docs header, without Material's data-md-component="source":
+  that attribute makes the page ask api.github.com for the stars and forks, and the
+  docs load nothing from other hosts (mkdocs.yml, theme.custom_dir).
+-#}
+<a href="{{ config.repo_url }}" title="{{ lang.t('source') }}" class="md-source">
+  <div class="md-source__icon md-icon">
+    {% set icon = config.theme.icon.repo or "fontawesome/brands/git-alt" %}
+    {% include ".icons/" ~ icon ~ ".svg" %}
+  </div>
+  <div class="md-source__repository">
+    {{ config.repo_name }}
+  </div>
+</a>

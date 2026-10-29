@@ -21,7 +21,7 @@ FleetML is pre-1.0. Security fixes go into the latest release only.
 
 | Version | Supported |
 |---|---|
-| 0.3.x (latest) | Yes |
+| 0.10.x (latest) | Yes |
 | Older | No |
 
 ## Threat model (summary)

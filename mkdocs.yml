@@ -1,6 +1,8 @@
 # Documentation site: `make docs-site` builds it into site/ (not committed).
 site_name: FleetML
 site_description: Open-source rollouts, A/B tests and drift detection for on-device ML models.
+# https://fleetml.dev/docs/ when `make website` builds it; unset for `make docs-site`.
+site_url: !ENV [DOCS_SITE_URL, null]
 repo_url: https://github.com/fleetml/fleetml
 repo_name: fleetml/fleetml
 edit_uri: blob/main/docs/
@@ -12,6 +14,14 @@ exclude_docs: |
 
 theme:
   name: material
+  # System fonts, and a repository link without the GitHub API call for its
+  # stars (web/docs-theme/partials/source.html): the site loads nothing from
+  # other hosts.
+  font: false
+  custom_dir: web/docs-theme
+  # web/logo.svg, added to the site by scripts/mkdocs_hooks.py.
+  logo: assets/fleetml-logo.svg
+  favicon: assets/fleetml-logo.svg
   features:
     - navigation.sections
     - navigation.top
@@ -26,6 +36,10 @@ theme:
       scheme: slate
       primary: indigo
       toggle: { icon: material/weather-sunny, name: Light mode }
+
+# The header's title and logo lead to the landing page (web/index.html).
+extra:
+  homepage: https://fleetml.dev/
 
 markdown_extensions:
   - admonition

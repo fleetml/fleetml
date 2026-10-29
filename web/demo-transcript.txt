@@ -1,0 +1,39 @@
+
+▶ Starting the dev stack and a demo server
+
+▶ 1. Publish three versions of a model
+  $ fleetml push models/iris/iris_v1.tflite --model iris --version 1.0.0
+  ✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)
+  $ fleetml push models/iris/iris_v2.tflite --model iris --version 2.0.0
+  ✓ Pushed models/iris/iris_v2.tflite → iris v2.0.0 (INT8)
+  $ fleetml push models/iris/iris_v2.tflite --model iris --version 2.1.0
+  ✓ Pushed models/iris/iris_v2.tflite → iris v2.1.0 (INT8)
+  each file was sha256-verified on upload; only verified files are ever sent to devices
+
+▶ 2. Twenty devices enroll and get 1.0.0
+  $ fleetml simulate --devices 20 --label app=demo   # simulated phones: real protocol, real downloads
+  $ POST /api/v1/deployments  {version: 1.0.0, target: app=demo}
+  fleet: iris 1.0.0 on 20
+
+▶ 3. Drift: the last day's latency against the week before
+  latency drift for 1.0.0: NONE (PSI 0.026)
+  now the devices slow down (say, after an OS update)...
+  latency drift for 1.0.0: CRITICAL (PSI 8.511)
+  a change into CRITICAL is sent as an alert: 1 drift alert(s) on NATS
+
+▶ 4. A canary of 2.0.0 with a health gate; 2.0.0 is broken
+  $ POST /api/v1/deployments  {version: 2.0.0, strategy: CANARY 25% -> 100%, gate: errors <= 5% over 30 events, else ROLLBACK}
+  fleet: iris 1.0.0 on 12, iris 2.0.0 on 8   (the canary cohort only)
+  deployment ROLLED_BACK: error rate 22.92% exceeds threshold 5.00% (11/48 events from 8 cohort devices)
+  fleet: iris 1.0.0 on 20, nobody outside the canary ever saw 2.0.0
+
+▶ 5. A/B test: 1.0.0 against the fixed 2.1.0
+  $ POST /api/v1/experiments  {control: 1.0.0, treatment: 2.1.0, target: app=demo, min_sample_size: 300}
+  control 1.0.0:   350 inferences, mean 34 ms
+  treatment 2.1.0: 350 inferences, mean 13 ms
+  Welch t-test p < 0.0001, recommendation: ADOPT_TREATMENT
+  $ POST /api/v1/deployments  {version: 2.1.0, target: app=demo}
+  fleet: iris 2.1.0 on 20
+
+▶ Done in 30s (plus 17s of setup)
+  The same steps work against your devices with the Android and iOS SDKs (docs/ANDROID_SDK.md, docs/IOS_SDK.md).

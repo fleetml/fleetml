@@ -1,9 +1,12 @@
 """MkDocs hooks for the FleetML docs site.
 
 README.md and CHANGELOG.md live at the repository root, outside docs/: they
-are added as the site's home page and changelog. Links from any page to files
-outside docs/ (source, deploy files, SECURITY.md) are rewritten to the
-repository on GitHub, so the site has no broken relative links.
+are added as the site's home page and changelog; the home page leaves out the
+README's CI badge, an image from github.com, so the site loads nothing from
+other hosts, and web/logo.svg becomes the header logo and favicon. Links from
+any page to files outside docs/ (source, deploy files, SECURITY.md) are
+rewritten to the repository on GitHub, so the site has no broken relative
+links.
 """
 
 import os
@@ -18,13 +21,19 @@ ROOT_PAGES = {"index.md": "README.md", "CHANGELOG.md": "CHANGELOG.md"}
 SITE_EXTENSIONS = (".md", ".png", ".gif", ".jpg", ".svg")
 EXCLUDED = ("docs/screenshots/demo/",)
 REPO_PAGES = {v: k for k, v in ROOT_PAGES.items()}
+BADGE = re.compile(r"^\[!\[CI\]\([^)]*\)\]\([^)]*\)\n\n", re.M)
 LINK = re.compile(r"(!?\[[^\]]*\]\()([^)\s]+)(\))")
 
 
 def on_files(files, config):
     for page, source in ROOT_PAGES.items():
         with open(os.path.join(ROOT, source), encoding="utf-8") as f:
-            files.append(File.generated(config, page, content=f.read()))
+            content = f.read()
+        if page == "index.md":
+            content = BADGE.sub("", content, count=1)
+        files.append(File.generated(config, page, content=content))
+    with open(os.path.join(ROOT, "web", "logo.svg"), encoding="utf-8") as f:
+        files.append(File.generated(config, "assets/fleetml-logo.svg", content=f.read()))
     return files
 
 

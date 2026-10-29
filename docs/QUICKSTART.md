@@ -12,107 +12,107 @@ zsh, on macOS or Linux; on Windows, see [On Windows](#on-windows))
 and keep it open until the end.
 
 1. **Check the tools.** You need Docker (Docker Desktop on a Mac), git, curl
-   and jq ([installing them](ADVANCED.md#installing-the-tools)):
+    and jq ([installing them](ADVANCED.md#installing-the-tools)):
 
-   <!-- golden: tools -->
-   ```bash
-   docker compose version && git --version && jq --version
-   ```
+    <!-- golden: tools -->
+    ```bash
+    docker compose version && git --version && jq --version
+    ```
 
-   You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
+    You should see `Docker Compose version` (v2 or later) and `jq-` on the last line.
 
 2. **Start FleetML.** The first start takes a few minutes, to download and
-   build the images:
+    build the images:
 
-   <!-- golden: start -->
-   ```bash
-   [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
-   [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
-   source ~/.fleetml.env
-   docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
-   curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
-   ```
+    <!-- golden: start -->
+    ```bash
+    [ -f deploy/docker-compose.prod.yml ] || { [ -d fleetml ] || git clone https://github.com/fleetml/fleetml.git; cd fleetml; }
+    [ -f ~/.fleetml.env ] || (umask 077; printf "export JWT_SECRET='%s' SIGNING_MASTER_KEY='%s' FLEETML_ADMIN_KEY='%s' FLEETML_REST_PORT=%s FLEETML_GRPC_PORT=%s FLEETML_DASHBOARD_PORT=%s FLEETML_S3_PUBLIC_PORT=%s S3_PUBLIC_ENDPOINT=localhost:%s\n" "$(openssl rand -base64 32)" "$(openssl rand -base64 32)" "$(openssl rand -hex 32)" "${FLEETML_REST_PORT:-18080}" "${FLEETML_GRPC_PORT:-19090}" "${FLEETML_DASHBOARD_PORT:-80}" "${FLEETML_S3_PUBLIC_PORT:-19100}" "${FLEETML_S3_PUBLIC_PORT:-19100}" > ~/.fleetml.env)
+    source ~/.fleetml.env
+    docker compose -f deploy/docker-compose.prod.yml up -d --build && for i in $(seq 90); do curl -sf localhost:${FLEETML_REST_PORT:-18080}/readyz && break; [ $i = 90 ] && echo "Not ready after 3 minutes: see Troubleshooting in docs/ADVANCED.md"; sleep 2; done || echo "Start failed: see Troubleshooting in docs/ADVANCED.md"; echo
+    curl -sf -H "Authorization: Bearer $FLEETML_ADMIN_KEY" localhost:${FLEETML_REST_PORT:-18080}/api/v1/projects && echo && echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}  (log in with FLEETML_ADMIN_KEY from ~/.fleetml.env)"
+    ```
 
-   You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
-   The block saved the server's secrets in `~/.fleetml.env`: keep that file.
+    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
+    The block saved the server's secrets in `~/.fleetml.env`: keep that file.
 
 3. **Get the CLI**, checked against the release's checksums:
 
-   <!-- golden: cli -->
-   ```bash
-   OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
-   curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
-   grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
-   mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
-   rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
-   export PATH="$HOME/.local/bin:$PATH"
-   fleetml version
-   ```
+    <!-- golden: cli -->
+    ```bash
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    curl -fsSLO "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-$OS-$ARCH.tar.gz"
+    curl -fsSLO https://github.com/fleetml/fleetml/releases/latest/download/SHA256SUMS
+    grep " fleetml-$OS-$ARCH.tar.gz\$" SHA256SUMS | shasum -a 256 -c
+    mkdir -p ~/.local/bin && tar -xzf "fleetml-$OS-$ARCH.tar.gz" -C ~/.local/bin fleetml
+    rm "fleetml-$OS-$ARCH.tar.gz" SHA256SUMS
+    export PATH="$HOME/.local/bin:$PATH"
+    fleetml version
+    ```
 
-   You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
+    You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
 
 4. **Publish the sample model and deploy it.** The project gets the time in
-   its name, so running the block again makes a new one:
+    its name, so running the block again makes a new one:
 
-   <!-- golden: publish -->
-   ```bash
-   export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
-   P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
-   fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
-   V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
-   fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
-   export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
-   ```
+    <!-- golden: publish -->
+    ```bash
+    export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY
+    P=$(fleetml project create --name "first-$(date +%H%M%S)" -o json | jq -r .id)
+    fleetml push models/iris/iris_v1.tflite --project $P --model iris --version 1.0.0
+    V=$(fleetml ver list --model "$(fleetml model list --project $P -o json | jq -r '.[0].id')" -o json | jq -r '.[0].id')
+    fleetml deploy start "$(fleetml deploy create --project $P --version $V -o json | jq -r .id)"
+    export FLEETML_ENROLLMENT_KEY=$(fleetml enrollment-key create --project $P --name first-device -o json | jq -r .key)
+    ```
 
-   You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
+    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
 5. **Put a device on it**: the Linux device agent in a container on this
-   machine. It registers with the enrollment key from step 4, downloads the
-   model, checks it and makes it active:
+    machine. It registers with the enrollment key from step 4, downloads the
+    model, checks it and makes it active:
 
-   <!-- golden: device -->
-   ```bash
-   ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-   mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
-   docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
-     -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
-     exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
-       -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
-   for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
-   ```
+    <!-- golden: device -->
+    ```bash
+    ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
+    mkdir -p fleetml-agent && curl -fsSL "https://github.com/fleetml/fleetml/releases/latest/download/fleetml-agent-linux-$ARCH.tar.gz" | tar -xz -C fleetml-agent
+    docker run -d --init --name fleetml-agent --add-host=host.docker.internal:host-gateway -e FLEETML_ENROLLMENT_KEY \
+      -v "$PWD/fleetml-agent:/opt/fleetml-agent:ro" ubuntu:24.04 sh -c "/opt/fleetml-agent/install.sh /opt/fleetml-agent/fleetml-agent > /dev/null &&
+      exec setpriv --reuid=fleetml-agent --regid=fleetml-agent --init-groups /usr/local/bin/fleetml-agent -config /etc/fleetml-agent/config.yaml \
+        -server host.docker.internal:${FLEETML_GRPC_PORT:-19090} -download-host-override host.docker.internal:${FLEETML_S3_PUBLIC_PORT:-19100}"
+    for i in $(seq 60); do docker logs fleetml-agent 2>&1 | grep 'model active' && break; [ $i = 60 ] && echo "No model active after 2 minutes: see Troubleshooting"; sleep 2; done
+    ```
 
-   You should see `msg="model active" model=iris version=1.0.0`.
-   On a phone instead: the [Android](ANDROID_SDK.md#get-started) guide
-   (a phone on a USB cable) or the [iOS](IOS_SDK.md#get-started) guide
-   (the simulator, then an iPhone).
+    You should see `msg="model active" model=iris version=1.0.0`.
+    On a phone instead: the [Android](ANDROID_SDK.md#get-started) guide
+    (a phone on a USB cable) or the [iOS](IOS_SDK.md#get-started) guide
+    (the simulator, then an iPhone).
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
-   a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
-   the dashboard's address: open it and paste the key into the login box:
+    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
+    the dashboard's address: open it and paste the key into the login box:
 
-   <!-- golden: dashboard manual -->
-   ```bash
-   printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
-   echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
-   ```
+    <!-- golden: dashboard manual -->
+    ```bash
+    printf %s "$FLEETML_ADMIN_KEY" | { pbcopy || clip.exe || xclip -selection clipboard || cat; } 2> /dev/null; echo
+    echo "Dashboard: http://localhost:${FLEETML_DASHBOARD_PORT:-80}"
+    ```
 
-   You should see `Dashboard: http://localhost:<port>`, and in the browser the
-   Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
-   `COMPLETE` deployment of iris 1.0.0.
+    You should see `Dashboard: http://localhost:<port>`, and in the browser the
+    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
+    `COMPLETE` deployment of iris 1.0.0.
 
 7. **Clean up**, when you are done (after the [tour](#tour), if you take it:
-   this also stops its simulator and Grafana): the device, the server and all
-   its data, and the saved settings (the CLI stays in `~/.local/bin`; `down`
-   without `-v` would keep the data):
+    this also stops its simulator and Grafana): the device, the server and all
+    its data, and the saved settings (the CLI stays in `~/.local/bin`; `down`
+    without `-v` would keep the data):
 
-   <!-- golden: quickstart-cleanup cleanup -->
-   ```bash
-   kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
-   source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
-   ```
+    <!-- golden: quickstart-cleanup cleanup -->
+    ```bash
+    kill $SIM 2>/dev/null; docker rm -f fleetml-agent 2>/dev/null
+    source ~/.fleetml.env && docker compose -f deploy/docker-compose.prod.yml --profile observability down -v && rm -rf fleetml-agent ~/.fleetml.env /tmp/fleetml-sim.log
+    ```
 
-   You should see `Network <stack>_default  Removed`.
+    You should see `Network <stack>_default  Removed`.
 
 Then: the [tour](#tour) on the same stack, before step 7 (after it, run
 step 2 again first: it reuses the clone and starts a fresh stack). Other ports, a phone
@@ -137,78 +137,80 @@ with Docker Desktop, PowerShell runs the Windows CLI, and a Windows browser
 shows the dashboard. Steps 1 to 3 are once per machine:
 
 1. In PowerShell opened as administrator (right-click, **Run as
-   administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu (its current LTS
-   release; the Windows run on GitHub uses the same), before Docker Desktop,
-   which needs WSL 2.
-   Restart Windows if it asks to; WSL 2 also needs virtualization turned on
-   in the firmware (BIOS or UEFI), which most laptops have on, and an error
-   that mentions virtualization or "Virtual Machine Platform" means it is
-   off. Then open the **Ubuntu** shell from the Start menu and create its
-   user. WSL 2 gives Linux half of the machine's memory by default, which
-   on an 8 GB laptop is about the 2 GB the stack and its two image builds
-   need plus little else; a `%UserProfile%\.wslconfig` with `[wsl2]` and
-   `memory=6GB`, then `wsl --shutdown`, gives it more.
+    administrator**), `wsl --install -d Ubuntu` installs WSL 2 and Ubuntu (its current LTS
+    release; the Windows run on GitHub uses the same), before Docker Desktop,
+    which needs WSL 2.
+    Restart Windows if it asks to; WSL 2 also needs virtualization turned on
+    in the firmware (BIOS or UEFI), which most laptops have on, and an error
+    that mentions virtualization or "Virtual Machine Platform" means it is
+    off. Then open the **Ubuntu** shell from the Start menu and create its
+    user. WSL 2 gives Linux half of the machine's memory by default, which
+    on an 8 GB laptop is about the 2 GB the stack and its two image builds
+    need plus little else; a `%UserProfile%\.wslconfig` with `[wsl2]` and
+    `memory=6GB`, then `wsl --shutdown`, gives it more.
 2. Install [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
-   and keep **Use the WSL 2 based engine** on (Settings → General). The
-   installer needs an administrator; a daily account that is not one must be
-   in the local `docker-users` group to use Docker Desktop (Computer
-   Management, Local Users and Groups, then sign out and in again).
+    and keep **Use the WSL 2 based engine** on (Settings → General). The
+    installer needs an administrator; a daily account that is not one must be
+    in the local `docker-users` group to use Docker Desktop (Computer
+    Management, Local Users and Groups, then sign out and in again).
 3. Start Docker Desktop, and in its Settings → Resources → WSL integration,
-   turn on integration for Ubuntu. `docker` in the Ubuntu shell works only
-   while Docker Desktop is running; "Cannot connect to the Docker daemon"
-   there means it is not, or that the integration was turned on after the
-   shell opened (open a new Ubuntu shell).
+    turn on integration for Ubuntu. `docker` in the Ubuntu shell works only
+    while Docker Desktop is running; "Cannot connect to the Docker daemon"
+    there means it is not, or that the integration was turned on after the
+    shell opened (open a new Ubuntu shell).
 4. Check that Windows keeps none of the four ports for itself (Hyper-V and
-   WSL reserve ranges that can change at each restart): in PowerShell,
-   `netsh int ipv4 show excludedportrange protocol=tcp`. If one of Get
-   started's four ports (listed in [Other ports](ADVANCED.md#other-ports))
-   falls inside a listed range, export another port for it in the Ubuntu
-   shell before step 2, as that section says. Then
-   in the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
-   (`curl` and `openssl` are already there), then `cd ~` and steps 1 to 5 of
-   [Get started](#get-started) as they are. Keep the clone in the Linux file
-   system (`~`), not under `/mnt/c`: files under `/mnt/c` are much slower to
-   read from WSL.
+    WSL reserve ranges that can change at each restart): in PowerShell,
+    `netsh int ipv4 show excludedportrange protocol=tcp`. If one of Get
+    started's four ports (listed in [Other ports](ADVANCED.md#other-ports))
+    falls inside a listed range, export another port for it in the Ubuntu
+    shell before step 2, as that section says. Then
+    in the Ubuntu shell: `sudo apt update && sudo apt install -y git jq`
+    (`curl` and `openssl` are already there), then `cd ~` and steps 1 to 5 of
+    [Get started](#get-started) as they are. Keep the clone in the Linux file
+    system (`~`), not under `/mnt/c`: files under `/mnt/c` are much slower to
+    read from WSL.
 5. In a normal PowerShell window (not one opened as administrator, which
-   starts in another folder and, as another account, sees another `Path`):
-   the Windows CLI with the PowerShell block of
-   [Get the CLI](#get-the-cli), then the server's address and admin key from
-   the Ubuntu shell's `~/.fleetml.env`:
+    starts in another folder and, as another account, sees another `Path`):
+    the Windows CLI with the PowerShell block of
+    [Get the CLI](#get-the-cli), then the server's address and admin key from
+    the Ubuntu shell's `~/.fleetml.env`:
 
-   <!-- golden: windows-cli manual -->
-   ```powershell
-   $env:FLEETML_SERVER = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf http://localhost:%s ${FLEETML_REST_PORT:-18080}'
-   $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
-   fleetml project list
-   ```
+    <!-- golden: windows-cli manual -->
+    ```powershell
+    $env:FLEETML_SERVER = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf http://localhost:%s ${FLEETML_REST_PORT:-18080}'
+    $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY'
+    fleetml project list
+    ```
 
-   You should see the project of Get started's step 4, `first-<time>`.
+    You should see the project of Get started's step 4, `first-<time>`.
+
 6. The dashboard: step 6 of Get started, in the Ubuntu shell, puts the admin
-   key on the Windows clipboard (`clip.exe`) and prints the dashboard's
-   address; open it in a Windows browser and paste the key into the login
-   box. If the page does not open, see
-   [Troubleshooting](ADVANCED.md#troubleshooting).
+    key on the Windows clipboard (`clip.exe`) and prints the dashboard's
+    address; open it in a Windows browser and paste the key into the login
+    box. If the page does not open, see
+    [Troubleshooting](ADVANCED.md#troubleshooting).
+
 7. Clean up: step 7 of [Get started](#get-started), in the Ubuntu shell.
-   On the Windows side, in PowerShell, the CLI, its saved settings (with the
-   admin key, if you saved it with `set-key`) and its two downloads:
+    On the Windows side, in PowerShell, the CLI, its saved settings (with the
+    admin key, if you saved it with `set-key`) and its two downloads:
 
-   ```powershell
-   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", "$env:USERPROFILE\.fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
-   ```
+    ```powershell
+    Remove-Item -Recurse -Force "$env:LOCALAPPDATA\fleetml", "$env:USERPROFILE\.fleetml", fleetml.zip, SHA256SUMS -ErrorAction SilentlyContinue
+    ```
 
-   then its entry in the user `Path`, and the Windows-side clone if you made
-   one for the Android steps (`Remove-Item -Recurse -Force <its folder>`):
+    then its entry in the user `Path`, and the Windows-side clone if you made
+    one for the Android steps (`Remove-Item -Recurse -Force <its folder>`):
 
-   ```powershell
-   [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne "$env:LOCALAPPDATA\fleetml" }) -join ';', 'User')
-   ```
+    ```powershell
+    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne "$env:LOCALAPPDATA\fleetml" }) -join ';', 'User')
+    ```
 
-   The images step 2 built live in Docker Desktop and go with
-   `docker image rm fleetml-prod-server fleetml-prod-dashboard` or Docker
-   Desktop's Images page; the images it pulled (TimescaleDB, SeaweedFS, NATS
-   and the migration tool, about 2.4 GB) and Docker's build cache stay too,
-   until you remove them on that page (or Troubleshoot, Clean / Purge data).
-   WSL and Docker Desktop stay.
+    The images step 2 built live in Docker Desktop and go with
+    `docker image rm fleetml-prod-server fleetml-prod-dashboard` or Docker
+    Desktop's Images page; the images it pulled (TimescaleDB, SeaweedFS, NATS
+    and the migration tool, about 2.4 GB) and Docker's build cache stay too,
+    until you remove them on that page (or Troubleshoot, Clean / Purge data).
+    WSL and Docker Desktop stay.
 
 How it fits together, in more detail:
 

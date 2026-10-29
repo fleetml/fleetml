@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FleetML">
+  <!-- The FleetML mark: a staged rollout as a staircase, each step a stage, up to the teal dot, the whole fleet.
+       Two colours: indigo #4f46e5 (the docs' primary colour) and teal #5eead4, with a white line. -->
+  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
+  <path d="M12 48H24V36H36V24H44" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="47" cy="19" r="7" fill="#5eead4"/>
+</svg>

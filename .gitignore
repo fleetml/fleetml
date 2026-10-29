@@ -26,8 +26,9 @@ vendor/
 fleetml-secrets*.yaml
 fleetml-secrets.env
 
-# Documentation site (make docs-site)
+# Documentation site (make docs-site) and website (make website)
 site/
+.website-venv/
 
 # Node / dashboard build output
 node_modules/
