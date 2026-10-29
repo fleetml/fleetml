@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,6 +20,21 @@ import (
 var semverRE = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
 	`(-(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?` +
 	`(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$`)
+
+// runtimeOf names the runtime a model file's extension stands for, or "".
+func runtimeOf(path string) string {
+	switch strings.ToLower(filepath.Ext(strings.TrimRight(path, `/\`))) {
+	case ".tflite":
+		return "TFLITE"
+	case ".onnx":
+		return "ONNX"
+	case ".mlmodel", ".mlpackage":
+		return "COREML"
+	case ".gguf":
+		return "GGUF"
+	}
+	return ""
+}
 
 // checkPushInputs refuses the values the server would refuse (its lists, any
 // case), so a refused push leaves no model or version behind.
@@ -51,12 +67,23 @@ func newPushCmd() *cobra.Command {
 		Use:   "push [file]",
 		Short: "Upload a model variant (create the model and version if needed)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
+			// Without --framework the file's extension picks it (an .onnx file is
+			// not a TFLITE model); a --framework the extension contradicts is warned about.
+			if fromFile := runtimeOf(filePath); fromFile != "" {
+				if !cmd.Flags().Changed("framework") {
+					framework = fromFile
+				} else if !strings.EqualFold(strings.TrimSpace(framework), fromFile) {
+					fmt.Fprintf(os.Stderr, "Warning: pushing %s as %s (--framework), but its extension says %s\n", filePath, strings.ToUpper(framework), fromFile)
+				}
+			}
 			// What the server would refuse is refused before anything is created.
 			if err := checkPushInputs(quant, framework, ver, metadata); err != nil {
 				return err
 			}
+			// The server keeps a version without its leading "v"; find and print it that way.
+			ver = strings.TrimPrefix(ver, "v")
 
 			// Validate file
 			fi, err := os.Stat(filePath)
@@ -84,6 +111,7 @@ func newPushCmd() *cobra.Command {
 			err = client.Post("/api/v1/projects/"+projectID+"/models", map[string]string{
 				"name": modelName, "framework": framework, "task_type": task,
 			}, &model)
+			createdModel := err == nil
 			if err != nil {
 				// Try to find existing, a page of 100 at a time
 				for offset := 0; model == nil; offset += 100 {
@@ -118,6 +146,7 @@ func newPushCmd() *cobra.Command {
 			}
 			var version map[string]interface{}
 			err = client.Post("/api/v1/models/"+modelID+"/versions", versionBody, &version)
+			createdVersion := err == nil
 			if err != nil {
 				// The existing version, a page of 100 at a time.
 				for offset := 0; version == nil; offset += 100 {
@@ -144,6 +173,24 @@ func newPushCmd() *cobra.Command {
 			}
 			versionID := fmt.Sprint(version["id"])
 
+			// undo removes what this push created when the file does not get
+			// in, so a failed push leaves no empty model or DRAFT version.
+			undo := func(cause error) error {
+				what, path := "", ""
+				switch {
+				case createdModel:
+					what, path = "model "+modelName, "/api/v1/models/"+modelID
+				case createdVersion:
+					what, path = "version "+ver, "/api/v1/versions/"+versionID
+				default:
+					return cause
+				}
+				if err := client.Delete(path); err != nil {
+					return fmt.Errorf("%w (the %s this push created is left: %s)", cause, what, err)
+				}
+				return fmt.Errorf("%w (the %s this push created was removed)", cause, what)
+			}
+
 			// Step 3: Create variant + get upload URL
 			var variantResp map[string]interface{}
 			err = client.Post("/api/v1/versions/"+versionID+"/variants", map[string]interface{}{
@@ -153,7 +200,7 @@ func newPushCmd() *cobra.Command {
 				"blob_sha256":     sha,
 			}, &variantResp)
 			if err != nil {
-				return fmt.Errorf("creating variant: %s", err)
+				return undo(fmt.Errorf("creating variant: %s", err))
 			}
 
 			uploadURL := fmt.Sprint(variantResp["upload_url"])
@@ -174,7 +221,7 @@ func newPushCmd() *cobra.Command {
 				reader = io.TeeReader(f, &ProgressWriter{Total: fileSize})
 			}
 			if err := client.PutRaw(uploadURL, reader, fileSize); err != nil {
-				return err // "upload failed: ..."
+				return undo(err) // "upload failed: ..."
 			}
 			if progress {
 				fmt.Fprintln(os.Stderr) // newline after progress bar
@@ -183,7 +230,7 @@ func newPushCmd() *cobra.Command {
 			// Step 5: Finalize
 			var finalResp map[string]interface{}
 			if err := client.Post("/api/v1/variants/"+variantID+"/finalize", nil, &finalResp); err != nil {
-				return fmt.Errorf("finalize failed: %s", err)
+				return undo(fmt.Errorf("finalize failed: %s", err))
 			}
 
 			// Step 6: Promote if requested: DRAFT -> STAGED -> ACTIVE from where
@@ -229,7 +276,7 @@ func newPushCmd() *cobra.Command {
 	cmd.Flags().StringVar(&modelName, "model", "", "Model name (required)")
 	cmd.Flags().StringVar(&ver, "version", "", "Semver version (required)")
 	cmd.Flags().StringVar(&quant, "quantization", "INT8", "Quantization (FP32, FP16, INT8, INT4, DYNAMIC)")
-	cmd.Flags().StringVar(&framework, "framework", "TFLITE", "Framework/runtime")
+	cmd.Flags().StringVar(&framework, "framework", "TFLITE", "Framework/runtime (default: from the file's extension: .tflite, .onnx, .mlmodel/.mlpackage, .gguf; TFLITE otherwise)")
 	cmd.Flags().StringVar(&task, "task", "CLASSIFICATION", "Task type")
 	cmd.Flags().BoolVar(&promote, "promote", false, "Promote version to ACTIVE after upload")
 	cmd.Flags().StringVar(&metadata, "metadata", "", `Version metadata JSON for a new version, e.g. {"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}`)

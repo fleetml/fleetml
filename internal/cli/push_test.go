@@ -93,6 +93,14 @@ func TestPush_RefusedInputsCreateNothing(t *testing.T) {
 
 	require.NoError(t, push("--version", "1.0.0-rc.1", "--quantization", "fp16", "--framework", "tflite"))
 	assert.Len(t, fake.Versions(), 1)
+
+	// A leading "v" names the same version: v2.0.0 then 2.0.0 is one version with two variants.
+	require.NoError(t, push("--version", "v2.0.0"))
+	require.NoError(t, push("--version", "2.0.0", "--quantization", "FP16"))
+	versions := fake.Versions()
+	require.Len(t, versions, 2)
+	assert.Equal(t, "2.0.0", versions[1]["version"])
+	assert.Len(t, fake.Variants(), 3)
 }
 
 // A small model was shown as "0KB" before.
@@ -100,4 +108,69 @@ func TestSizeString(t *testing.T) {
 	assert.Equal(t, "642 bytes", sizeString(642))
 	assert.Equal(t, "2.4 KB", sizeString(2460))
 	assert.Equal(t, "3.0 MB", sizeString(3*1024*1024))
+}
+
+// A push whose upload fails removes what it created: the new model (with its
+// version), or the new version of an existing model; an existing version stays.
+func TestPush_FailedUploadLeavesNothingNew(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	file := filepath.Join(t.TempDir(), "iris.tflite")
+	require.NoError(t, os.WriteFile(file, []byte("tflite bytes"), 0o644))
+	require.NoError(t, runCLI(t, fake.URL, "k", "project", "create", "--name", "up"))
+	projectID := fake.Projects()[0]["id"].(string)
+	push := func(ver string) error {
+		return runCLI(t, fake.URL, "k", "push", file, "--project", projectID, "--model", "iris", "--version", ver)
+	}
+
+	fake.FailUploads(true)
+	err := push("1.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "upload failed")
+	assert.Contains(t, err.Error(), "the model iris this push created was removed")
+	assert.Empty(t, fake.Models())
+	assert.Empty(t, fake.Versions())
+
+	fake.FailUploads(false)
+	require.NoError(t, push("1.0.0"))
+	fake.FailUploads(true)
+	err = push("2.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the version 2.0.0 this push created was removed")
+	require.Len(t, fake.Versions(), 1, "1.0.0 stays")
+	err = push("1.0.0")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "removed", "an existing version is not removed")
+	assert.Len(t, fake.Versions(), 1)
+	assert.Len(t, fake.Models(), 1)
+}
+
+// Without --framework the file's extension picks the runtime: an .onnx file
+// is an ONNX variant, not TFLITE; an explicit --framework still wins.
+func TestPush_RuntimeFromExtension(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	dir := t.TempDir()
+	require.NoError(t, runCLI(t, fake.URL, "k", "project", "create", "--name", "ext"))
+	projectID := fake.Projects()[0]["id"].(string)
+	runtimeOfPush := func(name string, extra ...string) any {
+		file := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(file, []byte(name), 0o644))
+		before := map[any]bool{}
+		for _, v := range fake.Variants() {
+			before[v["id"]] = true
+		}
+		args := append([]string{"push", file, "--project", projectID, "--model", "m-" + name, "--version", "1.0.0"}, extra...)
+		require.NoError(t, runCLI(t, fake.URL, "k", args...))
+		for _, v := range fake.Variants() {
+			if !before[v["id"]] {
+				return v["target_runtime"]
+			}
+		}
+		return nil
+	}
+	assert.Equal(t, "ONNX", runtimeOfPush("model.onnx"))
+	assert.Equal(t, "COREML", runtimeOfPush("Iris.MLModel"))
+	assert.Equal(t, "GGUF", runtimeOfPush("llm.gguf"))
+	assert.Equal(t, "TFLITE", runtimeOfPush("model.tflite"))
+	assert.Equal(t, "TFLITE", runtimeOfPush("model.bin"), "unknown extension: the default")
+	assert.Equal(t, "TFLITE", runtimeOfPush("forced.onnx", "--framework", "TFLITE"), "an explicit --framework wins")
 }

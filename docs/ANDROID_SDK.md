@@ -101,11 +101,12 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    <!-- golden: android-phone device -->
    ```bash
    export ANDROID_SERIAL=${ANDROID_SERIAL:-$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')}; echo "Device: $ANDROID_SERIAL, $(adb shell getprop ro.product.model)"
-   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null)
-   adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090}
-   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100}
-   adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity < /dev/null
-   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting"; sleep 2; done
+   (cd android && ORG_GRADLE_PROJECT_fleetmlEnrollmentKey=$FLEETML_ENROLLMENT_KEY ./gradlew -q :sample-app:installDebug -PfleetmlDebugHost=localhost -PfleetmlDebugPort=${FLEETML_GRPC_PORT:-19090} < /dev/null) &&
+   adb reverse tcp:${FLEETML_GRPC_PORT:-19090} tcp:${FLEETML_GRPC_PORT:-19090} &&
+   adb reverse tcp:${FLEETML_S3_PUBLIC_PORT:-19100} tcp:${FLEETML_S3_PUBLIC_PORT:-19100} &&
+   adb logcat -c && adb shell am start -n com.fleetml.sample/.MainActivity < /dev/null &&
+   for i in $(seq 90); do adb logcat -d -s FleetML:I | grep -m 1 'is active' && break; [ $i = 90 ] && echo "Not active after 3 minutes: see Troubleshooting"; sleep 2; done ||
+   echo "Step 5 stopped at the error above: see Troubleshooting"
    ```
 
    You should see `Device: ` with the phone's serial and model, `Installed on 1 device.`,
@@ -114,7 +115,9 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    app's screen **Active model: iris 1.0.0**. Tap **Classify sample flower**
    to run it. If it says `Not active after 3 minutes`, see
    [Troubleshooting](ADVANCED.md#troubleshooting): the phone locked, a
-   missing forward, or the wrong device.
+   missing forward, or the wrong device. A failed build or install stops the
+   block with `Step 5 stopped at the error above`: Troubleshooting has the
+   install errors too.
 
 6. **See it in the dashboard.** This puts the admin key on the clipboard (on
    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
@@ -152,14 +155,14 @@ with the same server and key. The emulator instead of a phone:
 
 ## Install
 
-The SDK is on Maven Central; 0.10.6 is the version this guide describes (0.4.0
+The SDK is on Maven Central; 0.10.7 is the version this guide describes (0.4.0
 lacks the `passed validation` logcat line and still logs a failed heartbeat
 with a stack trace). Add it to the app with TensorFlow Lite next to it:
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.6")
+    implementation("dev.fleetml:fleetml-sdk:0.10.7")
     implementation("org.tensorflow:tensorflow-lite:2.17.0") // if you run TFLite models
 }
 ```
@@ -194,7 +197,7 @@ runtime, since the full one also contains the classes lite-generated code uses
 (not tested here with every protobuf version):
 
 ```kotlin
-implementation("dev.fleetml:fleetml-sdk:0.10.6") {
+implementation("dev.fleetml:fleetml-sdk:0.10.7") {
     exclude(group = "com.google.protobuf", module = "protobuf-javalite")
 }
 ```
@@ -227,7 +230,7 @@ plugins {
 }
 ```
 
-and `sdkVersion=0.10.6-dev` (any version string) in the app's
+and `sdkVersion=0.10.7-dev` (any version string) in the app's
 `gradle.properties`. Without them Gradle stops with
 `Plugin [id: 'com.google.protobuf'] was not found`.
 
@@ -294,7 +297,7 @@ android {
 }
 
 dependencies {
-    implementation("dev.fleetml:fleetml-sdk:0.10.6")
+    implementation("dev.fleetml:fleetml-sdk:0.10.7")
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -526,7 +529,10 @@ the labels the app sets (`app=myapp` above). It needs the `fleetml` CLI
   deployment: the app needs nothing else.
 
 The two models are the sample's, from the root of a clone; push your own
-`.tflite` files instead. With the quickstart's server, `FLEETML_SERVER` is
+`.tflite` files instead. Project names are unique on a server: on a second
+run, `project already exists: slug "myapp"` means the project is there from
+the first, so use `P=<its ID>` (from `fleetml project list`) in place of the
+second line, or another name. With the quickstart's server, `FLEETML_SERVER` is
 `http://localhost:${FLEETML_REST_PORT:-18080}` and the key `$FLEETML_ADMIN_KEY` after
 `source ~/.fleetml.env`:
 

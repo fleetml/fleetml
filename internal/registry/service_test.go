@@ -503,6 +503,14 @@ func TestCreateVersion(t *testing.T) {
 		_, err := svc.CreateVersion(ctx, model.ID, "1.0.0", "", nil)
 		assert.ErrorIs(t, err, ErrConflict)
 	})
+
+	t.Run("a leading v is not kept", func(t *testing.T) {
+		v, err := svc.CreateVersion(ctx, model.ID, "v2.0.0", "", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", v.Version)
+		_, err = svc.CreateVersion(ctx, model.ID, "2.0.0", "", nil)
+		assert.ErrorIs(t, err, ErrConflict, "the same version as v2.0.0")
+	})
 }
 
 func TestStatusTransitions(t *testing.T) {
@@ -629,6 +637,21 @@ func TestCreateVariant(t *testing.T) {
 			BlobSHA256:    "",
 		})
 		assert.ErrorIs(t, err, ErrInvalidInput)
+	})
+
+	t.Run("archived version", func(t *testing.T) {
+		archived, err := svc.CreateVersion(ctx, model.ID, "9.0.0", "", nil)
+		require.NoError(t, err)
+		env.versions.versions[archived.ID].Status = "ARCHIVED"
+		_, err = svc.CreateVariant(ctx, CreateVariantInput{
+			VersionID:     archived.ID,
+			Quantization:  "INT8",
+			TargetRuntime: "TFLITE",
+			BlobSizeBytes: 1024,
+			BlobSHA256:    "abc",
+		})
+		assert.ErrorIs(t, err, ErrInvalidInput)
+		assert.ErrorContains(t, err, "is ARCHIVED, which is final: push a new version")
 	})
 }
 

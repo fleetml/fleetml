@@ -43,8 +43,11 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
     const body: NewDeployment = {
       project_id: v.project.id, model_version_id: v.id, strategy, target_selector: parseLabels(labels),
       name: `${v.label} ${strategy.toLowerCase().replace(/_/g, ' ')}`,
-      health_gate: { max_error_rate: Number(maxErrorRate) / 100, min_events: Number(minEvents), on_failure: onFailure },
       urgent,
+    }
+    // Only a staged rollout has a gate: the server refuses one on ALL_AT_ONCE.
+    if (strategy !== 'ALL_AT_ONCE') {
+      body.health_gate = { max_error_rate: Number(maxErrorRate) / 100, min_events: Number(minEvents), on_failure: onFailure }
     }
     if (strategy === 'CANARY') {
       body.canary_stages = stages.split(',').map(s => Number(s.trim())).filter(n => n > 0).map(percentage => ({ percentage, min_duration: stageTime }))
@@ -67,7 +70,8 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
       <form onSubmit={submit}>
         <Field label="Model version">
           <Select name="version" value={versionId} onChange={setVersionId} placeholder="Choose a version"
-            options={catalog.versions.map(v => ({ value: v.id, label: `${v.label} (${v.project.name}, ${v.status})` }))} />
+            options={catalog.versions.filter(v => v.status !== 'ARCHIVED' || v.id === versionId)
+              .map(v => ({ value: v.id, label: `${v.label} (${v.project.name}, ${v.status})` }))} />
         </Field>
         <Field label="Strategy">
           <Select name="strategy" value={strategy} onChange={v => setStrategy(v as NewDeployment['strategy'])} options={[

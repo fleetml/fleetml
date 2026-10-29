@@ -37,6 +37,7 @@ type Server struct {
 	deployments map[string]map[string]any
 	devices     []map[string]any
 	keys        []map[string]any
+	failUploads bool
 }
 
 // NewServer starts a fake that accepts the admin key apiKey and has one
@@ -72,6 +73,21 @@ func (s *Server) Upload(variantID string) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.uploads[variantID]
+}
+
+// FailUploads makes every upload to the presigned URL fail (503), as an
+// unreachable or refusing object store would.
+func (s *Server) FailUploads(fail bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failUploads = fail
+}
+
+// Models returns every model created so far (and not deleted).
+func (s *Server) Models() []map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]map[string]any(nil), s.models...)
 }
 
 // Projects returns every project created so far.
@@ -113,8 +129,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		body, _ := io.ReadAll(r.Body)
 		s.mu.Lock()
-		s.uploads[id] = body
+		fail := s.failUploads
+		if !fail {
+			s.uploads[id] = body
+		}
 		s.mu.Unlock()
+		if fail {
+			http.Error(w, "object store unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -148,6 +171,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.projectModels(w, r.Method, p[1], body)
 	case len(p) == 3 && p[0] == "models" && p[2] == "versions":
 		s.modelVersions(w, r.Method, p[1], body)
+	case r.Method == http.MethodDelete && len(p) == 2 && p[0] == "models":
+		// Like the server: a model's versions and their variants go with it.
+		for _, v := range filter(s.versions, "model_id", p[1]) {
+			s.deleteVersion(v["id"].(string))
+		}
+		s.models = without(s.models, p[1])
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodDelete && len(p) == 2 && p[0] == "versions":
+		s.deleteVersion(p[1])
+		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodPost && len(p) == 3 && p[0] == "versions" && p[2] == "variants":
 		s.createVariant(w, r, p[1], body)
 	case r.Method == http.MethodGet && len(p) == 2 && p[0] == "versions":
@@ -436,4 +469,26 @@ func respondJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// deleteVersion removes a version and its variants.
+func (s *Server) deleteVersion(id string) {
+	for vid, v := range s.variants {
+		if v["model_version_id"] == id {
+			delete(s.variants, vid)
+			delete(s.uploads, vid)
+		}
+	}
+	s.versions = without(s.versions, id)
+}
+
+// without returns items minus the one with this id.
+func without(items []map[string]any, id string) []map[string]any {
+	out := items[:0:0]
+	for _, it := range items {
+		if it["id"] != id {
+			out = append(out, it)
+		}
+	}
+	return out
 }

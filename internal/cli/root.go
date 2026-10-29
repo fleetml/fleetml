@@ -110,6 +110,11 @@ func newConfigCmd() *cobra.Command {
 			if key == "" {
 				return errors.New("no API key: type or paste it at the prompt, pipe it in, or pass it as the argument")
 			}
+			if !validKey(key) {
+				return errors.New("this is not an API key: it has a control character, a space or a non-ASCII character " +
+					"(a file in UTF-16 without a byte-order mark reads like this): save the key as plain text (UTF-8 or ASCII) " +
+					"and pipe it in again, or pass it as the argument")
+			}
 			// Save what the file holds plus the key: not the environment's
 			// values, and not the default server as if it had been set.
 			fileCfg := loadSavedConfig()

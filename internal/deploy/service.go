@@ -153,6 +153,17 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*Deployment, e
 	if !validStrategies[strategy] {
 		return nil, fmt.Errorf("%w: strategy must be one of ALL_AT_ONCE, CANARY, ROLLING", ErrInvalidInput)
 	}
+	// Settings of another strategy would otherwise be dropped, and an
+	// ALL_AT_ONCE deployment completes at once with nothing judged.
+	if len(input.CanaryStages) > 0 && strategy != "CANARY" {
+		return nil, fmt.Errorf("%w: canary_stages needs strategy CANARY (this deployment is %s)", ErrInvalidInput, strategy)
+	}
+	if input.RollingConfig != nil && strategy != "ROLLING" {
+		return nil, fmt.Errorf("%w: rolling_config needs strategy ROLLING (this deployment is %s)", ErrInvalidInput, strategy)
+	}
+	if input.HealthGate != nil && strategy == "ALL_AT_ONCE" {
+		return nil, fmt.Errorf("%w: health_gate needs strategy CANARY or ROLLING (an ALL_AT_ONCE deployment has no stage to judge)", ErrInvalidInput)
+	}
 
 	if err := requireSameProject(ctx, s.versions, input.ProjectID, input.ModelVersionID); err != nil {
 		return nil, err

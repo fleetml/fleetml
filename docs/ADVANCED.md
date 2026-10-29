@@ -60,7 +60,8 @@ minutes on a cold Docker cache, most of it pulling the base images and
 building the server and dashboard images; the 3 minutes start after the
 build, when the stack starts. Look at what step 2 printed above the message:
 
-- `Bind for 0.0.0.0:<port> failed: port is already allocated` (or, on
+- `Bind for 0.0.0.0:<port> failed: port is already allocated` (Docker
+  Engine on Linux: `failed to bind host port for 0.0.0.0:<port>...: address already in use`; on
   Windows, `Ports are not available: exposing port TCP 0.0.0.0:<port> ...`
   ending in `bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
   for a port a Windows program holds, or in `bind: An attempt was made to access a socket in a way forbidden by its access permissions`
@@ -95,7 +96,7 @@ build, when the stack starts. Look at what step 2 printed above the message:
 once Postgres, the object store and NATS are reachable, and the project list
 answers `{"data":[],"pagination":{...}}`: no projects yet. `version` is the
 server's release, from the clone's tag (on `main` after a release it reads
-like `0.10.6-3-g1a2b3c4`: three commits past 0.10.6). To confirm the version
+like `0.10.7-3-g1a2b3c4`: three commits past 0.10.7). To confirm the version
 later: `curl -s localhost:${FLEETML_REST_PORT:-18080}/readyz`. More keys and
 their routes: [API keys](CONFIG.md#api-keys).
 
@@ -105,8 +106,9 @@ it tried means the object store's address or port
 ([the download address](#a-phone-or-another-machine-the-download-address));
 `registration failed` with `invalid or revoked enrollment key` means
 `FLEETML_ENROLLMENT_KEY` is not set in this terminal (step 4 sets it: in
-a new terminal, run step 3's `export PATH` line and step 4 again, then
-`docker rm -f fleetml-agent` and step 5). The
+a new terminal, `cd` into the clone, run `source ~/.fleetml.env` and step 3's
+`export PATH` line, then step 4 again, `docker rm -f fleetml-agent` and
+step 5). The
 [Linux agent guide](LINUX_AGENT.md) has every line the agent logs.
 
 **The phone never shows `is active`** (Android step 5 says `Not active after
@@ -121,6 +123,16 @@ a new terminal, run step 3's `export PATH` line and step 4 again, then
   phone does not reach the server. `adb reverse --list` must show both
   ports; run step 5's two `adb reverse` lines again (a reconnected cable or a
   restarted `adb` drops them).
+- `Registered as device`, then nothing more: no deployment targets this
+  app. The sample registers with the label `app=sample`, and a deployment
+  reaches it only when its target matches (Get started's step 4 targets every
+  device; the guide's "Publish and deploy" block targets `app=myapp`, your
+  own app). `fleetml deploy list --project $P -o json | jq -c '.[] | {id, status, target_selector}'`
+  shows each deployment's target.
+- `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (step 5 stops there): a sample app
+  signed with another key, built on another computer, is on the phone.
+  `adb uninstall com.fleetml.sample` (that app's settings go with it), then
+  run step 5 again.
 - `Registered as device`, then `Download of <variant ID> ... failed`: the
   model files' forward is missing (the second `adb reverse` line), or the
   server hands out an address the phone cannot reach
@@ -198,7 +210,10 @@ export FLEETML_DASHBOARD_PORT=8081 FLEETML_REST_PORT=28080 FLEETML_GRPC_PORT=290
 
 Step 2 saves the first four in `~/.fleetml.env` (see
 [CONFIG.md](CONFIG.md#docker-compose)), with `S3_PUBLIC_ENDPOINT` on the
-model files' port, and every later block reads them from there. It saves
+model files' port, and every later block reads them from there. It does not
+save a `COMPOSE_PROJECT_NAME` you export yourself: export it again in every
+new terminal, or compose there starts a second, empty `fleetml-prod` stack
+(the second stack below does this with its first line). It saves
 them only when that file does not exist yet, so this works before the first
 start only.
 
@@ -222,9 +237,10 @@ download address in effect, one per line (`FLEETML_DASHBOARD_PORT=8081`,
 two you did not move). Then go on with Get started's step 3 (or
 the step that failed). `source ~/.fleetml.env` also brings back the secrets
 and the saved `S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset. A
-CLI you pointed at the old REST port with `fleetml config set server` (as
-QUICKSTART's Windows block does) still uses it: run that line again with
-the new port.
+CLI you pointed at the old REST port still uses it: in Get started's
+terminal, run step 4's `export FLEETML_SERVER` line again, and if you saved
+the server with `fleetml config set server` (as QUICKSTART's Windows block
+does), run that line again with the new port.
 
 With a port moved, every block in the docs follows it: the blocks read the
 saved ports as `${FLEETML_REST_PORT:-18080}`, `${FLEETML_GRPC_PORT:-19090}`
@@ -527,15 +543,32 @@ On Kubernetes, the [Helm chart](../deploy/helm/fleetml) installs the same
 server instead, and the tour runs against it: keep `FLEETML_SERVER` and
 `FLEETML_API_KEY` from the chart README's Get started instead of the tour's
 first `export` line, and add `--grpc localhost:$GRPC` to the tour's
-`fleetml simulate` lines in place of theirs. In a second shell, set the
-chart's `REST GRPC S3` line and its `export` line again, and
-`source ~/.fleetml.env` (the tour's project, versions and enrollment key),
-instead of the tour's [second-shell block](QUICKSTART.md#tour). The tour's
+`fleetml simulate` lines in place of theirs. A second shell picks the tour
+up with this block instead of the tour's
+[second-shell block](QUICKSTART.md#tour): it goes into the clone (where the
+chart README's `fleetml-secrets.yaml` is), reads the tour's project, versions
+and enrollment key from `~/.fleetml.env`, and sets the chart's ports (the
+line of its step 4, yours if you changed it) and its server and key:
+
+```bash
+[ -f deploy/docker-compose.prod.yml ] || cd fleetml
+source ~/.fleetml.env
+export PATH="$HOME/.local/bin:$PATH"
+REST=38080 GRPC=39090 S3=39100 DASH=38800
+export FLEETML_SERVER=http://localhost:$REST FLEETML_API_KEY=$(sed -n 's/^  adminKey: "\(.*\)"$/\1/p' fleetml-secrets.yaml)
+fleetml project list
+```
+
+You should see the tour's project, `tour`, in the list. The tour's
 `>> ~/.fleetml.env` lines then add its own variables (the project and
 version IDs, the enrollment key) to that file, next to a compose stack's
 secrets if one runs on the same machine: they change nothing on that stack,
 and the compose [Clean up](QUICKSTART.md#clean-up) removes them with the
-file.
+file. With no compose stack on the machine, the tour creates the file with
+only its own variables (the enrollment key among them), and the chart
+README's clean-up leaves it: `rm -f ~/.fleetml.env` when you are done, or a
+later README Get started finds the file, writes no server secrets into it,
+and its stack stops with `JWT_SECRET is missing`.
 
 ## Helm chart variants
 
@@ -625,7 +658,7 @@ devices and the tools; each moves on its own:
   `Bind for 0.0.0.0:<port> failed`:
 
   ```bash
-  git fetch --tags && git checkout v0.10.6
+  git fetch --tags && git checkout v0.10.7
   source ~/.fleetml.env
   grep -q S3_PUBLIC_ENDPOINT ~/.fleetml.env || docker inspect $(docker compose -f deploy/docker-compose.prod.yml ps -q server) --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^S3_PUBLIC_ENDPOINT=/export S3_PUBLIC_ENDPOINT=/p' >> ~/.fleetml.env
   source ~/.fleetml.env
@@ -641,7 +674,7 @@ devices and the tools; each moves on its own:
   compose for the stack's server container, so it also works with your own
   `COMPOSE_PROJECT_NAME`. The
   last line prints `/readyz`, which ends with the new version
-  (`"version":"0.10.6"`). The projects, devices, telemetry and the admin key
+  (`"version":"0.10.7"`). The projects, devices, telemetry and the admin key
   stay, and devices reconnect by themselves. `git checkout main` instead follows the newest
   code, ahead of the last release.
 - **The CLI:** the [Get the CLI](QUICKSTART.md#get-the-cli) block again (it fetches the

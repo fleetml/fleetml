@@ -31,7 +31,9 @@ function VersionRow({ v }: { v: CatalogVersion }) {
         <StatusBadge status={v.status} />
         <CopyableId id={v.id} />
         <div className="ml-auto flex gap-4 text-sm">
-          <Link to={`/deployments?new=${v.id}`} className="text-indigo-600 hover:text-indigo-800">Deploy</Link>
+          {v.status !== 'ARCHIVED' && (
+            <Link to={`/deployments?new=${v.id}`} className="text-indigo-600 hover:text-indigo-800">Deploy</Link>
+          )}
           <Link to={`/telemetry?version=${v.id}`} className="text-indigo-600 hover:text-indigo-800">Telemetry</Link>
           <Link to={`/drift?version=${v.id}`} className="text-indigo-600 hover:text-indigo-800">Drift</Link>
         </div>

@@ -299,6 +299,8 @@ func (s *Service) CreateVersion(ctx context.Context, modelID uuid.UUID, version,
 	if err := ValidateSemver(version); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidInput, err.Error())
 	}
+	// "v2.0.0" is stored as "2.0.0", so the two cannot become two versions.
+	version = strings.TrimPrefix(version, "v")
 
 	// Verify model exists
 	if _, err := s.models.GetByID(ctx, modelID); err != nil {
@@ -412,6 +414,9 @@ func (s *Service) CreateVariant(ctx context.Context, input CreateVariantInput) (
 	ver, err := s.versions.GetByID(ctx, input.VersionID)
 	if err != nil {
 		return nil, err
+	}
+	if ver.Status == "ARCHIVED" {
+		return nil, fmt.Errorf("%w: version %s is ARCHIVED, which is final: push a new version", ErrInvalidInput, ver.Version)
 	}
 	model, err := s.models.GetByID(ctx, ver.ModelID)
 	if err != nil {
