@@ -300,23 +300,23 @@ footer a { color: var(--muted); }
     <div class="phone" id="your-phone">
       <div>
         <h3 style="font-size:1.5rem;letter-spacing:-0.01em;margin-bottom:10px">See it on your own phone</h3>
-        <p class="intro" style="margin-bottom:24px">Get started with a phone in place of the Linux agent. The sample apps run on a device or simulator; the Android SDK is tested on the emulator and a physical phone, the iOS SDK on simulators and a physical phone.</p>
+        <p class="intro" style="margin-bottom:24px">Get started with a phone in place of the Linux agent. The Android SDK is tested on a physical phone and the emulator, the iOS SDK on a physical phone and simulators.</p>
         <ol class="path">
           <li><strong>Start FleetML.</strong> One block clones the repository, writes the server's secrets to <code>~/.fleetml.env</code> once and starts the stack with Docker Compose. <a href="/docs/ANDROID_SDK/#get-started">Step 2</a></li>
           <li><strong>Get the CLI and publish the sample model</strong>, iris 1.0.0, and deploy it. <a href="/docs/ANDROID_SDK/#get-started">Steps 3 and 4</a></li>
-          <li><strong>Put the phone on it.</strong> Android: the sample app on a phone on a USB cable. iOS: the simulator, then your iPhone. <a href="/docs/ANDROID_SDK/#get-started">Android step 5</a>, <a href="/docs/IOS_SDK/#get-started">iOS steps 5 and 6</a></li>
+          <li><strong>Put the phone on it.</strong> Android: the sample app on a phone on a USB cable. iOS: your iPhone, or the simulator. <a href="/docs/ANDROID_SDK/#get-started">Android step 5</a>, <a href="/docs/IOS_SDK/#get-started">iOS steps 5 and 6</a></li>
           <li><strong>Run the model.</strong> The app's screen shows <strong>Active model: iris 1.0.0</strong>; tap <strong>Classify sample flower</strong> to run it.</li>
           <li><strong>See it in the dashboard.</strong> <strong>Devices</strong> lists one device, and <strong>Deployments</strong> one <code>COMPLETE</code> deployment of iris 1.0.0. <a href="/docs/ANDROID_SDK/#get-started">Step 6</a></li>
-          <li><strong>Roll out 2.0.0.</strong> The app gets it with its next heartbeat, 60 seconds by default; on Android, logcat shows <code>Model iris 2.0.0 built from a 603-byte delta instead of 2492 bytes</code>. <a href="/docs/ANDROID_SDK/#publish-and-deploy-with-the-cli">Publish and deploy</a>, <a href="/docs/ANDROID_SDK/#offline-and-update-tests">An update</a></li>
+          <li><strong>Roll out 2.0.0.</strong> The app gets it with its next heartbeat, 60 seconds by default; on Android, logcat shows the 603-byte delta. <a href="/docs/ANDROID_SDK/#publish-and-deploy-with-the-cli">Publish and deploy</a>, <a href="/docs/ANDROID_SDK/#offline-and-update-tests">An update</a></li>
         </ol>
       </div>
       <div class="apps">
         <figure>
-          <img src="/assets/app-android.png" width="540" height="257" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log.">
+          <img src="/assets/app-android.png" width="540" height="587" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log.">
           <figcaption>The Android sample app</figcaption>
         </figure>
         <figure>
-          <img src="/assets/app-ios.png" width="460" height="370" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds.">
+          <img src="/assets/app-ios.png" width="460" height="500" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds.">
           <figcaption>The iOS sample app</figcaption>
         </figure>
       </div>
@@ -577,7 +577,7 @@ footer a { color: var(--muted); }
     <div class="today">
       <div class="card"><strong class="big-num">v{{version}}</strong><p>Released {{release-date}}. <a href="/docs/CHANGELOG/">Changelog</a></p></div>
       <div class="card"><strong class="big-num">Pre-1.0</strong><p>Security fixes go into the latest release only. <a href="https://github.com/fleetml/fleetml/blob/main/SECURITY.md">SECURITY.md</a></p></div>
-      <div class="card"><strong class="big-num">Tested</strong><p>The Android SDK on the emulator and a physical phone, the iOS SDK on simulators and a physical phone, the Helm chart end to end in kind.</p></div>
+      <div class="card"><strong class="big-num">Tested</strong><p>The Android SDK on a physical phone and the emulator, the iOS SDK on a physical phone and simulators, the Helm chart end to end in kind.</p></div>
       <div class="card"><strong class="big-num">On the roadmap</strong><p>Sigstore as an alternative to the built-in signing keys, and organisations with single sign-on. Nothing on it is in a release yet. <a href="/docs/ROADMAP/">Roadmap</a></p></div>
     </div>
   </div>
