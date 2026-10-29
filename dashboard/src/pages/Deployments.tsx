@@ -70,7 +70,8 @@ function NewDeploymentForm({ catalog, initialVersion, onClose, onCreated }: {
       <form onSubmit={submit}>
         <Field label="Model version">
           <Select name="version" value={versionId} onChange={setVersionId} placeholder="Choose a version"
-            options={catalog.versions.map(v => ({ value: v.id, label: `${v.label} (${v.project.name}, ${v.status})` }))} />
+            options={catalog.versions.filter(v => v.status !== 'ARCHIVED' || v.id === versionId)
+              .map(v => ({ value: v.id, label: `${v.label} (${v.project.name}, ${v.status})` }))} />
         </Field>
         <Field label="Strategy">
           <Select name="strategy" value={strategy} onChange={v => setStrategy(v as NewDeployment['strategy'])} options={[
