@@ -146,7 +146,7 @@ ol.path li { counter-increment: s; position: relative; padding: 0 0 16px 46px; }
 ol.path li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; display: grid; place-items: center; }
 /* Two phones peeking in: identical frames cut off at the bottom, fading into the section */
 .apps { display: grid; gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-@media (min-width: 980px) { .apps { grid-template-columns: repeat(2, 260px); align-self: center; } }
+@media (min-width: 980px) { .apps { grid-template-columns: repeat(2, 260px); } }
 @media (max-width: 479px) { .apps { grid-template-columns: minmax(0, 300px); } }
 .apps figure { margin: 0; }
 .peek { position: relative; }
