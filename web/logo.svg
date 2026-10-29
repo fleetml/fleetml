@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FleetML">
+  <!-- The FleetML mark: three bars for the stages of a rollout, the last one (every device) in the accent colour.
+       Two colours: indigo #4f46e5 (the docs' primary colour) and teal #5eead4, on white bars. -->
+  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
+  <rect x="13" y="38" width="10" height="13" rx="2" fill="#ffffff"/>
+  <rect x="27" y="27" width="10" height="24" rx="2" fill="#ffffff"/>
+  <rect x="41" y="14" width="10" height="37" rx="2" fill="#5eead4"/>
+</svg>

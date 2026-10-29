@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FleetML: staged rollouts, health gates and rollback for on-device ML models</title>
+<meta name="description" content="Ship ML models to phones and edge devices in stages, watch how each version behaves, and roll back automatically when one is worse. Self-hosted, Apache-2.0.">
+<link rel="canonical" href="https://fleetml.dev/">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#4f46e5">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="FleetML">
+<meta property="og:title" content="FleetML">
+<meta property="og:description" content="Ship ML models to phones and edge devices in stages, watch how each version behaves, and roll back automatically when one is worse.">
+<meta property="og:url" content="https://fleetml.dev/">
+<meta property="og:image" content="https://fleetml.dev/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="FleetML's headline over the dashboard's Deployments page">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="FleetML">
+<meta name="twitter:description" content="Ship ML models to phones and edge devices in stages, watch how each version behaves, and roll back automatically when one is worse.">
+<meta name="twitter:image" content="https://fleetml.dev/assets/og.png">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<style>
+:root {
+  --bg: #ffffff; --bg-soft: #f6f7fb; --text: #111827; --muted: #4b5563; --line: #e5e7eb;
+  --accent: #4338ca; --accent-text: #ffffff; --code-bg: #f3f4f6; --code-text: #1f2937;
+  --ok: #047857; --bad: #b91c1c; --focus: #4338ca; --teal: #0f766e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020; --bg-soft: #111831; --text: #e5e7eb; --muted: #a3acbd; --line: #263049;
+    --accent: #a5b4fc; --accent-text: #0b1020; --code-bg: #121a33; --code-text: #e5e7eb;
+    --ok: #6ee7b7; --bad: #fca5a5; --focus: #a5b4fc; --teal: #5eead4;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 0.86rem; }
+p code, li code, td code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--bg); padding: 8px 12px; z-index: 10; }
+.skip:focus { left: 8px; }
+
+header.top { border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 16px; min-height: 64px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.brand img { width: 32px; height: 32px; }
+nav.top-nav { margin-left: auto; }
+nav.top-nav ul { display: flex; gap: 20px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+nav.top-nav a { color: var(--text); text-decoration: none; font-weight: 500; }
+nav.top-nav a:hover { color: var(--accent); }
+
+section { padding: 64px 0; border-bottom: 1px solid var(--line); }
+section.soft { background: var(--bg-soft); }
+h1 { font-size: clamp(1.9rem, 4.2vw, 3rem); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 20px; max-width: 26ch; }
+h2 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0 0 12px; }
+h3 { font-size: 1.1rem; margin: 0 0 6px; }
+.lead { font-size: 1.2rem; color: var(--muted); max-width: 62ch; margin: 0 0 28px; }
+.intro { color: var(--muted); max-width: 70ch; margin: 0 0 28px; }
+.hero { padding-top: 72px; }
+.actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 36px; }
+.btn { display: inline-block; padding: 12px 20px; border-radius: 10px; font-weight: 600; text-decoration: none; border: 2px solid var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-text); }
+.btn.secondary { color: var(--accent); }
+.btn:hover { text-decoration: none; filter: brightness(1.08); }
+
+.code { position: relative; background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; margin: 0 0 12px; }
+.code pre { margin: 0; padding: 16px 16px 16px 16px; overflow-x: auto; color: var(--code-text); line-height: 1.5; }
+.code .label { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px 0 16px; font-size: 0.8rem; color: var(--muted); }
+.copy { font: inherit; font-size: 0.8rem; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.copy:hover { border-color: var(--accent); }
+.meta { color: var(--muted); font-size: 0.95rem; }
+
+.tabs [role="tablist"] { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.tabs [role="tab"] { font: inherit; font-weight: 600; font-size: 0.95rem; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+.tabs [role="tab"][aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+figure { margin: 0; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+figcaption { color: var(--muted); font-size: 0.95rem; margin-top: 10px; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.card { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+section.soft .card { background: var(--bg); }
+.card p { margin: 0 0 8px; color: var(--muted); }
+.card .more { font-size: 0.92rem; font-weight: 600; }
+
+.diagram { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 640px; height: auto; }
+.diagram .box { fill: var(--bg-soft); stroke: var(--line); stroke-width: 2; }
+.diagram .core { fill: var(--accent); }
+.diagram .t { fill: var(--text); font: 600 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.diagram .s { fill: var(--muted); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.diagram .ct { fill: var(--accent-text); font: 700 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.diagram .cs { fill: var(--accent-text); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.diagram .ln { stroke: var(--muted); stroke-width: 2; fill: none; }
+.diagram .ok { stroke: var(--ok); stroke-width: 2.5; fill: none; }
+.diagram .bad { stroke: var(--bad); stroke-width: 2.5; fill: none; stroke-dasharray: 6 5; }
+.diagram .okt { fill: var(--ok); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.diagram .badt { fill: var(--bad); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.diagram .arrow { fill: var(--muted); }
+.diagram .arrow-ok { fill: var(--ok); }
+.diagram .arrow-bad { fill: var(--bad); }
+
+.cols { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+ul.plain { margin: 0; padding-left: 1.2em; }
+ul.plain li { margin: 0 0 10px; }
+.platform h3 { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.platform h3 a { font-size: 0.9rem; font-weight: 600; }
+.contact-mail { font-size: 1.35rem; font-weight: 700; }
+footer { padding: 32px 0 48px; color: var(--muted); font-size: 0.95rem; }
+footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; justify-content: space-between; }
+footer a { color: var(--muted); }
+@media (max-width: 640px) {
+  section { padding: 48px 0; }
+  .hero { padding-top: 40px; }
+  body { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/logo.svg" alt="" width="32" height="32">FleetML</a>
+    <nav class="top-nav" aria-label="Site">
+      <ul>
+        <li><a href="/docs/">Docs</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#platforms">Platforms</a></li>
+        <li><a href="https://github.com/fleetml/fleetml">GitHub</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero">
+  <div class="wrap">
+    <h1>Ship ML models to phones and edge devices in stages, watch how each version behaves, and roll back automatically when one is worse.</h1>
+    <p class="lead">FleetML is self-hosted and open source under Apache-2.0, and works with any model file. Android and iOS apps get it through two SDKs, Linux machines through an agent, and the server starts with one <code>docker compose</code> command.</p>
+    <div class="actions">
+      <a class="btn primary" href="/docs/#get-started">Get started in 10 minutes</a>
+      <a class="btn secondary" href="https://github.com/fleetml/fleetml">GitHub</a>
+    </div>
+    <div class="code">
+      <div class="label"><span>Get the CLI, checked against the release's checksums</span><button class="copy" type="button" data-copy="snip-cli">Copy</button></div>
+      <pre><code id="snip-cli" data-snippet="cli">{{snippet:cli}}</code></pre>
+    </div>
+    <p class="meta">Latest release: <a href="/docs/CHANGELOG/">v{{version}}</a>, with the CLI for Linux, macOS and Windows and the Linux agent on <a href="https://github.com/fleetml/fleetml/releases/latest">GitHub Releases</a>.</p>
+  </div>
+</section>
+
+<section class="soft" aria-labelledby="dashboard-h">
+  <div class="wrap">
+    <h2 id="dashboard-h">The dashboard</h2>
+    <p class="intro">Models, deployments, experiments, drift and alert sinks, with server-side login sessions, on a desktop or a phone. These are the repository's own screenshots.</p>
+    <div class="tabs" data-tabs>
+      <div role="tablist" aria-label="Dashboard screenshots">
+        <button role="tab" type="button" id="tab-dep" aria-controls="panel-dep" aria-selected="true">Deployments</button>
+        <button role="tab" type="button" id="tab-drift" aria-controls="panel-drift" aria-selected="false" tabindex="-1">Drift</button>
+        <button role="tab" type="button" id="tab-rb" aria-controls="panel-rb" aria-selected="false" tabindex="-1">Rollback</button>
+      </div>
+      <div role="tabpanel" id="panel-dep" aria-labelledby="tab-dep">
+        <figure>
+          <img src="/assets/shot-deployments.png" width="1280" height="440" alt="The Deployments page: a canary of iris 2.0.0 rolling out at stage 1 of 3 (10%) in region us; an earlier canary of iris 2.0.0 in region eu marked ROLLED_BACK because its error rate of 12.5% was above the 5% gate at stage 1; and two COMPLETE deployments of iris 1.0.0.">
+          <figcaption>A canary that the health gate rolled back (error rate 12.5% above the 5% gate), next to one still rolling out.</figcaption>
+        </figure>
+      </div>
+      <div role="tabpanel" id="panel-drift" aria-labelledby="tab-drift" hidden>
+        <figure>
+          <img src="/assets/shot-drift.png" width="1280" height="500" loading="lazy" alt="The Drift page for iris 1.0.0: confidence PSI 2.347 and latency PSI 2.377, both CRITICAL, from 240 baseline against 280 current events, with a history table of the two checks and their baseline and current windows.">
+          <figcaption>Drift: PSI per metric, the last day against the week before.</figcaption>
+        </figure>
+      </div>
+      <div role="tabpanel" id="panel-rb" aria-labelledby="tab-rb" hidden>
+        <figure>
+          <img src="/assets/shot-rollback.png" width="1280" height="600" loading="lazy" alt="The rollback dialog over the Deployments page: devices on iris 2.0.0 go back to the previous version on their next heartbeat and a rollback alert is sent; the reason field reads p95 latency regression on us devices, with the buttons Keep it and Roll back.">
+          <figcaption>A manual rollback: devices go back to the previous version on their next heartbeat.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="story-h">
+  <div class="wrap">
+    <h2 id="story-h">What a rollout looks like</h2>
+    <p class="intro"><a href="https://github.com/fleetml/fleetml/blob/main/scripts/demo.sh"><code>scripts/demo.sh</code></a> tells the story against a real server and twenty simulated devices that use the same protocol as the SDKs: three versions published, a drift alert, a canary of a broken version rolled back by the health gate, and an A/B test. This is what it prints:</p>
+    <div class="code">
+      <div class="label"><span>Output of scripts/demo.sh, from the README</span></div>
+      <pre><code data-snippet="story">{{snippet:story}}</code></pre>
+    </div>
+    <p class="meta">It needs Docker, Go and jq. To do each step yourself, follow the <a href="/docs/QUICKSTART/#tour">tour</a> after <a href="/docs/#get-started">Get started</a>.</p>
+  </div>
+</section>
+
+<section class="soft" aria-labelledby="features-h">
+  <div class="wrap">
+    <h2 id="features-h">What it does</h2>
+    <p class="intro">The end-to-end tests in the repository cover every one of these.</p>
+    <div class="grid">
+      <div class="card"><h3>Canary rollouts with a health gate</h3><p>The gate watches the canary cohort's error rate, and optionally p95 latency, and rolls back or pauses.</p><a class="more" href="/docs/QUICKSTART/#3-a-canary-that-rolls-itself-back">Tour step 3</a></div>
+      <div class="card"><h3>Rolling rollouts</h3><p>Batches by device count or percentage at an interval, with the same gate.</p><a class="more" href="/docs/ROLLOUTS/">Rollouts</a></div>
+      <div class="card"><h3>Rollback, cancel, one version per model</h3><p>A manual rollback, also after completion, returns devices to the previous version, and the newest deployment wins.</p><a class="more" href="/docs/ROLLOUTS/">Rollouts</a></div>
+      <div class="card"><h3>A/B experiments</h3><p>Sticky cohorts, telemetry per arm, a fixed-horizon Welch t-test and a maximum duration.</p><a class="more" href="/docs/QUICKSTART/#4-an-ab-experiment">Tour step 4</a></div>
+      <div class="card"><h3>Drift detection</h3><p>PSI on latency, confidence and input features, the last 24 hours against the 7 days before, with an alert on CRITICAL.</p><a class="more" href="/docs/QUICKSTART/#5-drift">Tour step 5</a></div>
+      <div class="card"><h3>Model registry with integrity checks</h3><p>Uploads go straight to S3-compatible storage, and the server checks each file's sha256 and size before it can be deployed.</p><a class="more" href="/docs/QUICKSTART/#1-publish-a-model">Tour step 1</a></div>
+      <div class="card"><h3>Variant selection</h3><p>Each device gets a build it can run, chosen by OS runtime, RAM and capability score.</p><a class="more" href="/docs/QUICKSTART/#2-a-fleet-and-a-rollout">Tour step 2</a></div>
+      <div class="card"><h3>Artifact signing</h3><p>Per-project ed25519 signatures, checked on the device before download, with keys that rotate with a grace period.</p><a class="more" href="/docs/ROLLOUTS/#artifact-signing">Artifact signing</a></div>
+      <div class="card"><h3>Delta updates</h3><p>Devices with the previous version download only a delta: 440 KB for a 20 MB model with a retrained head.</p><a class="more" href="/docs/ROLLOUTS/#delta-updates">Delta updates</a></div>
+      <div class="card"><h3>Alerts</h3><p>Rollback and drift alerts on NATS and to signed webhooks, Slack and email, with retries and a delivery log.</p><a class="more" href="/docs/ROLLOUTS/#alert-sinks">Alert sinks</a></div>
+      <div class="card"><h3>Battery and data</h3><p>Hourly background checks, batched telemetry, and downloads on unmetered networks or while charging unless urgent, all set from the server.</p><a class="more" href="/docs/ANDROID_SDK/#battery-and-data">Android</a>, <a class="more" href="/docs/IOS_SDK/#battery-and-data">iOS</a></div>
+      <div class="card"><h3>Roles and audit log</h3><p>Viewer, operator and admin roles per project, and an audit log of every change and refused request.</p><a class="more" href="/docs/ARCHITECTURE/#users-roles-and-the-audit-log">Architecture</a></div>
+      <div class="card"><h3>Security</h3><p>API keys with per-project roles, per-project enrollment keys, revocable device tokens, and devices confined to their project.</p><a class="more" href="https://github.com/fleetml/fleetml/blob/main/SECURITY.md">SECURITY.md</a></div>
+      <div class="card"><h3>Operations</h3><p>Health probes, Prometheus metrics and a Grafana dashboard, with telemetry delivered at least once and stored once per event ID.</p><a class="more" href="/docs/QUICKSTART/#7-operations">Tour step 7</a></div>
+      <div class="card"><h3>Dashboard and CLI</h3><p>The dashboard runs on a desktop or a phone; the CLI has <code>fleetml push</code>, <code>deploy</code>, <code>experiment</code>, <code>drift</code>, and <code>simulate</code> for a fleet of simulated devices.</p><a class="more" href="/docs/QUICKSTART/#tour">Tour</a></div>
+    </div>
+  </div>
+</section>
+
+<section id="how-it-works" aria-labelledby="how-h">
+  <div class="wrap">
+    <h2 id="how-h">How it works</h2>
+    <p class="intro">Devices heartbeat with the models they run and receive assignments: what to load, update or unload, with presigned download URLs and their experiment arms. Three background loops advance rollouts through the health gate, evaluate experiments and check drift.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 960 470" role="img" aria-labelledby="dia-title dia-desc">
+        <title id="dia-title">FleetML's components and a staged rollout</title>
+        <desc id="dia-desc">Android and iOS apps with the SDKs and Linux machines with the agent talk to the FleetML server over gRPC; the dashboard and the CLI use its REST API. The server keeps its data in Postgres with TimescaleDB, sends telemetry and alerts through NATS, and hands out presigned URLs, with which the CLI uploads and devices download model files from an S3-compatible object store. Below: a new version goes to a canary stage; if the health gate passes, the next stage follows until every device has it; if it fails, the deployment rolls back and devices return to the previous version.</desc>
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0 0L10 5L0 10z"/></marker>
+          <marker id="ar-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-ok" d="M0 0L10 5L0 10z"/></marker>
+          <marker id="ar-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-bad" d="M0 0L10 5L0 10z"/></marker>
+        </defs>
+        <rect class="box" x="10" y="20" width="230" height="62" rx="10"/>
+        <text class="t" x="26" y="46">Android / iOS SDK</text><text class="s" x="26" y="68">in your app, beside its runtime</text>
+        <rect class="box" x="10" y="98" width="230" height="62" rx="10"/>
+        <text class="t" x="26" y="124">Linux agent</text><text class="s" x="26" y="146">static binary, systemd</text>
+        <rect class="box" x="10" y="176" width="230" height="62" rx="10"/>
+        <text class="t" x="26" y="202">Dashboard, CLI, Python</text><text class="s" x="26" y="224">you and your pipelines</text>
+        <rect class="core" x="370" y="70" width="220" height="118" rx="12"/>
+        <text class="ct" x="390" y="112">FleetML server</text><text class="cs" x="390" y="136">Go; rollouts, experiments,</text><text class="cs" x="390" y="156">drift, health gate</text>
+        <rect class="box" x="720" y="20" width="230" height="62" rx="10"/>
+        <text class="t" x="736" y="46">Postgres + TimescaleDB</text><text class="s" x="736" y="68">registry, telemetry</text>
+        <rect class="box" x="720" y="98" width="230" height="62" rx="10"/>
+        <text class="t" x="736" y="124">NATS</text><text class="s" x="736" y="146">telemetry, alerts</text>
+        <rect class="box" x="720" y="176" width="230" height="62" rx="10"/>
+        <text class="t" x="736" y="202">S3-compatible store</text><text class="s" x="736" y="224">model files</text>
+        <path class="ln" d="M240 51 H330 V105 H366" marker-end="url(#ar)"/>
+        <path class="ln" d="M240 129 H366" marker-end="url(#ar)"/>
+        <path class="ln" d="M240 207 H330 V155 H366" marker-end="url(#ar)"/>
+        <text class="s" x="262" y="44">gRPC</text><text class="s" x="262" y="122">gRPC</text><text class="s" x="262" y="200">REST</text>
+        <path class="ln" d="M590 100 H650 V51 H716" marker-end="url(#ar)"/>
+        <path class="ln" d="M590 129 H716" marker-end="url(#ar)"/>
+        <path class="ln" d="M590 160 H650 V207 H716" marker-end="url(#ar)"/>
+        <path class="ln" d="M125 238 V262 H835 V242" marker-end="url(#ar)"/>
+        <text class="s" x="330" y="282">the CLI uploads and devices download model files with presigned URLs</text>
+
+        <text class="t" x="10" y="336">A staged rollout</text>
+        <rect class="box" x="10" y="352" width="160" height="56" rx="10"/><text class="t" x="26" y="378">New version</text><text class="s" x="26" y="398">pushed, verified</text>
+        <rect class="box" x="230" y="352" width="160" height="56" rx="10"/><text class="t" x="246" y="378">Canary stage</text><text class="s" x="246" y="398">a share of devices</text>
+        <rect class="box" x="450" y="352" width="160" height="56" rx="10"/><text class="t" x="466" y="378">Health gate</text><text class="s" x="466" y="398">cohort error rate, p95</text>
+        <rect class="box" x="690" y="324" width="260" height="56" rx="10"/><text class="t" x="706" y="350">Next stage, up to 100%</text><text class="s" x="706" y="370">the gate checks each stage</text>
+        <rect class="box" x="690" y="404" width="260" height="56" rx="10"/><text class="t" x="706" y="430">Rolled back</text><text class="s" x="706" y="450">devices return to the previous version</text>
+        <path class="ln" d="M170 380 H226" marker-end="url(#ar)"/>
+        <path class="ln" d="M390 380 H446" marker-end="url(#ar)"/>
+        <path class="ok" d="M610 370 H650 V352 H686" marker-end="url(#ar-ok)"/><text class="okt" x="626" y="344">pass</text>
+        <path class="bad" d="M610 392 H650 V432 H686" marker-end="url(#ar-bad)"/><text class="badt" x="626" y="452">fail</text>
+      </svg>
+    </div>
+    <p class="meta"><a href="/docs/ARCHITECTURE/">Architecture</a> has the request paths, data model, device protocol and trust boundaries; <a href="/docs/ROLLOUTS/">Rollouts</a> has the strategies, the health gate and the statistics.</p>
+  </div>
+</section>
+
+<section class="soft" id="platforms" aria-labelledby="platforms-h">
+  <div class="wrap">
+    <h2 id="platforms-h">Platforms</h2>
+    <p class="intro">Each snippet below is taken from the README or the guide it links when this page is built.</p>
+    <div class="cols">
+      <div class="platform">
+        <h3>Android <a href="/docs/ANDROID_SDK/#install">Android guide</a></h3>
+        <p class="meta">From Maven Central (with <code>mavenCentral()</code> in the app's repositories; the app needs compileSdk 34 or later and minSdk 26):</p>
+        <div class="code"><div class="label"><span>build.gradle.kts</span><button class="copy" type="button" data-copy="snip-android">Copy</button></div><pre><code id="snip-android" data-snippet="android">{{snippet:android}}</code></pre></div>
+      </div>
+      <div class="platform">
+        <h3>iOS <a href="/docs/IOS_SDK/#install">iOS guide</a></h3>
+        <p class="meta">In Xcode with <strong>File → Add Package Dependencies</strong> and the repository URL (Dependency Rule <strong>Up to Next Major Version</strong> from {{version}}):</p>
+        <div class="code"><div class="label"><span>Swift Package Manager</span><button class="copy" type="button" data-copy="snip-ios">Copy</button></div><pre><code id="snip-ios" data-snippet="ios">{{snippet:ios}}</code></pre></div>
+      </div>
+      <div class="platform">
+        <h3>Linux agent <a href="/docs/LINUX_AGENT/#install">Linux guide</a></h3>
+        <p class="meta">On the machine, the latest release, checked, then installed as root (amd64 or arm64):</p>
+        <div class="code"><div class="label"><span>bash</span><button class="copy" type="button" data-copy="snip-linux">Copy</button></div><pre><code id="snip-linux" data-snippet="linux">{{snippet:linux}}</code></pre></div>
+      </div>
+      <div class="platform">
+        <h3>Python <a href="/docs/PYTHON_CLIENT/">Python client</a></h3>
+        <p class="meta">For pipelines and notebooks: <code>pip install fleetml</code>, then, from the root of the clone:</p>
+        <div class="code"><div class="label"><span>Python</span><button class="copy" type="button" data-copy="snip-python">Copy</button></div><pre><code id="snip-python" data-snippet="python">{{snippet:python}}</code></pre></div>
+      </div>
+      <div class="platform">
+        <h3>Kubernetes <a href="https://github.com/fleetml/fleetml/tree/main/deploy/helm/fleetml">Helm chart</a></h3>
+        <p class="meta">The server, the dashboard and optional bundled Postgres, NATS and SeaweedFS, tested end to end in kind. From the chart README's Get started:</p>
+        <div class="code"><div class="label"><span>bash</span><button class="copy" type="button" data-copy="snip-helm">Copy</button></div><pre><code id="snip-helm" data-snippet="helm">{{snippet:helm}}</code></pre></div>
+      </div>
+      <div class="platform">
+        <h3>CLI and Windows <a href="/docs/QUICKSTART/#on-windows">On Windows</a></h3>
+        <p class="meta">Every release lists its archives in <code>SHA256SUMS</code>; Get started checks the CLI with:</p>
+        <div class="code"><div class="label"><span>bash</span><button class="copy" type="button" data-copy="snip-checksum">Copy</button></div><pre><code id="snip-checksum" data-snippet="checksum">{{snippet:checksum}}</code></pre></div>
+        <p class="meta">On Windows, Get started runs in the Ubuntu shell of WSL 2 with Docker Desktop, PowerShell runs the Windows CLI, and a Windows browser shows the dashboard.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="fit-h">
+  <div class="wrap">
+    <h2 id="fit-h">Is it for you</h2>
+    <div class="cols">
+      <div>
+        <h3>A good fit</h3>
+        <ul class="plain">
+          <li>You run models on phones or edge devices and would otherwise build staged rollouts, rollback and drift monitoring yourself.</li>
+          <li>Your apps are Android (minSdk 26) or iOS (15 and later), or your machines run Linux on amd64 or arm64.</li>
+          <li>You keep your runtime: FleetML works with any model file, and your app runs the model with its own runtime.</li>
+          <li>You want it on your infrastructure: you run the server, its Postgres, NATS and object store yourself, with Docker Compose or the Helm chart, so your models and telemetry never leave it.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Not what it is</h3>
+        <ul class="plain">
+          <li>Not an inference runtime: your app or inference process keeps running the model with the runtime you already use.</li>
+          <li>Not a model trainer or converter: it starts from a file you already have, in any format.</li>
+          <li>Not a hosted service, and it does not terminate TLS itself: put its ports behind a TLS proxy before exposing them.</li>
+          <li>Pre-1.0: security fixes go into the latest release only.</li>
+          <li>On the <a href="/docs/ROADMAP/">roadmap</a>, not available yet: Sigstore as an alternative to the built-in signing keys, and organisations with single sign-on.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="soft" aria-labelledby="trust-h">
+  <div class="wrap">
+    <h2 id="trust-h">What you can check</h2>
+    <div class="grid">
+      <div class="card"><h3>Apache License 2.0</h3><p>The server, SDKs, agent, CLI, dashboard and chart are in one public repository.</p><a class="more" href="https://github.com/fleetml/fleetml/blob/main/LICENSE">LICENSE</a></div>
+      <div class="card"><h3>Verified downloads</h3><p>Devices verify each download and keep the previous version if the new one does not load; models are signed per project and checked before download.</p><a class="more" href="/docs/ROLLOUTS/#artifact-signing">Artifact signing</a></div>
+      <div class="card"><h3>Release checksums</h3><p>Every release lists its archives in <code>SHA256SUMS</code>, and the install lines check them.</p><a class="more" href="https://github.com/fleetml/fleetml/releases/latest">Latest release</a></div>
+      <div class="card"><h3>Security policy</h3><p>Report vulnerabilities privately to <a href="mailto:security@fleetml.dev">security@fleetml.dev</a> or through GitHub's private reporting; the policy has the threat model.</p><a class="more" href="https://github.com/fleetml/fleetml/blob/main/SECURITY.md">SECURITY.md</a></div>
+      <div class="card"><h3>Tests and CI</h3><p>The end-to-end tests in <code>test/e2e</code> cover every feature above, and <code>make e2e</code> runs them; the CI workflow is on GitHub Actions.</p><a class="more" href="https://github.com/fleetml/fleetml/actions/workflows/ci.yml">CI on GitHub Actions</a></div>
+      <div class="card"><h3>Changelog and roadmap</h3><p>What each release changed, and what comes next.</p><a class="more" href="/docs/CHANGELOG/">Changelog</a>, <a class="more" href="/docs/ROADMAP/">Roadmap</a></div>
+    </div>
+  </div>
+</section>
+
+<section id="contact" aria-labelledby="contact-h">
+  <div class="wrap">
+    <h2 id="contact-h">Contact</h2>
+    <p class="intro">Anything about FleetML: questions, ideas, what breaks, what you use today instead.</p>
+    <p><a class="contact-mail" href="mailto:hello@fleetml.dev">hello@fleetml.dev</a></p>
+    <ul class="plain">
+      <li>A security problem: <a href="mailto:security@fleetml.dev">security@fleetml.dev</a>, see <a href="https://github.com/fleetml/fleetml/blob/main/SECURITY.md">SECURITY.md</a>.</li>
+      <li>Questions in public: <a href="https://github.com/fleetml/fleetml/discussions">GitHub Discussions</a>.</li>
+      <li>Bugs: <a href="https://github.com/fleetml/fleetml/issues/new/choose">GitHub Issues</a>, with the FleetML version and the command or log line that shows the problem.</li>
+      <li>Contributions are welcome: <a href="https://github.com/fleetml/fleetml/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> and the <a href="https://github.com/fleetml/fleetml/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>.</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>FleetML is licensed under the <a href="https://github.com/fleetml/fleetml/blob/main/LICENSE">Apache License 2.0</a>.</span>
+    <span><a href="mailto:hello@fleetml.dev">hello@fleetml.dev</a> · <a href="https://github.com/fleetml/fleetml">GitHub</a> · <a href="/docs/">Docs</a></span>
+  </div>
+</footer>
+
+<p id="copy-status" class="skip" role="status" aria-live="polite"></p>
+<script>
+(function () {
+  // Copy buttons: the text of the code block the button names.
+  var status = document.getElementById("copy-status");
+  document.querySelectorAll("[data-copy]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var text = document.getElementById(b.getAttribute("data-copy")).textContent;
+      if (!navigator.clipboard) { return; }
+      navigator.clipboard.writeText(text).then(function () {
+        b.textContent = "Copied"; status.textContent = "Copied to the clipboard";
+        setTimeout(function () { b.textContent = "Copy"; status.textContent = ""; }, 1600);
+      });
+    });
+  });
+  // Tabs: click, or the arrow, Home and End keys.
+  document.querySelectorAll("[data-tabs]").forEach(function (box) {
+    var tabs = Array.prototype.slice.call(box.querySelectorAll('[role="tab"]'));
+    function show(t) {
+      tabs.forEach(function (o) {
+        var on = o === t;
+        o.setAttribute("aria-selected", on ? "true" : "false");
+        o.tabIndex = on ? 0 : -1;
+        document.getElementById(o.getAttribute("aria-controls")).hidden = !on;
+      });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener("click", function () { show(t); });
+      t.addEventListener("keydown", function (e) {
+        var j = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+        if (j === undefined) { return; }
+        e.preventDefault();
+        var n = tabs[(j + tabs.length) % tabs.length];
+        show(n); n.focus();
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
