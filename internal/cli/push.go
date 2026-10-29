@@ -86,6 +86,7 @@ func newPushCmd() *cobra.Command {
 			err = client.Post("/api/v1/projects/"+projectID+"/models", map[string]string{
 				"name": modelName, "framework": framework, "task_type": task,
 			}, &model)
+			createdModel := err == nil
 			if err != nil {
 				// Try to find existing, a page of 100 at a time
 				for offset := 0; model == nil; offset += 100 {
@@ -120,6 +121,7 @@ func newPushCmd() *cobra.Command {
 			}
 			var version map[string]interface{}
 			err = client.Post("/api/v1/models/"+modelID+"/versions", versionBody, &version)
+			createdVersion := err == nil
 			if err != nil {
 				// The existing version, a page of 100 at a time.
 				for offset := 0; version == nil; offset += 100 {
@@ -146,6 +148,24 @@ func newPushCmd() *cobra.Command {
 			}
 			versionID := fmt.Sprint(version["id"])
 
+			// undo removes what this push created when the file does not get
+			// in, so a failed push leaves no empty model or DRAFT version.
+			undo := func(cause error) error {
+				what, path := "", ""
+				switch {
+				case createdModel:
+					what, path = "model "+modelName, "/api/v1/models/"+modelID
+				case createdVersion:
+					what, path = "version "+ver, "/api/v1/versions/"+versionID
+				default:
+					return cause
+				}
+				if err := client.Delete(path); err != nil {
+					return fmt.Errorf("%w (the %s this push created is left: %s)", cause, what, err)
+				}
+				return fmt.Errorf("%w (the %s this push created was removed)", cause, what)
+			}
+
 			// Step 3: Create variant + get upload URL
 			var variantResp map[string]interface{}
 			err = client.Post("/api/v1/versions/"+versionID+"/variants", map[string]interface{}{
@@ -155,7 +175,7 @@ func newPushCmd() *cobra.Command {
 				"blob_sha256":     sha,
 			}, &variantResp)
 			if err != nil {
-				return fmt.Errorf("creating variant: %s", err)
+				return undo(fmt.Errorf("creating variant: %s", err))
 			}
 
 			uploadURL := fmt.Sprint(variantResp["upload_url"])
@@ -176,7 +196,7 @@ func newPushCmd() *cobra.Command {
 				reader = io.TeeReader(f, &ProgressWriter{Total: fileSize})
 			}
 			if err := client.PutRaw(uploadURL, reader, fileSize); err != nil {
-				return err // "upload failed: ..."
+				return undo(err) // "upload failed: ..."
 			}
 			if progress {
 				fmt.Fprintln(os.Stderr) // newline after progress bar
@@ -185,7 +205,7 @@ func newPushCmd() *cobra.Command {
 			// Step 5: Finalize
 			var finalResp map[string]interface{}
 			if err := client.Post("/api/v1/variants/"+variantID+"/finalize", nil, &finalResp); err != nil {
-				return fmt.Errorf("finalize failed: %s", err)
+				return undo(fmt.Errorf("finalize failed: %s", err))
 			}
 
 			// Step 6: Promote if requested: DRAFT -> STAGED -> ACTIVE from where

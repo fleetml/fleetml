@@ -109,3 +109,37 @@ func TestSizeString(t *testing.T) {
 	assert.Equal(t, "2.4 KB", sizeString(2460))
 	assert.Equal(t, "3.0 MB", sizeString(3*1024*1024))
 }
+
+// A push whose upload fails removes what it created: the new model (with its
+// version), or the new version of an existing model; an existing version stays.
+func TestPush_FailedUploadLeavesNothingNew(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	file := filepath.Join(t.TempDir(), "iris.tflite")
+	require.NoError(t, os.WriteFile(file, []byte("tflite bytes"), 0o644))
+	require.NoError(t, runCLI(t, fake.URL, "k", "project", "create", "--name", "up"))
+	projectID := fake.Projects()[0]["id"].(string)
+	push := func(ver string) error {
+		return runCLI(t, fake.URL, "k", "push", file, "--project", projectID, "--model", "iris", "--version", ver)
+	}
+
+	fake.FailUploads(true)
+	err := push("1.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "upload failed")
+	assert.Contains(t, err.Error(), "the model iris this push created was removed")
+	assert.Empty(t, fake.Models())
+	assert.Empty(t, fake.Versions())
+
+	fake.FailUploads(false)
+	require.NoError(t, push("1.0.0"))
+	fake.FailUploads(true)
+	err = push("2.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the version 2.0.0 this push created was removed")
+	require.Len(t, fake.Versions(), 1, "1.0.0 stays")
+	err = push("1.0.0")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "removed", "an existing version is not removed")
+	assert.Len(t, fake.Versions(), 1)
+	assert.Len(t, fake.Models(), 1)
+}

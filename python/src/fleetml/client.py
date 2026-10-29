@@ -172,8 +172,10 @@ class FleetML:
             for chunk in iter(lambda: f.read(1 << 20), b""):
                 digest.update(chunk)
 
+        created_model = created_version = False
         try:
             model_obj = self.models.create(project, model, framework=target_runtime, task=task)
+            created_model = True
         except FleetMLError as create_err:
             found = self._find(
                 lambda limit, offset: self.models.list(project, limit=limit, offset=offset), lambda m: m.name == model
@@ -184,6 +186,7 @@ class FleetML:
 
         try:
             version_obj = self.versions.create(model_obj.id, version)
+            created_version = True
         except FleetMLError as create_err:
             found_v = self._find(
                 lambda limit, offset: self.versions.list(model_obj.id, limit=limit, offset=offset),
@@ -193,28 +196,44 @@ class FleetML:
                 raise create_err
             version_obj = found_v
 
-        created = self._request(
-            "POST",
-            f"/versions/{version_obj.id}/variants",
-            {
-                "quantization": quantization,
-                "target_runtime": target_runtime,
-                "blob_size_bytes": size,
-                "blob_sha256": digest.hexdigest(),
-            },
-        )
-        upload_url = str(created["upload_url"])
-        variant_id = str(created["variant"]["id"])
+        try:
+            created = self._request(
+                "POST",
+                f"/versions/{version_obj.id}/variants",
+                {
+                    "quantization": quantization,
+                    "target_runtime": target_runtime,
+                    "blob_size_bytes": size,
+                    "blob_sha256": digest.hexdigest(),
+                },
+            )
+            upload_url = str(created["upload_url"])
+            variant_id = str(created["variant"]["id"])
 
-        with open(path, "rb") as f:
+            with open(path, "rb") as f:
+                try:
+                    resp = self._http.put(upload_url, content=f, headers={"Content-Length": str(size)})
+                except httpx.HTTPError as e:
+                    raise FleetMLError(0, "UPLOAD_FAILED", f"upload failed: {e}") from e
+            if resp.status_code >= 300:
+                raise FleetMLError(resp.status_code, "UPLOAD_FAILED", f"upload failed: HTTP {resp.status_code}")
+
+            self._request("POST", f"/variants/{variant_id}/finalize")
+        except FleetMLError as e:
+            # A failed push leaves no empty model or DRAFT version: remove what it created.
+            if created_model:
+                what, route = f"model {model}", f"/models/{model_obj.id}"
+            elif created_version:
+                what, route = f"version {version}", f"/versions/{version_obj.id}"
+            else:
+                raise
             try:
-                resp = self._http.put(upload_url, content=f, headers={"Content-Length": str(size)})
-            except httpx.HTTPError as e:
-                raise FleetMLError(0, "UPLOAD_FAILED", f"upload failed: {e}") from e
-        if resp.status_code >= 300:
-            raise FleetMLError(resp.status_code, "UPLOAD_FAILED", f"upload failed: HTTP {resp.status_code}")
-
-        self._request("POST", f"/variants/{variant_id}/finalize")
+                self._request("DELETE", route)
+            except FleetMLError as undo_err:
+                note = f"the {what} this push created is left: {undo_err.message}"
+            else:
+                note = f"the {what} this push created was removed"
+            raise FleetMLError(e.status, e.code, f"{e.message} ({note})") from e
         if promote:
             # From the version's status to ACTIVE, as the CLI does: an ACTIVE
             # version stays as it is, and a refused step (from ARCHIVED) raises.
