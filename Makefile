@@ -1,4 +1,4 @@
-.PHONY: env-file build build-server build-cli install-cli release-binaries test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev docs-site
+.PHONY: env-file build build-server build-cli install-cli release-binaries test test-integration cover e2e lint proto proto-swift ios-test build-agent migrate-up migrate-down docker-up docker-down dev clean all dashboard-build dashboard-dev docs-site website
 
 -include .env
 
@@ -43,6 +43,21 @@ MKDOCS_IMAGE := squidfunk/mkdocs-material:9.6.14@sha256:eb04b60c566a8862be6b5531
 docs-site:
 	docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -u "$$(id -u):$$(id -g)" -v "$(CURDIR)":/docs $(MKDOCS_IMAGE) build
 	docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -u "$$(id -u):$$(id -g)" -v "$(CURDIR)":/docs --entrypoint python3 $(MKDOCS_IMAGE) scripts/check-site-links.py site
+
+# The website at fleetml.dev into site/ (web/README.md): the docs into site/docs/
+# with MkDocs Material from pip (the version the image above has; no Docker, as
+# on Cloudflare Pages), then the landing page from web/, then the checks.
+MKDOCS_MATERIAL_VERSION ?= 9.6.14
+WEBSITE_VENV ?= .website-venv
+website: export PYTHONDONTWRITEBYTECODE = 1
+website:
+	rm -rf site
+	python3 -m venv $(WEBSITE_VENV)
+	$(WEBSITE_VENV)/bin/pip install -q "mkdocs-material==$(MKDOCS_MATERIAL_VERSION)"
+	DOCS_SITE_URL=https://fleetml.dev/docs/ $(WEBSITE_VENV)/bin/mkdocs build -q -d site/docs
+	python3 web/build.py site
+	python3 scripts/check-site-links.py site
+	python3 web/build.py --check site
 
 build-cli:
 	@mkdir -p bin
