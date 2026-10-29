@@ -9,8 +9,9 @@ so `make website` needs no image tools. Needs Pillow.
   hero.webp and hero.png: the Deployments screenshot for the top of the page,
   without the sidebar, lossless WebP with the PNG as the fallback.
 - app-ios.png and app-android.png: the sample apps' screenshots from
-  docs/screenshots/, cropped to their content from the status part down (the Android one
-  shows the enrollment key in clear above that part).
+  docs/screenshots/, cropped by one rule to the part the page's phone frames show, from the
+  device status down (the Android one shows the enrollment key in clear
+  above that part).
 - og.png: the 1200x630 sharing image, the README's headline over the
   Deployments screenshot.
 - icon-192.png and apple-touch-icon.png: web/logo.svg rasterised (the mark is
@@ -37,9 +38,10 @@ SHOTS = {
 }
 # name -> (source screenshot, crop box in its pixels)
 APPS = {
-    # Each cropped to its content with a small margin; the page shows both at the same width.
-    "ios": ("ios-sample.png", (0, 500, 460, 1000)),
-    "android": ("android-sample.png", (10, 345, 526, 646)),
+    # One rule for both: the screen from 14 px above the first line of the device status,
+    # cut to the frames' shape (248:200) on the page; the bottom fades out there.
+    "ios": ("ios-sample.png", (0, 550, 460, 921)),
+    "android": ("android-sample.png", (10, 340, 530, 759)),
 }
 HEADLINE = ("Ship ML models to phones and edge devices in stages, watch how each version "
             "behaves, and roll back automatically when one is worse.")

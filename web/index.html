@@ -139,16 +139,24 @@ details.full summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 details.full pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; color: var(--code-text); line-height: 1.5; }
 
 /* On your own phone */
-.phone { margin-top: 72px; display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 980px) { .phone { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); } }
+.phone { margin-top: 72px; display: grid; gap: 40px 48px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 980px) { .phone { grid-template-columns: minmax(0, 1fr) auto; } }
 ol.path { margin: 0; padding: 0; list-style: none; counter-reset: s; }
 ol.path li { counter-increment: s; position: relative; padding: 0 0 16px 46px; }
 ol.path li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; display: grid; place-items: center; }
-.apps { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+/* Two phones peeking in: identical frames cut off at the bottom, fading into the section */
+.apps { display: grid; gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+@media (min-width: 980px) { .apps { grid-template-columns: repeat(2, 260px); align-self: center; } }
+@media (max-width: 479px) { .apps { grid-template-columns: minmax(0, 300px); } }
 .apps figure { margin: 0; }
-@media (min-width: 980px) { .apps figure.ios { max-width: 360px; } }
-.apps img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-.apps figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 8px; }
+.peek { position: relative; }
+.peek .frame { border: 6px solid #111827; border-bottom: 0; border-radius: 32px 32px 0 0; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.peek img { display: block; width: 100%; height: auto; border-radius: 26px 26px 0 0; }
+.peek::after { content: ""; position: absolute; left: -2px; right: -2px; bottom: 0; height: 22%; background: linear-gradient(to bottom, rgba(0, 0, 0, 0), var(--bg-alt)); pointer-events: none; }
+@supports (background: linear-gradient(to bottom, color-mix(in srgb, red 0%, transparent), red)) {
+  .peek::after { background: linear-gradient(to bottom, color-mix(in srgb, var(--bg-alt) 0%, transparent), var(--bg-alt)); }
+}
+.apps figcaption { color: var(--muted); font-size: 0.9rem; font-weight: 600; margin-top: 10px; text-align: center; }
 
 /* Features */
 .big { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); margin-bottom: 48px; }
@@ -313,12 +321,12 @@ footer a { color: var(--muted); }
       </div>
       <div class="apps">
         <figure>
-          <img src="/assets/app-android.png" width="516" height="301" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log.">
-          <figcaption>The Android sample app</figcaption>
+          <div class="peek"><div class="frame"><img src="/assets/app-android.png" width="520" height="419" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log."></div></div>
+          <figcaption>Android</figcaption>
         </figure>
-        <figure class="ios">
-          <img src="/assets/app-ios.png" width="460" height="500" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds.">
-          <figcaption>The iOS sample app</figcaption>
+        <figure>
+          <div class="peek"><div class="frame"><img src="/assets/app-ios.png" width="460" height="371" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds."></div></div>
+          <figcaption>iOS</figcaption>
         </figure>
       </div>
     </div>
