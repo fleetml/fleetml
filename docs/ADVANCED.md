@@ -105,8 +105,9 @@ it tried means the object store's address or port
 ([the download address](#a-phone-or-another-machine-the-download-address));
 `registration failed` with `invalid or revoked enrollment key` means
 `FLEETML_ENROLLMENT_KEY` is not set in this terminal (step 4 sets it: in
-a new terminal, run step 3's `export PATH` line and step 4 again, then
-`docker rm -f fleetml-agent` and step 5). The
+a new terminal, `cd` into the clone, run `source ~/.fleetml.env` and step 3's
+`export PATH` line, then step 4 again, `docker rm -f fleetml-agent` and
+step 5). The
 [Linux agent guide](LINUX_AGENT.md) has every line the agent logs.
 
 **The phone never shows `is active`** (Android step 5 says `Not active after
