@@ -638,6 +638,21 @@ func TestCreateVariant(t *testing.T) {
 		})
 		assert.ErrorIs(t, err, ErrInvalidInput)
 	})
+
+	t.Run("archived version", func(t *testing.T) {
+		archived, err := svc.CreateVersion(ctx, model.ID, "9.0.0", "", nil)
+		require.NoError(t, err)
+		env.versions.versions[archived.ID].Status = "ARCHIVED"
+		_, err = svc.CreateVariant(ctx, CreateVariantInput{
+			VersionID:     archived.ID,
+			Quantization:  "INT8",
+			TargetRuntime: "TFLITE",
+			BlobSizeBytes: 1024,
+			BlobSHA256:    "abc",
+		})
+		assert.ErrorIs(t, err, ErrInvalidInput)
+		assert.ErrorContains(t, err, "is ARCHIVED, which is final: push a new version")
+	})
 }
 
 // A push whose upload failed (or whose finalize refused the blob) can be

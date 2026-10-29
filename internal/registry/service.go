@@ -415,6 +415,9 @@ func (s *Service) CreateVariant(ctx context.Context, input CreateVariantInput) (
 	if err != nil {
 		return nil, err
 	}
+	if ver.Status == "ARCHIVED" {
+		return nil, fmt.Errorf("%w: version %s is ARCHIVED, which is final: push a new version", ErrInvalidInput, ver.Version)
+	}
 	model, err := s.models.GetByID(ctx, ver.ModelID)
 	if err != nil {
 		return nil, err
