@@ -29,7 +29,7 @@ number** seven times, then Settings, System, Developer options, **USB
 debugging**). Connect the phone with its cable, accept the prompt on it, and
 **keep it unlocked** while you test: a locked phone pauses the app.
 
-1. **Check the tools.** This installs JDK 17, the one the build needs, and
+1. <a id="step-1"></a>**Check the tools.** This installs JDK 17, the one the build needs, and
    puts `adb` on the `PATH` of this terminal:
 
    <!-- golden: android-tools device -->
@@ -42,7 +42,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 
    You should see `openjdk version "17.` and `Android Debug Bridge version`.
 
-2. **Start FleetML.** The first start takes a few minutes, to download and
+2. <a id="step-2"></a>**Start FleetML.** The first start takes a few minutes, to download and
    build the images:
 
    <!-- golden: start -->
@@ -57,7 +57,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
    The block saved the server's secrets in `~/.fleetml.env`: keep that file.
 
-3. **Get the CLI**, checked against the release's checksums:
+3. <a id="step-3"></a>**Get the CLI**, checked against the release's checksums:
 
    <!-- golden: cli -->
    ```bash
@@ -73,7 +73,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 
    You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
 
-4. **Publish the sample model and deploy it.** The project gets the time in
+4. <a id="step-4"></a>**Publish the sample model and deploy it.** The project gets the time in
    its name, so running the block again makes a new one:
 
    <!-- golden: publish -->
@@ -88,7 +88,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
 
    You should see `✓ Pushed models/iris/iris_v1.tflite → iris v1.0.0 (INT8)` and `✓ Deployment start → COMPLETE`.
 
-5. **Put the phone on it.** Unlock the phone and keep its screen on until
+5. <a id="step-5"></a>**Put the phone on it.** Unlock the phone and keep its screen on until
    this step ends: a locked phone stops the app. This builds the sample app
    with the enrollment key from step 4 and installs it, forwards the
    server's ports to the phone (after the install, since a build can restart
@@ -119,7 +119,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    block with `Step 5 stopped at the error above`: Troubleshooting has the
    install errors too.
 
-6. **See it in the dashboard.** This puts the admin key on the clipboard (on
+6. <a id="step-6"></a>**See it in the dashboard.** This puts the admin key on the clipboard (on
    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
    the dashboard's address: open it and paste the key into the login box:
 
@@ -133,7 +133,7 @@ debugging**). Connect the phone with its cable, accept the prompt on it, and
    Overview page (**Dashboard** in the menu); **Devices** lists one device, and **Deployments** one
    `COMPLETE` deployment of iris 1.0.0.
 
-7. **Clean up**: the app, the forwards, the server and all its data, and
+7. <a id="step-7"></a>**Clean up**: the app, the forwards, the server and all its data, and
    the saved secrets:
 
    <!-- golden: android-cleanup device cleanup -->

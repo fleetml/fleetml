@@ -28,7 +28,7 @@ open until the end.
 Before you start, once: Xcode with an iOS simulator (Xcode, Settings,
 Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
-1. **Check the tools.** This installs [XcodeGen](https://github.com/yonaskolb/XcodeGen),
+1. <a id="step-1"></a>**Check the tools.** This installs [XcodeGen](https://github.com/yonaskolb/XcodeGen),
    which generates the sample app's Xcode project:
 
    <!-- golden: ios-tools device -->
@@ -39,7 +39,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
    You should see `Xcode` and `Version: `.
 
-2. **Start FleetML.** The first start takes a few minutes, to download and
+2. <a id="step-2"></a>**Start FleetML.** The first start takes a few minutes, to download and
    build the images:
 
    <!-- golden: start -->
@@ -54,7 +54,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    You should see `{"db":"connected","nats":"connected","s3":"connected","status":"ok","version":"<version>"}`.
    The block saved the server's secrets in `~/.fleetml.env`: keep that file.
 
-3. **Get the CLI**, checked against the release's checksums:
+3. <a id="step-3"></a>**Get the CLI**, checked against the release's checksums:
 
    <!-- golden: cli -->
    ```bash
@@ -70,7 +70,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
    You should see `fleetml-<os>-<arch>.tar.gz: OK` and `✓ fleetml v<version>`.
 
-4. **Publish the sample model and deploy it**, the Core ML build of it. The
+4. <a id="step-4"></a>**Publish the sample model and deploy it**, the Core ML build of it. The
    project gets the time in its name, so running the block again makes a new
    one:
 
@@ -86,7 +86,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
    You should see `✓ Pushed models/iris/iris_v1.mlmodel → iris v1.0.0 (FP32)` and `✓ Deployment start → COMPLETE`.
 
-5. **Put the simulator on it.** This builds the sample app, starts an iPhone
+5. <a id="step-5"></a>**Put the simulator on it.** This builds the sample app, starts an iPhone
    simulator, installs the app and launches it with the enrollment key in
    its environment, then waits until the SDK logs the model active (up to 15
    minutes the first time, while Xcode builds without printing anything):
@@ -106,7 +106,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    screen **Active model: iris 1.0.0**. Tap **Classify sample flower** to
    run it.
 
-6. **Put your iPhone on it**, in three blocks: pick the phone, build and
+6. <a id="step-6"></a>**Put your iPhone on it**, in three blocks: pick the phone, build and
    install the app, then start it. This step needs steps 2 to 4 in this
    terminal; step 5 (the simulator) is not needed, so you can do this one
    first.
@@ -221,7 +221,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
      the phone (`ipconfig getifaddr en0` on the Mac prints the address): no
      answer means the network or the Mac's firewall keeps the phone out.
 
-7. **See it in the dashboard.** This puts the admin key on the clipboard (on
+7. <a id="step-7"></a>**See it in the dashboard.** This puts the admin key on the clipboard (on
    a Mac, in WSL, or on Linux with `xclip`; elsewhere it prints it) and prints
    the dashboard's address: open it and paste the key into the login box:
 
@@ -236,7 +236,7 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    simulator, if you did step 5: the Chipset column tells them apart), and
    **Deployments** one `COMPLETE` deployment of iris 1.0.0.
 
-8. **Clean up**, from the clone (`cd` back into it if you went to your own
+8. <a id="step-8"></a>**Clean up**, from the clone (`cd` back into it if you went to your own
    app's folder): the app on the simulator, the build, the server and all
    its data, and the saved secrets. The sample stays on the phone: iOS
    forgets the developer trust when the last app from your Mac is removed;

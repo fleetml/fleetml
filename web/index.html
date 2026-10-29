@@ -139,16 +139,20 @@ details.full summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 details.full pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; color: var(--code-text); line-height: 1.5; }
 
 /* On your own phone */
-.phone { margin-top: 72px; display: grid; gap: 40px 48px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 980px) { .phone { grid-template-columns: minmax(0, 1fr) auto; } }
+.phone { margin-top: 72px; }
+.platform-steps { display: grid; gap: 32px 48px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 980px) { .platform-steps { grid-template-columns: minmax(0, 1fr) 260px; } }
+.platform-steps + .platform-steps { margin-top: 40px; }
+.platform-steps[hidden] { display: none; }
+.no-js-label { font-size: 1.05rem; margin: 0 0 14px; }
+.js .no-js-label { display: none; }
+.platform-steps ol.path li { padding-bottom: 12px; }
 ol.path { margin: 0; padding: 0; list-style: none; counter-reset: s; }
 ol.path li { counter-increment: s; position: relative; padding: 0 0 16px 46px; }
 ol.path li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 0.9rem; display: grid; place-items: center; }
-/* Two phones peeking in: identical frames cut off at the bottom, fading into the section */
-.apps { display: grid; gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-@media (min-width: 980px) { .apps { grid-template-columns: repeat(2, 260px); } }
-@media (max-width: 479px) { .apps { grid-template-columns: minmax(0, 300px); } }
-.apps figure { margin: 0; }
+/* A phone peeking in: a frame cut off at the bottom, fading into the section */
+.peek-fig { margin: 0; max-width: 300px; }
+
 .peek { position: relative; }
 .peek .frame { border: 6px solid #111827; border-bottom: 0; border-radius: 32px 32px 0 0; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--line); }
 .peek img { display: block; width: 100%; height: auto; border-radius: 26px 26px 0 0; }
@@ -156,7 +160,7 @@ ol.path li::before { content: counter(s); position: absolute; left: 0; top: 0; w
 @supports (background: linear-gradient(to bottom, color-mix(in srgb, red 0%, transparent), red)) {
   .peek::after { background: linear-gradient(to bottom, color-mix(in srgb, var(--bg-alt) 0%, transparent), var(--bg-alt)); }
 }
-.apps figcaption { color: var(--muted); font-size: 0.9rem; font-weight: 600; margin-top: 10px; text-align: center; }
+.tabs .peek-fig figcaption { color: var(--muted); font-size: 0.9rem; font-weight: 600; margin-top: 10px; text-align: center; }
 
 /* Features */
 .big { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); margin-bottom: 48px; }
@@ -171,6 +175,7 @@ ul.compact strong { color: var(--text); }
 
 /* Dashboard tabs */
 .tabs [role="tablist"] { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.tabs [role="tablist"][hidden] { display: none; }
 .tabs [role="tab"] { font: inherit; font-weight: 600; font-size: 0.95rem; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
 .tabs [role="tab"][aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .tabs figure { margin: 0; }
@@ -307,27 +312,50 @@ footer a { color: var(--muted); }
     </details>
 
     <div class="phone" id="your-phone">
-      <div>
-        <h3 style="font-size:1.5rem;letter-spacing:-0.01em;margin-bottom:10px">See it on your own phone</h3>
-        <p class="intro" style="margin-bottom:24px">Get started with a phone in place of the Linux agent. The Android SDK is tested on a physical phone and the emulator, the iOS SDK on a physical phone and simulators.</p>
-        <ol class="path">
-          <li><strong>Start FleetML.</strong> One block clones the repository, writes the server's secrets to <code>~/.fleetml.env</code> once and starts the stack with Docker Compose. <a href="/docs/ANDROID_SDK/#get-started">Step 2</a></li>
-          <li><strong>Get the CLI and publish the sample model</strong>, iris 1.0.0, and deploy it. <a href="/docs/ANDROID_SDK/#get-started">Steps 3 and 4</a></li>
-          <li><strong>Put the phone on it.</strong> Android: the sample app on a phone on a USB cable. iOS: your iPhone, or the simulator. <a href="/docs/ANDROID_SDK/#get-started">Android step 5</a>, <a href="/docs/IOS_SDK/#get-started">iOS steps 5 and 6</a></li>
-          <li><strong>Run the model.</strong> The app's screen shows <strong>Active model: iris 1.0.0</strong>; tap <strong>Classify sample flower</strong> to run it.</li>
-          <li><strong>See it in the dashboard.</strong> <strong>Devices</strong> lists one device, and <strong>Deployments</strong> one <code>COMPLETE</code> deployment of iris 1.0.0. <a href="/docs/ANDROID_SDK/#get-started">Step 6</a></li>
-          <li><strong>Roll out 2.0.0.</strong> The app gets it with its next heartbeat, 60 seconds by default; on Android, logcat shows the 603-byte delta. <a href="/docs/ANDROID_SDK/#publish-and-deploy-with-the-cli">Publish and deploy</a>, <a href="/docs/ANDROID_SDK/#offline-and-update-tests">An update</a></li>
-        </ol>
-      </div>
-      <div class="apps">
-        <figure>
-          <div class="peek"><div class="frame"><img src="/assets/app-android.png" width="520" height="419" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log."></div></div>
-          <figcaption>Android</figcaption>
-        </figure>
-        <figure>
-          <div class="peek"><div class="frame"><img src="/assets/app-ios.png" width="460" height="371" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds."></div></div>
-          <figcaption>iOS</figcaption>
-        </figure>
+      <h3 style="font-size:1.5rem;letter-spacing:-0.01em;margin-bottom:10px">See it on your own phone</h3>
+      <p class="intro" style="margin-bottom:24px">Get started with a phone in place of the Linux agent. The Android SDK is tested on a physical phone and the emulator, the iOS SDK on a physical phone and simulators.</p>
+      <div class="tabs" data-tabs>
+        <div role="tablist" aria-label="Get started on a phone" hidden data-js-only>
+          <button role="tab" type="button" id="tab-and" aria-controls="panel-and" aria-selected="true">Android</button>
+          <button role="tab" type="button" id="tab-ios" aria-controls="panel-ios" aria-selected="false" tabindex="-1">iOS</button>
+        </div>
+        <div role="tabpanel" id="panel-and" aria-labelledby="tab-and" class="platform-steps">
+          <div>
+            <h4 class="no-js-label">Android</h4>
+            <ol class="path">
+              <li><a href="/docs/ANDROID_SDK/#step-1"><strong>Check the tools</strong></a>: JDK 17 and <code>adb</code>.</li>
+              <li><a href="/docs/ANDROID_SDK/#step-2"><strong>Start FleetML</strong></a>: the first start takes a few minutes.</li>
+              <li><a href="/docs/ANDROID_SDK/#step-3"><strong>Get the CLI</strong></a>, checked against the release's checksums.</li>
+              <li><a href="/docs/ANDROID_SDK/#step-4"><strong>Publish the sample model and deploy it</strong></a>.</li>
+              <li><a href="/docs/ANDROID_SDK/#step-5"><strong>Put the phone on it</strong></a>: the sample app over a USB cable, until the model is active on the phone.</li>
+              <li><a href="/docs/ANDROID_SDK/#step-6"><strong>See it in the dashboard</strong></a>: one device, one <code>COMPLETE</code> deployment of iris 1.0.0.</li>
+              <li><a href="/docs/ANDROID_SDK/#step-7"><strong>Clean up</strong></a>: the app, the forwards, the server and all its data.</li>
+            </ol>
+          </div>
+          <figure class="peek-fig">
+            <div class="peek"><div class="frame"><img src="/assets/app-android.png" width="520" height="419" loading="lazy" alt="The Android sample app: a device online, Active model iris 2.0.1, the Classify sample flower button, the result virginica 100.0% in 549 microseconds, and its log."></div></div>
+            <figcaption>Android</figcaption>
+          </figure>
+        </div>
+        <div role="tabpanel" id="panel-ios" aria-labelledby="tab-ios" class="platform-steps">
+          <div>
+            <h4 class="no-js-label">iOS</h4>
+            <ol class="path">
+              <li><a href="/docs/IOS_SDK/#step-1"><strong>Check the tools</strong></a>, with XcodeGen for the sample app's Xcode project.</li>
+              <li><a href="/docs/IOS_SDK/#step-2"><strong>Start FleetML</strong></a>: the first start takes a few minutes.</li>
+              <li><a href="/docs/IOS_SDK/#step-3"><strong>Get the CLI</strong></a>, checked against the release's checksums.</li>
+              <li><a href="/docs/IOS_SDK/#step-4"><strong>Publish the sample model and deploy it</strong></a>, the Core ML build of it.</li>
+              <li><a href="/docs/IOS_SDK/#step-5"><strong>Put the simulator on it</strong></a>: the sample app, until the SDK logs the model active.</li>
+              <li><a href="/docs/IOS_SDK/#step-6"><strong>Put your iPhone on it</strong></a>: pick the phone, build and install the app, then start it.</li>
+              <li><a href="/docs/IOS_SDK/#step-7"><strong>See it in the dashboard</strong></a>: the iPhone, and one <code>COMPLETE</code> deployment of iris 1.0.0.</li>
+              <li><a href="/docs/IOS_SDK/#step-8"><strong>Clean up</strong></a>: the app on the simulator, the build, the server and all its data.</li>
+            </ol>
+          </div>
+          <figure class="peek-fig">
+            <div class="peek"><div class="frame"><img src="/assets/app-ios.png" width="460" height="371" loading="lazy" alt="The iOS sample app: a device online, Active model iris 2.0.0, Classify sample flower, and the result virginica 100.0% in 90 microseconds."></div></div>
+            <figcaption>iOS</figcaption>
+          </figure>
+        </div>
       </div>
     </div>
   </div>
@@ -629,7 +657,10 @@ footer a { color: var(--muted); }
       });
     });
   });
-  // Tabs: click, or the arrow, Home and End keys.
+  // Tabs: click, or the arrow, Home and End keys. Without JavaScript every panel
+  // shows and the tab list stays hidden.
+  document.documentElement.classList.add("js");
+  document.querySelectorAll("[data-js-only]").forEach(function (e) { e.hidden = false; });
   document.querySelectorAll("[data-tabs]").forEach(function (box) {
     var tabs = Array.prototype.slice.call(box.querySelectorAll('[role="tab"]'));
     function show(t) {
@@ -640,6 +671,7 @@ footer a { color: var(--muted); }
         document.getElementById(o.getAttribute("aria-controls")).hidden = !on;
       });
     }
+    show(tabs.filter(function (t) { return t.getAttribute("aria-selected") === "true"; })[0] || tabs[0]);
     tabs.forEach(function (t, i) {
       t.addEventListener("click", function () { show(t); });
       t.addEventListener("keydown", function (e) {

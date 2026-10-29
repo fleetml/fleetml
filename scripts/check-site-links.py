@@ -40,7 +40,7 @@ def main():
         for n in names:
             if n.endswith(".html"):
                 pages[os.path.join(d, n)] = parse(os.path.join(d, n))
-    checked = 0
+    checked = fragments = 0
     for path, page in pages.items():
         for link in page.links:
             u = urlsplit(link)
@@ -61,10 +61,12 @@ def main():
             if not os.path.exists(target):
                 errors.append(f"{os.path.relpath(path, site)}: {link}: no such file")
             elif u.fragment and target.endswith(".html"):
+                fragments += 1
                 ids = pages[target].ids if target in pages else parse(target).ids
                 if unquote(u.fragment) not in ids:
                     errors.append(f"{os.path.relpath(path, site)}: {link}: no #{u.fragment} on the page")
-    print(f"{len(pages)} pages, {checked} internal links checked, {len(external)} external links (not fetched)")
+    print(f"{len(pages)} pages, {checked} internal links checked ({fragments} with a #fragment, each found"
+          f" among the ids of its page), {len(external)} external links (not fetched)")
     for e in sorted(set(errors)):
         print("BROKEN", e)
     return 1 if errors else 0
