@@ -88,8 +88,8 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
 
 5. **Put the simulator on it.** This builds the sample app, starts an iPhone
    simulator, installs the app and launches it with the enrollment key in
-   its environment, then waits until the SDK logs the model active (a few
-   minutes the first time, for the build):
+   its environment, then waits until the SDK logs the model active (up to 15
+   minutes the first time, while Xcode builds without printing anything):
 
    <!-- golden: ios-simulator device -->
    ```bash
@@ -131,13 +131,14 @@ Components), [Homebrew](https://brew.sh) and Docker Desktop.
    <!-- golden: ios-iphone-pick phone -->
    ```bash
    T=$(mktemp); xcrun devicectl list devices --quiet --json-output "$T" > /dev/null 2>&1
-   jq -r '.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired") | "\(.identifier)  \(.hardwareProperties.marketingName)"' "$T"
+   jq -r '.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired") | "\(.identifier)  \(.hardwareProperties.marketingName // .hardwareProperties.productType)"' "$T"
    PHONE=${PHONE:-$(jq -r '[.result.devices[] | select(.hardwareProperties.platform == "iOS" and .connectionProperties.pairingState == "paired")] | if length == 1 then .[0].identifier else empty end' "$T")}; rm -f "$T"
    echo "PHONE=${PHONE:-<more than one iPhone: copy yours from the list above and run export PHONE=<its identifier>>}"
    ```
 
    You should see one line per iPhone, its identifier and its model (such as
-   `iPhone 11 Pro Max`), then `PHONE=` and that identifier. With more than one
+   `iPhone 11 Pro Max`, or its model code such as `iPhone12,5` before the Mac
+   has connected to the phone in this session), then `PHONE=` and that identifier. With more than one
    iPhone, run `export PHONE=` with yours, then go on.
 
    **6b. Build and install the app on it.** This points the server's
@@ -603,14 +604,15 @@ struct MyApp: App {
    with the key your team gave you or the quickstart's `$FLEETML_ADMIN_KEY`
    (which key does what: [Android's list](ANDROID_SDK.md#publish-and-deploy-with-the-cli)
    applies here too). The first two lines make the block work in any
-   terminal: they read the server's settings from `~/.fleetml.env`, find the
+   terminal: they read the server's settings from `~/.fleetml.env` (with no
+   server started, the first line says so), find the
    CLI, and take the admin key (with your team's key, put it in place of
    `$FLEETML_ADMIN_KEY`). Project names are unique on a server:
    `project already exists: slug "myapp-ios"` means the project is there from an
    earlier run, so pick another name.
 
    ```bash
-   source ~/.fleetml.env && export PATH="$HOME/.local/bin:$PATH"
+   source ~/.fleetml.env || echo "No server settings: start the server first (Get started step 2)"; export PATH="$HOME/.local/bin:$PATH"
    export FLEETML_SERVER=http://localhost:${FLEETML_REST_PORT:-18080} FLEETML_API_KEY=$FLEETML_ADMIN_KEY   # or your team's key
    REQ='{"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}'
    P=$(fleetml project create --name myapp-ios -o json | jq -r .id)   # or P=<the project ID your team gave you>
@@ -915,8 +917,8 @@ shows the `Heartbeat failed` line.
   to register: revoking it stops new installs from registering, and devices
   that already registered keep their token. A registered device (the
   Keychain keeps its identity across reinstalls) that starts with another
-  project's key is refused with `this device is already registered`: give it
-  its own project's key.
+  project's valid key moves to that project, and back with the first key
+  ([When it does not connect](#when-it-does-not-connect)): give each app its own project's key.
 
 ## Enrollment and identity
 
