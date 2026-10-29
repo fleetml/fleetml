@@ -237,9 +237,10 @@ download address in effect, one per line (`FLEETML_DASHBOARD_PORT=8081`,
 two you did not move). Then go on with Get started's step 3 (or
 the step that failed). `source ~/.fleetml.env` also brings back the secrets
 and the saved `S3_PUBLIC_ENDPOINT`, which `up -d` would otherwise reset. A
-CLI you pointed at the old REST port with `fleetml config set server` (as
-QUICKSTART's Windows block does) still uses it: run that line again with
-the new port.
+CLI you pointed at the old REST port still uses it: in Get started's
+terminal, run step 4's `export FLEETML_SERVER` line again, and if you saved
+the server with `fleetml config set server` (as QUICKSTART's Windows block
+does), run that line again with the new port.
 
 With a port moved, every block in the docs follows it: the blocks read the
 saved ports as `${FLEETML_REST_PORT:-18080}`, `${FLEETML_GRPC_PORT:-19090}`

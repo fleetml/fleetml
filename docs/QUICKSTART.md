@@ -205,8 +205,10 @@ shows the dashboard. Steps 1 to 3 are once per machine:
 
    The images step 2 built live in Docker Desktop and go with
    `docker image rm fleetml-prod-server fleetml-prod-dashboard` or Docker
-   Desktop's Images page. WSL and Docker
-   Desktop stay.
+   Desktop's Images page; the images it pulled (TimescaleDB, SeaweedFS, NATS
+   and the migration tool, about 2.4 GB) and Docker's build cache stay too,
+   until you remove them on that page (or Troubleshoot, Clean / Purge data).
+   WSL and Docker Desktop stay.
 
 How it fits together, in more detail:
 
@@ -258,7 +260,9 @@ $env:FLEETML_API_KEY = wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf 
 ```
 
 (`--exec` runs bash directly; without it, Ubuntu's login shell reads the line
-first and can replace `$FLEETML_ADMIN_KEY` with nothing. The Windows run
+first and can replace `$FLEETML_ADMIN_KEY` with nothing, and
+`${FLEETML_REST_PORT:-18080}` in the server line below with the default port,
+whatever port the stack uses. The Windows run
 uses the same `wsl ... --exec bash -c` line, on the file its own script
 writes, `~/.fleetml-run.env`, rather than this one.)
 
@@ -272,12 +276,10 @@ wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s $FLEETML_ADMIN_KEY' 
 fleetml config set server "http://localhost:$(wsl -d Ubuntu --exec bash -c '. ~/.fleetml.env && printf %s ${FLEETML_REST_PORT:-18080}')"
 ```
 
-The second line saves the REST port in effect: after you move it
-([Other ports](ADVANCED.md#other-ports)), run it again.
-
-The second line saves the stack's REST port with it (the CLI's default is
-the quickstart's port), so a new window reaches the same server; a key that
-another server refuses names that server (`unauthorized by http://...`).
+The second line saves the stack's REST port in effect (the CLI's default is
+the quickstart's port), so a new window reaches the same server; after you
+move the port ([Other ports](ADVANCED.md#other-ports)), run it again. A key
+that another server refuses names that server (`unauthorized by http://...`).
 
 What the [Windows run](../.github/workflows/windows-run.yml) workflow checks
 on GitHub's `windows-latest` runner (a Windows Server; the `windows-11-arm`
