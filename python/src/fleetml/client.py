@@ -149,7 +149,7 @@ class FleetML:
         model: str,
         version: str,
         quantization: str = "INT8",
-        target_runtime: str = "TFLITE",
+        target_runtime: Optional[str] = None,
         task: str = "CLASSIFICATION",
         promote: bool = False,
     ) -> Version:
@@ -162,7 +162,11 @@ class FleetML:
         moved to STAGED and ACTIVE. Returns the version. A quantization,
         target_runtime or version the server would refuse raises
         ``FleetMLError`` (400 VALIDATION_ERROR) before anything is created.
+        Without ``target_runtime`` the file's extension picks it (``.onnx`` is
+        ONNX, ``.mlmodel``/``.mlpackage`` COREML, ``.gguf`` GGUF), TFLITE otherwise.
         """
+        if target_runtime is None:
+            target_runtime = _runtime_of(path) or "TFLITE"
         _check_push_inputs(quantization, target_runtime, version)
         # The server keeps a version without its leading "v"; find it that way.
         version = version[1:] if version.startswith("v") else version
@@ -548,6 +552,13 @@ class Drift(_API):
     def history(self, version_id: str) -> List[DriftResult]:
         """The last 50 drift results, newest first."""
         return from_list(self._c._request("GET", f"/drift/{version_id}/history"), DriftResult.from_api)
+
+
+def _runtime_of(path: PathLike) -> Optional[str]:
+    """The runtime a model file's extension stands for, or None."""
+    return {".tflite": "TFLITE", ".onnx": "ONNX", ".mlmodel": "COREML", ".mlpackage": "COREML", ".gguf": "GGUF"}.get(
+        os.path.splitext(str(path).rstrip("/\\"))[1].lower()
+    )
 
 
 def _check_push_inputs(quantization: str, target_runtime: str, version: str) -> None:

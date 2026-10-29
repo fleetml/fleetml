@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,6 +20,21 @@ import (
 var semverRE = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
 	`(-(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?` +
 	`(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$`)
+
+// runtimeOf names the runtime a model file's extension stands for, or "".
+func runtimeOf(path string) string {
+	switch strings.ToLower(filepath.Ext(strings.TrimRight(path, `/\`))) {
+	case ".tflite":
+		return "TFLITE"
+	case ".onnx":
+		return "ONNX"
+	case ".mlmodel", ".mlpackage":
+		return "COREML"
+	case ".gguf":
+		return "GGUF"
+	}
+	return ""
+}
 
 // checkPushInputs refuses the values the server would refuse (its lists, any
 // case), so a refused push leaves no model or version behind.
@@ -51,8 +67,17 @@ func newPushCmd() *cobra.Command {
 		Use:   "push [file]",
 		Short: "Upload a model variant (create the model and version if needed)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
+			// Without --framework the file's extension picks it (an .onnx file is
+			// not a TFLITE model); a --framework the extension contradicts is warned about.
+			if fromFile := runtimeOf(filePath); fromFile != "" {
+				if !cmd.Flags().Changed("framework") {
+					framework = fromFile
+				} else if !strings.EqualFold(strings.TrimSpace(framework), fromFile) {
+					fmt.Fprintf(os.Stderr, "Warning: pushing %s as %s (--framework), but its extension says %s\n", filePath, strings.ToUpper(framework), fromFile)
+				}
+			}
 			// What the server would refuse is refused before anything is created.
 			if err := checkPushInputs(quant, framework, ver, metadata); err != nil {
 				return err
@@ -251,7 +276,7 @@ func newPushCmd() *cobra.Command {
 	cmd.Flags().StringVar(&modelName, "model", "", "Model name (required)")
 	cmd.Flags().StringVar(&ver, "version", "", "Semver version (required)")
 	cmd.Flags().StringVar(&quant, "quantization", "INT8", "Quantization (FP32, FP16, INT8, INT4, DYNAMIC)")
-	cmd.Flags().StringVar(&framework, "framework", "TFLITE", "Framework/runtime")
+	cmd.Flags().StringVar(&framework, "framework", "TFLITE", "Framework/runtime (default: from the file's extension: .tflite, .onnx, .mlmodel/.mlpackage, .gguf; TFLITE otherwise)")
 	cmd.Flags().StringVar(&task, "task", "CLASSIFICATION", "Task type")
 	cmd.Flags().BoolVar(&promote, "promote", false, "Promote version to ACTIVE after upload")
 	cmd.Flags().StringVar(&metadata, "metadata", "", `Version metadata JSON for a new version, e.g. {"fleetml_requirements":{"min_ram_mb":64,"min_score":0}}`)

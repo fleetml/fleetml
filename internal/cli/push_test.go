@@ -143,3 +143,34 @@ func TestPush_FailedUploadLeavesNothingNew(t *testing.T) {
 	assert.Len(t, fake.Versions(), 1)
 	assert.Len(t, fake.Models(), 1)
 }
+
+// Without --framework the file's extension picks the runtime: an .onnx file
+// is an ONNX variant, not TFLITE; an explicit --framework still wins.
+func TestPush_RuntimeFromExtension(t *testing.T) {
+	fake := clitest.NewServer(t, "k")
+	dir := t.TempDir()
+	require.NoError(t, runCLI(t, fake.URL, "k", "project", "create", "--name", "ext"))
+	projectID := fake.Projects()[0]["id"].(string)
+	runtimeOfPush := func(name string, extra ...string) any {
+		file := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(file, []byte(name), 0o644))
+		before := map[any]bool{}
+		for _, v := range fake.Variants() {
+			before[v["id"]] = true
+		}
+		args := append([]string{"push", file, "--project", projectID, "--model", "m-" + name, "--version", "1.0.0"}, extra...)
+		require.NoError(t, runCLI(t, fake.URL, "k", args...))
+		for _, v := range fake.Variants() {
+			if !before[v["id"]] {
+				return v["target_runtime"]
+			}
+		}
+		return nil
+	}
+	assert.Equal(t, "ONNX", runtimeOfPush("model.onnx"))
+	assert.Equal(t, "COREML", runtimeOfPush("Iris.MLModel"))
+	assert.Equal(t, "GGUF", runtimeOfPush("llm.gguf"))
+	assert.Equal(t, "TFLITE", runtimeOfPush("model.tflite"))
+	assert.Equal(t, "TFLITE", runtimeOfPush("model.bin"), "unknown extension: the default")
+	assert.Equal(t, "TFLITE", runtimeOfPush("forced.onnx", "--framework", "TFLITE"), "an explicit --framework wins")
+}

@@ -503,6 +503,27 @@ def test_push_accepts_any_case_and_a_prerelease(fake: Fake, tmp_path: Path) -> N
     assert [r.url.path for r in fake.requests][:2] == ["/api/v1/projects/p1/models", "/api/v1/models/m1/versions"]
 
 
+@pytest.mark.parametrize(
+    ("name", "kwargs", "runtime"),
+    [
+        ("m.onnx", {}, "ONNX"),
+        ("Iris.MLModel", {}, "COREML"),
+        ("llm.gguf", {}, "GGUF"),
+        ("m.bin", {}, "TFLITE"),
+        ("m.onnx", {"target_runtime": "TFLITE"}, "TFLITE"),
+    ],
+)
+def test_push_runtime_from_the_extension(
+    fake: Fake, tmp_path: Path, name: str, kwargs: Dict[str, str], runtime: str
+) -> None:
+    model = tmp_path / name
+    model.write_bytes(b"x")
+    push_routes(fake)
+    fake.client().push(model, project="p1", model="iris", version="1.0.0", **kwargs)  # type: ignore[arg-type]
+    assert json.loads(fake.requests[0].content)["framework"] == runtime
+    assert json.loads(fake.requests[2].content)["target_runtime"] == runtime
+
+
 def test_push_drops_a_leading_v(fake: Fake, tmp_path: Path) -> None:
     model = tmp_path / "m.tflite"
     model.write_bytes(b"x")
